@@ -42,9 +42,9 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 - HabitDetailScreen: muestra título y descripción del hábito, permite hacer foto o seleccionar de la galería, sube la imagen a Supabase Storage (bucket `habit-photos`) y crea un registro en `habit_logs` con `status = "pending"`. Incluye spinner durante la subida, mensaje de éxito y vuelve a Home al finalizar.
 - ValidateHabitScreen: muestra hábitos pendientes de validación de compañeros de la misma empresa, con foto de prueba, nombre del compañero y título del hábito. Botones Aprobar y Rechazar que actualizan `habit_logs` con `status` validated/rejected, `validated_by` y `validated_at`. Pull-to-refresh y estado vacío.
 - RankingScreen: muestra ranking de usuarios de la empresa ordenados por hábitos validados, top 3 con medallas oro/plata/bronce, usuario actual destacado con etiqueta "Tú", estado vacío, pull-to-refresh.
+- ProfileScreen: muestra avatar con inicial, nombre, rol, email, empresa y estadísticas de actividad (hábitos completados, validados y validaciones hechas a compañeros). Botón cerrar sesión y pull-to-refresh.
 ### Pendientes 🔲
 - SplashScreen
-- ProfileScreen: perfil de usuario
 - AdminScreen: panel de administrador
 ## Decisiones técnicas
 - iOS primero, Android siempre funcional
