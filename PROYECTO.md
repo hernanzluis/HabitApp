@@ -40,10 +40,10 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 - ForgotPasswordScreen: recuperación de contraseña
 - HomeScreen: muestra saludo con nombre del usuario, fecha de hoy, lista de hábitos activos de la empresa filtrados por company_id, pull-to-refresh, estado vacío, manejo de errores y botón de cerrar sesión
 - HabitDetailScreen: muestra título y descripción del hábito, permite hacer foto o seleccionar de la galería, sube la imagen a Supabase Storage (bucket `habit-photos`) y crea un registro en `habit_logs` con `status = "pending"`. Incluye spinner durante la subida, mensaje de éxito y vuelve a Home al finalizar.
+- ValidateHabitScreen: muestra hábitos pendientes de validación de compañeros de la misma empresa, con foto de prueba, nombre del compañero y título del hábito. Botones Aprobar y Rechazar que actualizan `habit_logs` con `status` validated/rejected, `validated_by` y `validated_at`. Pull-to-refresh y estado vacío.
+- RankingScreen: muestra ranking de usuarios de la empresa ordenados por hábitos validados, top 3 con medallas oro/plata/bronce, usuario actual destacado con etiqueta "Tú", estado vacío, pull-to-refresh.
 ### Pendientes 🔲
 - SplashScreen
-- ValidateHabitScreen: validar hábito de un compañero
-- RankingScreen: ranking del equipo
 - ProfileScreen: perfil de usuario
 - AdminScreen: panel de administrador
 ## Decisiones técnicas
@@ -51,3 +51,4 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 - Diseño corporativo flat, azul marino y blanco
 - Expo Go para desarrollo, sin builds nativos por ahora
 - Confirmación de email desactivada en desarrollo
+- Las políticas RLS de `habit_logs`, `habits` y `profiles` tienen `SELECT = true` para permitir lectura entre compañeros de empresa

@@ -8,6 +8,7 @@ import SignUpScreen from '../screens/SignUpScreen';
 import HomeScreen from '../screens/HomeScreen';
 import HabitDetailScreen from '../screens/HabitDetailScreen';
 import ValidateHabitScreen from '../screens/ValidateHabitScreen';
+import RankingScreen from '../screens/RankingScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -21,6 +22,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="HabitDetail" component={HabitDetailScreen} />
         <Stack.Screen name="ValidateHabit" component={ValidateHabitScreen} />
+        <Stack.Screen name="Ranking" component={RankingScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

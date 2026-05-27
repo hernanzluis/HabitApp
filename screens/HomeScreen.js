@@ -181,6 +181,14 @@ export default function HomeScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
+        style={styles.rankingBtn}
+        onPress={() => navigation.navigate('Ranking')}
+        activeOpacity={0.9}
+      >
+        <Text style={styles.rankingBtnText}>Ver ranking</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         style={[styles.logoutBtn, logoutLoading && styles.logoutBtnDisabled]}
         onPress={onLogout}
         disabled={logoutLoading}
@@ -300,6 +308,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   validateBtnText: {
+    color: NAVY,
+    fontWeight: '800',
+  },
+  rankingBtn: {
+    marginHorizontal: 18,
+    marginBottom: 10,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankingBtnText: {
     color: NAVY,
     fontWeight: '800',
   },
