@@ -189,6 +189,14 @@ export default function HomeScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
+        style={styles.profileBtn}
+        onPress={() => navigation.navigate('Profile')}
+        activeOpacity={0.9}
+      >
+        <Text style={styles.profileBtnText}>Mi perfil</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         style={[styles.logoutBtn, logoutLoading && styles.logoutBtnDisabled]}
         onPress={onLogout}
         disabled={logoutLoading}
@@ -321,6 +329,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rankingBtnText: {
+    color: NAVY,
+    fontWeight: '800',
+  },
+  profileBtn: {
+    marginHorizontal: 18,
+    marginBottom: 10,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileBtnText: {
     color: NAVY,
     fontWeight: '800',
   },
