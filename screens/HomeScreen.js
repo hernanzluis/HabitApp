@@ -119,6 +119,10 @@ export default function HomeScreen() {
     navigation.navigate('HabitDetail', { habit });
   };
 
+  const onValidateHabits = () => {
+    navigation.navigate('ValidateHabit');
+  };
+
   const renderHabit = ({ item }) => (
     <View style={styles.habitCard}>
       <Text style={styles.habitTitle}>{item.title}</Text>
@@ -171,6 +175,10 @@ export default function HomeScreen() {
           ) : null
         }
       />
+
+      <TouchableOpacity style={styles.validateBtn} onPress={onValidateHabits} activeOpacity={0.9}>
+        <Text style={styles.validateBtnText}>Validar compañeros</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={[styles.logoutBtn, logoutLoading && styles.logoutBtnDisabled]}
@@ -281,6 +289,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  validateBtn: {
+    marginHorizontal: 18,
+    marginBottom: 10,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  validateBtnText: {
+    color: NAVY,
+    fontWeight: '800',
   },
   logoutBtn: {
     marginHorizontal: 18,

@@ -30,15 +30,18 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 - RLS activado en todas las tablas
 - Políticas configuradas para INSERT, SELECT y UPDATE
 - Función handle_new_user_registration para el registro seguro
+## Storage
+- Bucket: habit-photos (público)
+- Políticas: INSERT y SELECT para usuarios autenticados
 ## Pantallas
 ### Implementadas y validadas ✅
 - LoginScreen: login con email y contraseña, validación, mensajes de error
 - SignUpScreen: registro con nombre, email, contraseña, empresa. Crea usuario en Auth + companies + profiles
 - ForgotPasswordScreen: recuperación de contraseña
 - HomeScreen: muestra saludo con nombre del usuario, fecha de hoy, lista de hábitos activos de la empresa filtrados por company_id, pull-to-refresh, estado vacío, manejo de errores y botón de cerrar sesión
+- HabitDetailScreen: muestra título y descripción del hábito, permite hacer foto o seleccionar de la galería, sube la imagen a Supabase Storage (bucket `habit-photos`) y crea un registro en `habit_logs` con `status = "pending"`. Incluye spinner durante la subida, mensaje de éxito y vuelve a Home al finalizar.
 ### Pendientes 🔲
 - SplashScreen
-- HabitDetailScreen: detalle de hábito + subir foto
 - ValidateHabitScreen: validar hábito de un compañero
 - RankingScreen: ranking del equipo
 - ProfileScreen: perfil de usuario
