@@ -35,10 +35,9 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 - LoginScreen: login con email y contraseña, validación, mensajes de error
 - SignUpScreen: registro con nombre, email, contraseña, empresa. Crea usuario en Auth + companies + profiles
 - ForgotPasswordScreen: recuperación de contraseña
-- HomeScreen: pantalla temporal post-login con logout
+- HomeScreen: muestra saludo con nombre del usuario, fecha de hoy, lista de hábitos activos de la empresa filtrados por company_id, pull-to-refresh, estado vacío, manejo de errores y botón de cerrar sesión
 ### Pendientes 🔲
 - SplashScreen
-- HomeScreen real con lista de hábitos del día
 - HabitDetailScreen: detalle de hábito + subir foto
 - ValidateHabitScreen: validar hábito de un compañero
 - RankingScreen: ranking del equipo

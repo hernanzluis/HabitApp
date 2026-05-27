@@ -24,6 +24,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HabitApp necesita acceder a tus fotos para subir pruebas de hábitos.",
+          "cameraPermission": "HabitApp necesita acceder a la cámara para tomar fotos de tus hábitos."
+        }
+      ]
+    ]
   }
 }
