@@ -126,10 +126,6 @@ export default function SignUpScreen() {
         return;
       }
 
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Home' }],
-      });
     } catch {
       setFormError('No se pudo completar el registro. Revisa tu conexión e inténtalo de nuevo.');
     } finally {

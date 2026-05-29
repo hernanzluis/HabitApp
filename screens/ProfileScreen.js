@@ -54,7 +54,6 @@ export default function ProfileScreen() {
       } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) {
-        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
         return;
       }
 
@@ -118,7 +117,6 @@ export default function ProfileScreen() {
     setLogoutLoading(true);
     try {
       await supabase.auth.signOut();
-      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
     } catch (e) {
       setError(e?.message || 'No se pudo cerrar sesión.');
       setLogoutLoading(false);

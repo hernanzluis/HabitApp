@@ -45,7 +45,6 @@ export default function RankingScreen() {
       } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) {
-        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
         return;
       }
 

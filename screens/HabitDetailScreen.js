@@ -103,7 +103,6 @@ export default function HabitDetailScreen() {
 
       if (userError) throw userError;
       if (!user) {
-        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
         return;
       }
 
@@ -137,10 +136,7 @@ export default function HabitDetailScreen() {
 
       setSuccess('¡Prueba enviada! Un compañero la validará pronto.');
       setTimeout(() => {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Home' }],
-        });
+        navigation.goBack();
       }, 1500);
     } catch (e) {
       setError(e?.message || 'No se pudo enviar la prueba. Revisa tu conexión e inténtalo de nuevo.');

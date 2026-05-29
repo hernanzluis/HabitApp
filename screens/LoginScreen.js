@@ -67,10 +67,6 @@ export default function LoginScreen() {
         return;
       }
 
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Home' }],
-      });
     } catch (e) {
       setFormError('No se pudo iniciar sesión. Revisa tu conexión e inténtalo de nuevo.');
     } finally {

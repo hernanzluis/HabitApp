@@ -14,6 +14,22 @@ import { supabase } from '../lib/supabase';
 const NAVY = '#001f3f';
 const WHITE = '#ffffff';
 const GRAY = '#64748b';
+const ORANGE = '#f97316';
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+function formatExpiry(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function daysUntil(dateStr) {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const exp = new Date(dateStr);
+  exp.setHours(0, 0, 0, 0);
+  return Math.round((exp - now) / MS_PER_DAY);
+}
 
 function getFirstName(fullName) {
   if (!fullName?.trim()) return 'Usuario';
@@ -55,7 +71,6 @@ export default function HomeScreen() {
 
       if (userError) throw userError;
       if (!user) {
-        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
         return;
       }
 
@@ -77,13 +92,18 @@ export default function HomeScreen() {
 
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
-        .select('id, title, description, company_id, type, is_active, created_at')
+        .select('id, title, description, company_id, type, is_active, created_at, expires_at')
         .eq('company_id', profileData.company_id)
         .eq('is_active', true)
         .order('created_at', { ascending: true });
 
       if (habitsError) throw habitsError;
-      setHabits(habitsData ?? []);
+
+      const now = new Date();
+      const active = (habitsData ?? []).filter(
+        (h) => !h.expires_at || new Date(h.expires_at) > now
+      );
+      setHabits(active);
     } catch (e) {
       const message = e?.message || 'No se pudieron cargar los datos. Revisa tu conexión.';
       setError(message);
@@ -104,10 +124,6 @@ export default function HomeScreen() {
     setLogoutLoading(true);
     try {
       await supabase.auth.signOut();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
     } catch (e) {
       setError(e?.message || 'No se pudo cerrar sesión.');
     } finally {
@@ -123,10 +139,17 @@ export default function HomeScreen() {
     navigation.navigate('ValidateHabit');
   };
 
-  const renderHabit = ({ item }) => (
+  const renderHabit = ({ item }) => {
+    const urgent = item.expires_at && daysUntil(item.expires_at) <= 3;
+    return (
     <View style={styles.habitCard}>
       <Text style={styles.habitTitle}>{item.title}</Text>
       {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
+      {item.expires_at ? (
+        <Text style={[styles.expiryText, urgent && styles.expiryUrgent]}>
+          Expira el {formatExpiry(item.expires_at)}
+        </Text>
+      ) : null}
       <TouchableOpacity
         style={styles.completeBtn}
         onPress={() => onCompleteHabit(item)}
@@ -135,7 +158,8 @@ export default function HomeScreen() {
         <Text style={styles.completeBtnText}>Completar</Text>
       </TouchableOpacity>
     </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -280,6 +304,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: GRAY,
     lineHeight: 20,
+  },
+  expiryText: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    color: GRAY,
+  },
+  expiryUrgent: {
+    color: ORANGE,
   },
   completeBtn: {
     marginTop: 14,
