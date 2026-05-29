@@ -26,19 +26,21 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 - habits: id, title, description, company_id, created_by, type, is_active, created_at, expires_at (opcional)
 - habit_logs: id, habit_id, user_id, photo_url, status, validated_by, validated_at, created_at
 - teams: id, name, company_id, created_by, created_at
+- invitations: tabla para códigos de invitación reutilizables por empresa (un código por empresa, múltiples usuarios pueden registrarse con él)
 ## Seguridad
 - RLS activado en todas las tablas
 - Políticas configuradas para INSERT, SELECT y UPDATE
-- Función handle_new_user_registration para el registro seguro
+- Función handle_new_user_registration para el registro creando empresa nueva
+- Función handle_invited_user_registration para el registro con código de invitación reutilizable (no marca is_used, múltiples usuarios pueden usar el mismo código)
 ## Storage
 - Bucket: habit-photos (público)
 - Políticas: INSERT y SELECT para usuarios autenticados
 ## Pantallas
 ### Implementadas y validadas ✅
 - LoginScreen: login con email y contraseña, validación, mensajes de error
-- SignUpScreen: registro con nombre, email, contraseña, empresa. Crea usuario en Auth + companies + profiles
+- SignUpScreen: dos flujos de registro — "Crear empresa" (nombre, email, contraseña, nombre de empresa → RPC handle_new_user_registration) y "Tengo un código" (nombre, email, contraseña, código de invitación → RPC handle_invited_user_registration). Selector de flujo en la parte superior de la tarjeta.
 - ForgotPasswordScreen: recuperación de contraseña
-- HomeScreen: muestra saludo con nombre del usuario, fecha de hoy, lista de hábitos activos de la empresa filtrados por company_id. Solo muestra hábitos cuyo `expires_at` es null o está en el futuro. Si el hábito tiene fecha de expiración la muestra como "Expira el DD/MM/YYYY" en gris; si quedan 3 días o menos el aviso aparece en naranja. Pull-to-refresh, estado vacío, manejo de errores y botones de navegación.
+- HomeScreen: muestra saludo con nombre del usuario, fecha de hoy, lista de hábitos activos de la empresa filtrados por company_id. Solo muestra hábitos cuyo `expires_at` es null o está en el futuro. Si el hábito tiene fecha de expiración la muestra como "Expira el DD/MM/YYYY" en gris; si quedan 3 días o menos el aviso aparece en naranja. Reintento automático (500ms) en la carga inicial para evitar el error de sesión no inicializada con auto-login. Pull-to-refresh, estado vacío y manejo de errores.
 - HabitDetailScreen: muestra título y descripción del hábito, permite hacer foto o seleccionar de la galería, sube la imagen a Supabase Storage (bucket `habit-photos`) y crea un registro en `habit_logs` con `status = "pending"`. Incluye spinner durante la subida, mensaje de éxito y vuelve a Home al finalizar.
 - ValidateHabitScreen: muestra hábitos pendientes de validación de compañeros de la misma empresa, con foto de prueba, nombre del compañero y título del hábito. Botones Aprobar y Rechazar que actualizan `habit_logs` con `status` validated/rejected, `validated_by` y `validated_at`. Pull-to-refresh y estado vacío.
 - RankingScreen: muestra ranking de usuarios de la empresa ordenados por hábitos validados, top 3 con medallas oro/plata/bronce, usuario actual destacado con etiqueta "Tú", estado vacío, pull-to-refresh.

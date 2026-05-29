@@ -99,6 +99,28 @@ export default function SignUpScreen() {
     setLoading(true);
     let registered = false;
     try {
+      if (mode === 'join') {
+        const { data: invitation, error: inviteError } = await supabase
+          .from('invitations')
+          .select('id, expires_at')
+          .eq('code', inviteCodeTrimmed)
+          .maybeSingle();
+
+        console.log('[INVITE] código introducido:', inviteCodeTrimmed);
+        console.log('[INVITE] data:', JSON.stringify(invitation));
+        console.log('[INVITE] error:', JSON.stringify(inviteError));
+
+        if (inviteError) throw inviteError;
+        if (!invitation) {
+          setErrors((prev) => ({ ...prev, inviteCode: 'Código de invitación inválido.' }));
+          return;
+        }
+        if (invitation.expires_at && new Date(invitation.expires_at) < new Date()) {
+          setErrors((prev) => ({ ...prev, inviteCode: 'Este código de invitación ha expirado.' }));
+          return;
+        }
+      }
+
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: emailTrimmed,
         password,
