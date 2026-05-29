@@ -84,17 +84,28 @@ export default function ProfileScreen() {
 
       const { data: allLogs, error: allLogsError } = await supabase
         .from('habit_logs')
-        .select('id, status, validated_by')
+        .select('id')
         .eq('user_id', user.id);
       if (allLogsError) throw allLogsError;
 
       const totalCompleted = (allLogs ?? []).length;
-      const totalValidated = (allLogs ?? []).filter((l) => l.status === 'validated').length;
+      const myLogIds = (allLogs ?? []).map((l) => l.id);
+
+      let totalValidated = 0;
+      if (myLogIds.length > 0) {
+        const { count, error: validatedError } = await supabase
+          .from('habit_validations')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'validated')
+          .in('habit_log_id', myLogIds);
+        if (validatedError) throw validatedError;
+        totalValidated = count ?? 0;
+      }
 
       const { count: totalValidatedForOthers, error: validatedForOthersError } = await supabase
-        .from('habit_logs')
+        .from('habit_validations')
         .select('id', { count: 'exact', head: true })
-        .eq('validated_by', user.id);
+        .eq('validator_id', user.id);
       if (validatedForOthersError) throw validatedForOthersError;
 
       setData({

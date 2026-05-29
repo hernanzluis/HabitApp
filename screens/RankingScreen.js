@@ -65,14 +65,29 @@ export default function RankingScreen() {
 
       const { data: logs, error: logsError } = await supabase
         .from('habit_logs')
-        .select('user_id')
-        .eq('status', 'validated')
+        .select('id, user_id')
         .in('user_id', userIds);
       if (logsError) throw logsError;
 
+      const logIds = (logs ?? []).map((l) => l.id);
+      const logUserMap = {};
+      (logs ?? []).forEach((l) => { logUserMap[l.id] = l.user_id; });
+
+      let validations = [];
+      if (logIds.length > 0) {
+        const { data: validationsData, error: validationsError } = await supabase
+          .from('habit_validations')
+          .select('habit_log_id')
+          .eq('status', 'validated')
+          .in('habit_log_id', logIds);
+        if (validationsError) throw validationsError;
+        validations = validationsData ?? [];
+      }
+
       const counts = {};
-      (logs ?? []).forEach((log) => {
-        counts[log.user_id] = (counts[log.user_id] || 0) + 1;
+      validations.forEach((v) => {
+        const userId = logUserMap[v.habit_log_id];
+        if (userId) counts[userId] = (counts[userId] || 0) + 1;
       });
 
       const sorted = (companyProfiles ?? [])

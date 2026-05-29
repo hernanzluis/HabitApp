@@ -1,61 +1,438 @@
-# HabitApp - Documento de Proyecto
-## Descripción
-Plataforma de bienestar corporativo con validación social entre compañeros. Los usuarios registran hábitos diarios y sus compañeros los validan mediante fotos como prueba.
-## Stack Tecnológico
-- React Native con Expo SDK 52
-- Node.js v20
-- Supabase (base de datos y autenticación)
-- React Navigation (navegación entre pantallas: bottom tabs + stack)
-- GitHub: https://github.com/hernanzluis/HabitApp
-## Tipos de usuarios
-- Admin: crea equipos y hábitos corporativos, gestiona usuarios
-- Usuario: crea hábitos personales, sube fotos, valida compañeros
-## Tipos de hábitos
-- Corporativos: creados por el admin, compartidos con el equipo, validados por compañeros con foto
-- Personales: creados por el usuario, privados, no se comparten
-## Validación de hábitos
-- El usuario sube una foto como prueba
-- Un compañero valida la foto
-## Gamificación
-- Puntos por hábito cumplido y validado
-- Rankings individuales y por equipos
-- Insignias por rachas y logros
-## Base de Datos (Supabase)
-- profiles: id, email, full_name, company_id, role, avatar_url, created_at
-- companies: id, name, logo_url, admin_id, created_at
-- habits: id, title, description, company_id, created_by, type, is_active, created_at, expires_at (opcional)
-- habit_logs: id, habit_id, user_id, photo_url, status, validated_by, validated_at, created_at
-- teams: id, name, company_id, created_by, created_at
-- invitations: tabla para códigos de invitación reutilizables por empresa (un código por empresa, múltiples usuarios pueden registrarse con él)
-## Seguridad
-- RLS activado en todas las tablas
-- Políticas configuradas para INSERT, SELECT y UPDATE
-- Función handle_new_user_registration para el registro creando empresa nueva
-- Función handle_invited_user_registration para el registro con código de invitación reutilizable (no marca is_used, múltiples usuarios pueden usar el mismo código)
-## Storage
-- Bucket: habit-photos (público)
-- Políticas: INSERT y SELECT para usuarios autenticados
-## Pantallas
-### Implementadas y validadas ✅
-- LoginScreen: login con email y contraseña, validación, mensajes de error
-- SignUpScreen: dos flujos de registro — "Crear empresa" (nombre, email, contraseña, nombre de empresa → RPC handle_new_user_registration) y "Tengo un código" (nombre, email, contraseña, código de invitación → RPC handle_invited_user_registration). Selector de flujo en la parte superior de la tarjeta.
-- ForgotPasswordScreen: recuperación de contraseña
-- HomeScreen: muestra saludo con nombre del usuario, fecha de hoy, lista de hábitos activos de la empresa filtrados por company_id. Solo muestra hábitos cuyo `expires_at` es null o está en el futuro. Si el hábito tiene fecha de expiración la muestra como "Expira el DD/MM/YYYY" en gris; si quedan 3 días o menos el aviso aparece en naranja. Reintento automático (500ms) en la carga inicial para evitar el error de sesión no inicializada con auto-login. Pull-to-refresh, estado vacío y manejo de errores.
-- HabitDetailScreen: muestra título y descripción del hábito, permite hacer foto o seleccionar de la galería, sube la imagen a Supabase Storage (bucket `habit-photos`) y crea un registro en `habit_logs` con `status = "pending"`. Incluye spinner durante la subida, mensaje de éxito y vuelve a Home al finalizar.
-- ValidateHabitScreen: muestra hábitos pendientes de validación de compañeros de la misma empresa, con foto de prueba, nombre del compañero y título del hábito. Botones Aprobar y Rechazar que actualizan `habit_logs` con `status` validated/rejected, `validated_by` y `validated_at`. Pull-to-refresh y estado vacío.
-- RankingScreen: muestra ranking de usuarios de la empresa ordenados por hábitos validados, top 3 con medallas oro/plata/bronce, usuario actual destacado con etiqueta "Tú", estado vacío, pull-to-refresh.
-- ProfileScreen: muestra avatar con inicial, nombre, rol, email, empresa y estadísticas de actividad (hábitos completados, validados y validaciones hechas a compañeros). Botón cerrar sesión y pull-to-refresh.
-### Pendientes 🔲
-- SplashScreen
-- AdminScreen: panel de administrador
-## Navegación
-- Bottom tabs con 4 secciones: Home (casa), Validar (check), Ranking (trofeo), Perfil (persona)
-- Barra de tabs con fondo blanco, icono activo en azul marino, inactivo en gris (Ionicons de @expo/vector-icons)
-- HabitDetail se abre como pantalla de stack por encima de las tabs, sin tabs visibles
-- Cerrar sesión está en ProfileScreen; el cambio de sesión lo gestiona RootNavigator automáticamente mediante onAuthStateChange
-## Decisiones técnicas
-- iOS primero, Android siempre funcional
-- Diseño corporativo flat, azul marino y blanco
-- Expo Go para desarrollo, sin builds nativos por ahora
-- Confirmación de email desactivada en desarrollo
-- Las políticas RLS de `habit_logs`, `habits` y `profiles` tienen `SELECT = true` para permitir lectura entre compañeros de empresa
+# HabitApp — Documento de Proyecto
+
+## 1. Descripción
+
+Plataforma de bienestar corporativo con validación social entre compañeros. Los empleados registran hábitos saludables diarios y sus compañeros de empresa los validan mediante fotografías como prueba. El objetivo es fomentar hábitos positivos mediante la responsabilidad social y la gamificación (rankings).
+
+---
+
+## 2. Stack Tecnológico
+
+| Tecnología | Versión |
+|---|---|
+| Expo SDK | ~54.0.33 |
+| React | 19.1.0 |
+| React Native | 0.81.5 |
+| @supabase/supabase-js | ^2.106.2 |
+| @react-navigation/native | ^7.2.5 |
+| @react-navigation/native-stack | ^7.16.0 |
+| @react-navigation/bottom-tabs | ^7.16.2 |
+| expo-image-picker | ~17.0.11 |
+| expo-status-bar | ~3.0.9 |
+| @expo/vector-icons (Ionicons) | incluido en Expo SDK |
+| @react-native-async-storage/async-storage | 2.2.0 |
+| react-native-safe-area-context | ~5.6.0 |
+| react-native-screens | ~4.16.0 |
+| react-native-url-polyfill | ^3.0.0 |
+| Node.js | v20 |
+
+**Backend:** Supabase (PostgreSQL + Auth + Storage)
+**Repositorio:** https://github.com/hernanzluis/HabitApp
+
+---
+
+## 3. Comandos
+
+```bash
+# Instalar dependencias
+npm install
+
+# Arrancar (modo por defecto)
+npm start
+
+# Arrancar en red local (recomendado para dispositivos físicos)
+npx expo start --lan
+
+# Arrancar solo para iOS
+npm run ios
+
+# Arrancar solo para Android
+npm run android
+```
+
+---
+
+## 4. Estructura de Carpetas
+
+```
+HabitApp/
+├── assets/                     # Iconos y splash
+│   ├── icon.png
+│   ├── adaptive-icon.png
+│   ├── splash-icon.png
+│   └── favicon.png
+├── lib/
+│   └── supabase.js             # Cliente Supabase (singleton)
+├── navigation/
+│   └── RootNavigator.js        # Navegación raíz + lógica de sesión + badge tab
+├── screens/
+│   ├── LoginScreen.js
+│   ├── SignUpScreen.js
+│   ├── ForgotPasswordScreen.js
+│   ├── HomeScreen.js
+│   ├── HabitDetailScreen.js
+│   ├── ValidateHabitScreen.js
+│   ├── RankingScreen.js
+│   └── ProfileScreen.js
+├── App.js                      # Punto de entrada (renderiza RootNavigator)
+├── index.js                    # Registro de la app con Expo
+├── app.json                    # Configuración de Expo
+├── package.json
+├── PROYECTO.md                 # Este archivo
+├── AGENTS.md                   # Instrucciones para Claude Code
+└── CLAUDE.md                   # Referencia a AGENTS.md
+```
+
+---
+
+## 5. Base de Datos (Supabase / PostgreSQL)
+
+### `profiles`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | — | PK, FK → auth.users(id) |
+| email | text | — | Email del usuario |
+| full_name | text | — | Nombre completo |
+| company_id | uuid | null | FK → companies(id) |
+| role | text | 'user' | 'admin' o 'user' |
+| avatar_url | text | null | URL pública en Storage bucket avatars |
+| created_at | timestamptz | now() | — |
+
+### `companies`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| name | text | — | Nombre de la empresa |
+| logo_url | text | null | No implementado todavía |
+| admin_id | uuid | — | FK → profiles(id) |
+| created_at | timestamptz | now() | — |
+
+### `habits`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| title | text | — | Nombre del hábito |
+| description | text | null | Descripción opcional |
+| company_id | uuid | — | FK → companies(id) |
+| created_by | uuid | — | FK → profiles(id) |
+| type | text | — | Tipo de hábito (libre) |
+| recurrence | text | — | 'daily' o 'once' |
+| is_active | boolean | true | Solo se muestran hábitos activos |
+| created_at | timestamptz | now() | — |
+| expires_at | timestamptz | null | Si está en el pasado, no se muestra |
+
+### `habit_logs`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| habit_id | uuid | — | FK → habits(id) |
+| user_id | uuid | — | FK → profiles(id) — quién lo hizo |
+| photo_url | text | — | URL pública en Storage bucket habit-photos |
+| status | text | 'pending' | 'pending', 'validated', 'rejected' |
+| validated_by | uuid | null | FK → profiles(id) — legado, no se usa desde v2 |
+| validated_at | timestamptz | null | Legado, no se usa desde v2 |
+| created_at | timestamptz | now() | — |
+
+### `habit_validations`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| habit_log_id | uuid | — | FK → habit_logs(id) ON DELETE CASCADE |
+| validator_id | uuid | — | FK → profiles(id) ON DELETE CASCADE |
+| status | text | — | 'validated' o 'rejected' |
+| created_at | timestamptz | now() | — |
+| — | UNIQUE | — | (habit_log_id, validator_id) — un voto por usuario por log |
+
+### `teams` _(creada, sin uso todavía)_
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| name | text | — | Nombre del equipo |
+| company_id | uuid | — | FK → companies(id) |
+| created_by | uuid | — | FK → profiles(id) |
+| created_at | timestamptz | now() | — |
+
+### `invitations`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| code | text | — | Código único, reutilizable |
+| company_id | uuid | — | FK → companies(id) |
+| expires_at | timestamptz | null | Opcional, se valida en cliente |
+| created_at | timestamptz | now() | — |
+
+### Relaciones entre tablas
+```
+auth.users ──── profiles (1:1)
+companies  ──── profiles (1:N, company_id)
+companies  ──── habits   (1:N, company_id)
+companies  ──── invitations (1:N, company_id)
+habits     ──── habit_logs  (1:N, habit_id)
+profiles   ──── habit_logs  (1:N, user_id)
+habit_logs ──── habit_validations (1:N, habit_log_id)
+profiles   ──── habit_validations (1:N, validator_id)
+```
+
+---
+
+## 6. Funciones SQL
+
+### `handle_new_user_registration`
+Crea empresa nueva y perfil de administrador en una sola transacción. Se llama desde la app tras `auth.signUp`.
+
+**Parámetros:**
+- `user_id` uuid
+- `user_email` text
+- `user_full_name` text
+- `company_name` text
+
+**Lógica:**
+1. INSERT en `companies` con el nombre dado, guarda el nuevo `company_id`
+2. INSERT en `profiles` con `role = 'admin'` y el `company_id` creado
+3. UPDATE en `companies.admin_id` con el `user_id`
+
+### `handle_invited_user_registration`
+Registra un usuario en una empresa existente usando un código de invitación. Se llama desde la app tras `auth.signUp`.
+
+**Parámetros:**
+- `user_id` uuid
+- `user_email` text
+- `user_full_name` text
+- `invitation_code` text
+
+**Lógica:**
+1. Busca la invitación por `code` para obtener `company_id`
+2. INSERT en `profiles` con `role = 'user'` y el `company_id` de la invitación
+3. No marca la invitación como usada (diseño deliberado: el código es reutilizable)
+
+---
+
+## 7. Políticas RLS
+
+RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Editor, nunca desde la UI de Supabase.
+
+### `profiles`
+- **SELECT:** `true` — cualquier usuario autenticado puede leer perfiles (necesario para mostrar nombres y avatares de compañeros)
+- **INSERT:** solo via funciones RPC (SECURITY DEFINER)
+- **UPDATE:** `auth.uid() = id` — solo el propio usuario puede actualizar su perfil
+
+### `companies`
+- **SELECT:** `true` — lectura abierta para usuarios autenticados
+- **INSERT:** solo via funciones RPC (SECURITY DEFINER)
+
+### `habits`
+- **SELECT:** `true` — lectura abierta (se filtra por company_id en el cliente)
+- **INSERT:** usuarios autenticados con `role = 'admin'`
+
+### `habit_logs`
+- **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y RankingScreen)
+- **INSERT:** `auth.uid() IS NOT NULL` — cualquier usuario autenticado puede insertar su propio log
+- **UPDATE:** `auth.uid() IS NOT NULL` — cualquier autenticado puede actualizar (para validadores)
+
+### `habit_validations`
+- **SELECT:** `true` — lectura abierta
+- **INSERT:** `auth.uid() = validator_id` — solo puedes insertar con tu propio validator_id
+- La constraint UNIQUE (habit_log_id, validator_id) a nivel de DB previene votos duplicados
+
+### `invitations`
+- **SELECT:** `true` — lectura abierta (necesario para validar el código antes de registrarse sin autenticación)
+- **INSERT:** usuarios con `role = 'admin'`
+
+---
+
+## 8. Storage
+
+### Bucket: `habit-photos`
+- **Tipo:** público
+- **Uso:** fotos de prueba de hábitos completados
+- **Path:** `{user_id}/{habit_id}/{timestamp}.{ext}`
+- **Política INSERT:** `auth.uid() IS NOT NULL`
+- **Política SELECT:** pública (URLs públicas)
+
+### Bucket: `avatars`
+- **Tipo:** público
+- **Uso:** fotos de perfil de usuarios
+- **Path:** `{user_id}/avatar.jpg`
+- **Política INSERT:** `auth.uid() IS NOT NULL` con upsert permitido (sobreescribe al actualizar)
+- **Política SELECT:** pública (URLs públicas)
+- **Nota:** la URL limpia se guarda en `profiles.avatar_url`; en el cliente se añade `?t=Date.now()` para cache-busting inmediato tras la subida
+
+---
+
+## 9. Pantallas
+
+### `LoginScreen`
+- Campos: email y contraseña
+- Llama a `supabase.auth.signInWithPassword`
+- Links a ForgotPasswordScreen y SignUpScreen
+- Al iniciar sesión, `onAuthStateChange` en RootNavigator detecta la sesión y navega automáticamente al AppStack
+
+### `ForgotPasswordScreen`
+- Campo: email
+- Llama a `supabase.auth.resetPasswordForEmail`
+- Muestra mensaje de confirmación tras enviar
+
+### `SignUpScreen`
+- Dos modos seleccionables con toggle: **"Crear empresa"** y **"Tengo un código"**
+- Campos comunes: nombre completo, email, contraseña, confirmar contraseña
+- Modo "Crear empresa": campo nombre de empresa → llama a RPC `handle_new_user_registration`
+- Modo "Tengo un código": campo código de invitación → valida código en `invitations` antes de crear auth user → llama a RPC `handle_invited_user_registration`
+- Validación inline por campo antes de enviar
+- Tras éxito, `onAuthStateChange` navega automáticamente sin necesidad de `navigation.navigate`
+
+### `HomeScreen`
+- **Datos:** perfil del usuario, hábitos activos de la empresa, habit_logs del usuario, habit_validations
+- **Queries:**
+  1. `profiles` → obtiene `full_name` y `company_id`
+  2. `habits` → filtra por `company_id` e `is_active = true`, ordenados por `created_at`
+  3. `habit_logs` → filtra por `user_id` e `habit_id IN [...]`, selecciona `id, habit_id, created_at`
+  4. `habit_validations` → filtra por `habit_log_id IN [logs de hoy]`
+- **Lógica recurrence:**
+  - `once`: si ya existe cualquier log para ese hábito → no se muestra
+  - `daily`: si existe log de hoy → muestra tarjeta "Completado hoy" con check verde
+- **Tarjeta completada:** fondo verde muy suave (#F0FAF0), borde izquierdo 3px verde (#2E7D32), icono check Ionicons + texto "Completado hoy" + contadores ✓ N / ✗ N de validaciones recibidas ese día (alineados a la derecha)
+- **Tarjeta pendiente:** botón "Completar" → navega a HabitDetailScreen
+- Expiración: fecha visible en gris; si quedan ≤3 días, en naranja
+- Reintento automático (500ms) en primer load para evitar race condition de sesión
+- Pull-to-refresh, estado vacío, manejo de errores
+
+### `HabitDetailScreen`
+- Recibe el objeto `habit` como param de navegación
+- Permite tomar foto (cámara) o seleccionar de galería (expo-image-picker)
+- Preview de la foto seleccionada
+- Al enviar:
+  1. Sube la imagen a Storage `habit-photos/{user_id}/{habit_id}/{timestamp}.ext`
+  2. Obtiene la URL pública
+  3. INSERT en `habit_logs` con `status = 'pending'`
+- Spinner durante la subida, mensaje de éxito "¡Prueba enviada!", vuelve a Home tras 1.5s
+
+### `ValidateHabitScreen`
+- **Datos:** habit_logs pendientes de compañeros de la misma empresa, filtrados para excluir los ya votados por el usuario actual
+- **Queries:**
+  1. `habit_logs` → `status = 'pending'`, `user_id != currentUser`, ordenados por `created_at desc` _(consulta previa al Promise.all para obtener logIds)_
+  2. **Promise.all** con:
+     - `profiles` → nombres y avatares de los autores (por userIds extraídos de los logs)
+     - `habits` → títulos y `company_id` para filtrar por empresa (por habitIds extraídos)
+     - `habit_validations` → todos los votos para los logIds obtenidos
+- **Filtrado:** solo muestra logs de hábitos con `company_id` coincidente y donde `userValidated = false`
+- **Votación:** INSERT en `habit_validations` con `status = 'validated'` o `'rejected'`; la constraint UNIQUE previene doble voto a nivel DB
+- **UI por tarjeta:** avatar del compañero (foto real si tiene `avatar_url`, inicial si no), nombre, título del hábito, fecha, foto de prueba, contadores ✓ N / ✗ N, botones Aprobar/Rechazar
+- Tras votar el último pendiente → muestra "Todo al día ✓" → navega a Home tras 1 segundo
+- Pull-to-refresh, estado vacío
+
+### `RankingScreen`
+- **Queries:**
+  1. `profiles` → obtiene `company_id` del usuario actual
+  2. `profiles` → obtiene todos los perfiles de la empresa
+  3. `habit_logs` → `id, user_id` donde `user_id IN [companyUserIds]` (todos los logs, sin filtro de status)
+  4. `habit_validations` → `habit_log_id` donde `status = 'validated'` y `habit_log_id IN [logIds]`
+- Construye un mapa `logId → userId` y cuenta validaciones por usuario, ordena descendente
+- Top 3: emojis de medalla (🥇🥈🥉); resto: posición ordinal (4º, 5º…)
+- Usuario actual destacado con fondo azul claro, borde izquierdo azul y etiqueta "Tú"
+- Pull-to-refresh, estado vacío
+
+### `ProfileScreen`
+- **Queries:**
+  1. `profiles` → `full_name, email, company_id, role, avatar_url`
+  2. `companies` → nombre de la empresa
+  3. `habit_logs` → `id` donde `user_id = currentUser` (para totalCompleted y obtener myLogIds)
+  4. `habit_validations` → COUNT donde `status = 'validated'` y `habit_log_id IN [myLogIds]` (totalValidated)
+  5. `habit_validations` → COUNT donde `validator_id = currentUser` (totalValidatedForOthers)
+- **Edición de nombre:** icono lápiz → TextInput inline → guarda con UPDATE en `profiles`
+- **Edición de avatar:** Alert con opciones Cámara/Galería → expo-image-picker → upload a Storage `avatars/{user_id}/avatar.jpg` (upsert) → UPDATE en `profiles.avatar_url`
+- Estadísticas: hábitos completados, hábitos validados, validaciones hechas a compañeros
+- Cerrar sesión: `supabase.auth.signOut()` → `onAuthStateChange` navega a AuthStack automáticamente
+
+---
+
+## 10. Sistema de Colores y Diseño
+
+Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, separadas por 8px del fondo gris. Sin tarjetas flotantes con sombra (excepto en la pantalla de login/registro).
+
+| Constante | Valor | Uso |
+|---|---|---|
+| BG | #F3F2EF | Fondo de pantalla (gris LinkedIn) |
+| WHITE | #ffffff | Fondo de secciones |
+| BLUE | #0A66C2 | Primario, botones, enlaces, tabs activos |
+| TEXT | #1D2226 | Texto principal |
+| GRAY | #666666 | Texto secundario, tabs inactivos |
+| ORANGE | #f97316 | Alertas de expiración (≤3 días) |
+| HIGHLIGHT | #EEF3FB | Fondo de fila del usuario en ranking |
+
+**Botones primarios:** `height: 44`, `borderRadius: 4`, `backgroundColor: BLUE`, `alignSelf: 'center'`, `paddingHorizontal: 32`, `fontWeight: '600'`
+
+**Botones destructivos / cerrar sesión:** solo texto `color: #CC0000`, sin fondo ni borde, `alignSelf: 'flex-start'`
+
+**Separadores entre items:** `height: 1`, `backgroundColor: #E0E0E0`
+
+**Secciones:** `backgroundColor: WHITE`, `paddingHorizontal: 16`, `marginBottom: 8`, sin `borderRadius` ni sombra
+
+---
+
+## 11. Navegación
+
+- **AuthStack** (sin sesión): Login → ForgotPassword / SignUp
+- **AppStack** (con sesión):
+  - `Tabs` → TabNavigator con 4 tabs
+  - `HabitDetail` → stack screen por encima de las tabs (sin barra inferior visible)
+- **TabNavigator:**
+  - `Home` (icono casa) — Inicio
+  - `ValidateHabit` (icono check) — Validar
+  - `Ranking` (icono trofeo) — Ranking
+  - `Profile` (icono persona) — Perfil
+- **Tab "Validar":** badge rojo con número de logs pendientes para el usuario; si pendingCount = 0, la tab se deshabilita (gris, no pulsable con `tabBarButton` + `disabled`). El conteo se recalcula al montar y con `screenListeners={{ focus }}`.
+- La sesión la gestiona `RootNavigator` via `supabase.auth.onAuthStateChange`; no hay navegación manual tras login/logout.
+
+---
+
+## 12. Decisiones Técnicas
+
+| Decisión | Por qué |
+|---|---|
+| Supabase como backend | BaaS completo: auth, DB, storage y RLS en un solo servicio. Sin servidor propio. |
+| Dos RPCs para registro | El trigger `on_auth_user_created` de Supabase no permite lógica condicional (crear empresa vs. unirse). Las RPCs con SECURITY DEFINER permiten inserts cross-tabla de forma segura. |
+| Validación antes de `auth.signUp` | Se verifica el código de invitación antes de crear el usuario en auth para evitar usuarios huérfanos si el código es inválido. |
+| `maybeSingle()` en invitations | Devuelve null en lugar de error cuando no existe la fila, simplificando el manejo de código inválido. |
+| `habit_validations` tabla separada | Permite validaciones múltiples por log (N validadores), sin sobrescribir el estado del log. La constraint UNIQUE previene doble voto. |
+| `onAuthStateChange` para navegación | Desacopla el resultado del login/logout de la lógica de navegación. El navigator reacciona solo al estado de sesión. |
+| `useFocusEffect` en todas las pantallas | Los datos se recargan cada vez que la pantalla recibe foco (al volver de otra pantalla o cambiar de tab), sin necesidad de estado global ni eventos. |
+| Reintento en HomeScreen (500ms) | Race condition documentada: en auto-login, `getUser()` puede fallar si se llama antes de que la sesión se restaure desde AsyncStorage. El reintento lo resuelve sin librería. |
+| Cache-bust de avatar con `?t=Date.now()` | React Native cachea agresivamente imágenes por URI. Al cambiar la URI se fuerza la recarga inmediata sin borrar la URL guardada en DB. |
+| Expo Go sin builds nativos | En desarrollo, evita tiempos de compilación. Solo se necesitará EAS Build para producción (notificaciones push, actualizaciones OTA). |
+| iOS primero, Android funcional | El equipo de desarrollo usa Mac/iPhone. Los estilos base se prueban en iOS y se verifica que no rompan en Android. |
+
+---
+
+## 13. Funcionalidades Pendientes (v2)
+
+- **AdminScreen:** panel para que el admin cree hábitos (título, descripción, recurrence, expires_at), gestione usuarios de la empresa y vea invitaciones activas
+- **Implementar tabla `teams`:** ya creada en BD pero sin uso — asignar usuarios a equipos y mostrar rankings por equipo
+- **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un compañero valida tu hábito
+- **SplashScreen animada** con logo de la app
+- **Mejora de estadísticas en ProfileScreen:** racha actual (días consecutivos con hábito completado), gráfico de actividad mensual
+- **Hábitos personales:** tipo 'personal', visibles solo para el usuario, sin validación por compañeros
+- **Rankings por período:** filtro semana / mes / histórico
+- **Perfil de compañero:** al pulsar un nombre en ValidateHabit o Ranking, ver su perfil público (foto, stats, hábitos validados)
+- **Edición de perfil completo:** campo de empresa en ProfileScreen (actualmente solo lectura)
+- **Modo oscuro**
+- **Soporte multiidioma** (i18n)
+
+---
+
+## 14. Reglas de Trabajo
+
+- Todas las políticas RLS, tablas nuevas y cambios de esquema se hacen **siempre mediante SQL Editor** de Supabase, nunca desde la UI
+- Antes de crear cualquier tabla o política usar siempre el SQL Editor
+- Antes de escribir código con APIs de Expo, consultar la documentación versionada: https://docs.expo.dev/versions/v54.0.0/
+- No añadir funcionalidades no solicitadas ni abstracciones prematuras
+- No crear comentarios en el código salvo que el "por qué" sea no obvio
+
+---
+
+## 15. Usuarios de Prueba
+
+| Email | Rol | Empresa |
+|---|---|---|
+| hernanz.luis@gmail.com | admin | — |
+
+> Las contraseñas no se almacenan en este documento. La confirmación de email está desactivada en el proyecto de Supabase de desarrollo.
