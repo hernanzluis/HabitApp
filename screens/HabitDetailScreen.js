@@ -12,9 +12,11 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 
-const NAVY = '#001f3f';
+const BG = '#F3F2EF';
 const WHITE = '#ffffff';
-const GRAY = '#64748b';
+const BLUE = '#0A66C2';
+const TEXT = '#1D2226';
+const GRAY = '#666666';
 
 function getFileExtension(mimeType, uri) {
   if (mimeType?.includes('png')) return 'png';
@@ -151,8 +153,8 @@ export default function HabitDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.errorText}>No se encontró el hábito.</Text>
         </View>
-        <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
-          <Text style={styles.secondaryBtnText}>Volver</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.6}>
+          <Text style={styles.backLink}>← Volver</Text>
         </TouchableOpacity>
       </View>
     );
@@ -214,136 +216,80 @@ export default function HabitDetailScreen() {
       </View>
 
       <TouchableOpacity
-        style={styles.secondaryBtn}
         onPress={() => navigation.goBack()}
         disabled={uploading}
-        activeOpacity={0.9}
+        activeOpacity={0.6}
       >
-        <Text style={styles.secondaryBtnText}>Volver</Text>
+        <Text style={styles.backLink}>← Volver</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: NAVY,
-  },
-  content: {
-    paddingHorizontal: 18,
-    paddingTop: 64,
-    paddingBottom: 28,
-  },
+  container: { flex: 1, backgroundColor: BG },
+  content: { paddingHorizontal: 18, paddingTop: 64, paddingBottom: 28 },
   card: {
     backgroundColor: WHITE,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  description: {
-    marginTop: 10,
-    fontSize: 14,
-    color: '#334155',
-    lineHeight: 20,
-  },
-  sectionLabel: {
-    marginTop: 20,
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  sectionHint: {
-    marginTop: 4,
-    fontSize: 13,
-    color: GRAY,
-  },
-  photoActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
+  title: { fontSize: 20, fontWeight: '800', color: TEXT },
+  description: { marginTop: 10, fontSize: 14, color: GRAY, lineHeight: 20 },
+  sectionLabel: { marginTop: 20, fontSize: 14, fontWeight: '800', color: TEXT },
+  sectionHint: { marginTop: 4, fontSize: 13, color: GRAY },
+  photoActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
   actionBtn: {
     flex: 1,
     height: 42,
-    borderRadius: 10,
-    backgroundColor: '#e2e8f0',
+    borderRadius: 4,
+    backgroundColor: '#E8E8E8',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionBtnText: {
-    color: NAVY,
-    fontWeight: '800',
-    fontSize: 14,
-  },
+  actionBtnText: { color: TEXT, fontWeight: '700', fontSize: 14 },
   previewContainer: {
     marginTop: 14,
-    borderRadius: 10,
+    borderRadius: 8,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#dbeafe',
+    borderColor: '#E0E0E0',
   },
-  preview: {
-    width: '100%',
-    height: 220,
-  },
+  preview: { width: '100%', height: 220 },
   previewPlaceholder: {
     marginTop: 14,
     height: 220,
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#dbeafe',
-    backgroundColor: '#f8fafc',
+    borderColor: '#E0E0E0',
+    backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  previewPlaceholderText: {
-    color: GRAY,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  errorText: {
-    marginTop: 12,
-    color: '#b91c1c',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  successText: {
-    marginTop: 12,
-    color: '#0f766e',
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  previewPlaceholderText: { color: GRAY, fontSize: 13, fontWeight: '600' },
+  errorText: { marginTop: 12, color: '#b91c1c', fontSize: 13, fontWeight: '600' },
+  successText: { marginTop: 12, color: '#0f766e', fontSize: 13, fontWeight: '700' },
   submitBtn: {
     marginTop: 16,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: NAVY,
+    height: 44,
+    borderRadius: 4,
+    backgroundColor: BLUE,
+    alignSelf: 'center',
+    paddingHorizontal: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  submitBtnDisabled: {
-    opacity: 0.7,
-  },
-  submitBtnText: {
-    color: WHITE,
-    fontWeight: '800',
-    fontSize: 15,
-  },
-  secondaryBtn: {
-    marginTop: 16,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryBtnText: {
-    color: NAVY,
-    fontWeight: '800',
+  submitBtnDisabled: { opacity: 0.7 },
+  submitBtnText: { color: WHITE, fontWeight: '600', fontSize: 15 },
+  backLink: {
+    marginTop: 14,
+    color: BLUE,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

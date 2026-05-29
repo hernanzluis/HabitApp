@@ -3,9 +3,11 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, Te
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 
-const NAVY = '#001f3f';
+const BG = '#F3F2EF';
 const WHITE = '#ffffff';
-const GRAY = '#94a3b8';
+const BLUE = '#0A66C2';
+const TEXT = '#1D2226';
+const GRAY = '#666666';
 const INPUT_BG = '#ffffff';
 
 function normalizeSupabaseError(message) {
@@ -142,98 +144,56 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: NAVY,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 18,
-    paddingTop: 64,
-    alignItems: 'center',
-  },
-  brand: {
-    color: WHITE,
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  subtitle: {
-    color: WHITE,
-    opacity: 0.85,
-    fontSize: 14,
-    marginBottom: 26,
-  },
+  container: { flex: 1, backgroundColor: BG },
+  content: { flex: 1, paddingHorizontal: 24, paddingTop: 64, alignItems: 'center' },
+  brand: { color: TEXT, fontSize: 28, fontWeight: '800', marginBottom: 2 },
+  subtitle: { color: GRAY, fontSize: 14, marginBottom: 26 },
   card: {
     width: '100%',
     backgroundColor: WHITE,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 8,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
+  label: { fontSize: 13, fontWeight: '600', color: TEXT },
   input: {
     marginTop: 6,
     height: 44,
-    borderRadius: 10,
+    borderRadius: 4,
     paddingHorizontal: 12,
     backgroundColor: INPUT_BG,
     borderWidth: 1,
-    borderColor: '#dbeafe',
-    color: '#0f172a',
+    borderColor: '#E0E0E0',
+    color: TEXT,
   },
-  passwordRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  passwordInput: {
-    flex: 1,
-    marginTop: 0,
-  },
+  passwordRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  passwordInput: { flex: 1, marginTop: 0 },
   toggleBtn: {
     marginLeft: 10,
     paddingHorizontal: 10,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: '#e2e8f0',
+    borderRadius: 4,
+    backgroundColor: '#E8E8E8',
     justifyContent: 'center',
   },
-  toggleBtnText: {
-    color: NAVY,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  errorText: {
-    marginTop: 12,
-    color: '#b91c1c',
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  toggleBtnText: { color: TEXT, fontWeight: '700', fontSize: 12 },
+  errorText: { marginTop: 12, color: '#b91c1c', fontSize: 13, fontWeight: '600' },
   loginBtn: {
     marginTop: 16,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: NAVY,
+    height: 44,
+    borderRadius: 4,
+    backgroundColor: BLUE,
+    alignSelf: 'center',
+    paddingHorizontal: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loginBtnDisabled: {
-    opacity: 0.7,
-  },
-  loginBtnText: {
-    color: WHITE,
-    fontWeight: '800',
-  },
-  link: {
-    color: WHITE,
-    opacity: 0.9,
-    marginTop: 18,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  loginBtnDisabled: { opacity: 0.7 },
+  loginBtnText: { color: WHITE, fontWeight: '600' },
+  link: { color: BLUE, marginTop: 18, fontSize: 14, fontWeight: '600' },
 });
 

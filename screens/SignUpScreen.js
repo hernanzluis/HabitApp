@@ -13,9 +13,11 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 
-const NAVY = '#001f3f';
+const BG = '#F3F2EF';
 const WHITE = '#ffffff';
-const GRAY = '#94a3b8';
+const BLUE = '#0A66C2';
+const TEXT = '#1D2226';
+const GRAY = '#666666';
 const INPUT_BG = '#ffffff';
 
 function isValidEmail(email) {
@@ -338,27 +340,37 @@ export default function SignUpScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: NAVY },
+  container: { flex: 1, backgroundColor: BG },
   content: { paddingHorizontal: 18, paddingTop: 64, paddingBottom: 40, alignItems: 'center' },
-  brand: { color: WHITE, fontSize: 28, fontWeight: '700', marginBottom: 2 },
-  subtitle: { color: WHITE, opacity: 0.85, fontSize: 14, marginBottom: 26 },
-  card: { width: '100%', backgroundColor: WHITE, borderRadius: 12, padding: 16 },
+  brand: { color: TEXT, fontSize: 28, fontWeight: '700', marginBottom: 2 },
+  subtitle: { color: GRAY, fontSize: 14, marginBottom: 26 },
+  card: {
+    width: '100%',
+    backgroundColor: WHITE,
+    borderRadius: 8,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
   modeSelector: {
     flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 10,
+    backgroundColor: '#E8E8E8',
+    borderRadius: 8,
     padding: 3,
     marginBottom: 20,
   },
   modeBtn: {
     flex: 1,
     height: 36,
-    borderRadius: 8,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modeBtnActive: {
-    backgroundColor: NAVY,
+    backgroundColor: BLUE,
   },
   modeBtnText: {
     fontSize: 13,
@@ -368,17 +380,17 @@ const styles = StyleSheet.create({
   modeBtnTextActive: {
     color: WHITE,
   },
-  label: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
+  label: { fontSize: 13, fontWeight: '600', color: TEXT },
   mt: { marginTop: 14 },
   input: {
     marginTop: 6,
     height: 44,
-    borderRadius: 10,
+    borderRadius: 4,
     paddingHorizontal: 12,
     backgroundColor: INPUT_BG,
     borderWidth: 1,
-    borderColor: '#dbeafe',
-    color: '#0f172a',
+    borderColor: '#E0E0E0',
+    color: TEXT,
   },
   passwordRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
   passwordInput: { flex: 1, marginTop: 0 },
@@ -386,22 +398,24 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     paddingHorizontal: 10,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: '#e2e8f0',
+    borderRadius: 4,
+    backgroundColor: '#E8E8E8',
     justifyContent: 'center',
   },
-  toggleBtnText: { color: NAVY, fontWeight: '700', fontSize: 12 },
+  toggleBtnText: { color: TEXT, fontWeight: '700', fontSize: 12 },
   errorText: { marginTop: 6, color: '#b91c1c', fontSize: 12, fontWeight: '600' },
   formErrorText: { marginTop: 12, color: '#b91c1c', fontSize: 13, fontWeight: '700' },
   submitBtn: {
     marginTop: 16,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: NAVY,
+    height: 44,
+    borderRadius: 4,
+    backgroundColor: BLUE,
+    alignSelf: 'center',
+    paddingHorizontal: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
   submitBtnDisabled: { opacity: 0.7 },
-  submitBtnText: { color: WHITE, fontWeight: '800' },
-  link: { color: NAVY, opacity: 0.9, marginTop: 18, fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  submitBtnText: { color: WHITE, fontWeight: '600' },
+  link: { color: BLUE, marginTop: 18, fontSize: 14, fontWeight: '600', textAlign: 'center' },
 });

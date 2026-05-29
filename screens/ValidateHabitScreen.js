@@ -12,9 +12,11 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 
-const NAVY = '#001f3f';
+const BG = '#F3F2EF';
 const WHITE = '#ffffff';
-const GRAY = '#64748b';
+const BLUE = '#0A66C2';
+const TEXT = '#1D2226';
+const GRAY = '#666666';
 
 function formatDate(dateString) {
   if (!dateString) return '';
@@ -211,7 +213,7 @@ export default function ValidateHabitScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={WHITE} />
+        <ActivityIndicator size="large" color={BLUE} />
         <Text style={styles.loadingText}>Cargando hábitos pendientes...</Text>
       </View>
     );
@@ -233,7 +235,7 @@ export default function ValidateHabitScreen() {
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} tintColor={WHITE} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} tintColor={BLUE} />
         }
         ListEmptyComponent={
           !error ? (
@@ -250,24 +252,23 @@ export default function ValidateHabitScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: BG,
     paddingTop: 56,
   },
   centered: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
   loadingText: {
-    color: WHITE,
+    color: TEXT,
     marginTop: 14,
     fontSize: 14,
-    opacity: 0.9,
   },
   headerTitle: {
-    color: WHITE,
+    color: TEXT,
     fontSize: 22,
     fontWeight: '800',
     paddingHorizontal: 18,
@@ -277,7 +278,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 18,
     marginBottom: 12,
     backgroundColor: '#fee2e2',
-    borderRadius: 10,
+    borderRadius: 8,
     padding: 12,
   },
   errorText: {
@@ -291,9 +292,14 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: WHITE,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 14,
     marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   row: {
     flexDirection: 'row',
@@ -310,12 +316,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: '#E8E8E8',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarFallbackText: {
-    color: NAVY,
+    color: BLUE,
     fontWeight: '800',
   },
   info: {
@@ -324,7 +330,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0f172a',
+    color: TEXT,
   },
   habitTitle: {
     marginTop: 2,
@@ -334,14 +340,14 @@ const styles = StyleSheet.create({
   date: {
     marginTop: 2,
     fontSize: 12,
-    color: '#94a3b8',
+    color: GRAY,
   },
   photoWrapper: {
     marginTop: 10,
-    borderRadius: 10,
+    borderRadius: 8,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#dbeafe',
+    borderColor: '#E0E0E0',
   },
   photo: {
     width: '100%',
@@ -354,8 +360,8 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     flex: 1,
-    height: 40,
-    borderRadius: 10,
+    height: 44,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -377,9 +383,14 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     backgroundColor: WHITE,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 20,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   emptyText: {
     color: GRAY,

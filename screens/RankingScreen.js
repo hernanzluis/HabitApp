@@ -10,13 +10,12 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 
-const NAVY = '#001f3f';
+const BG = '#F3F2EF';
 const WHITE = '#ffffff';
-const GRAY = '#64748b';
-const GOLD = '#f59e0b';
-const SILVER = '#94a3b8';
-const BRONZE = '#b45309';
-const HIGHLIGHT = '#e0f2fe';
+const BLUE = '#0A66C2';
+const TEXT = '#1D2226';
+const GRAY = '#666666';
+const HIGHLIGHT = '#EEF3FB';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -130,7 +129,7 @@ export default function RankingScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={WHITE} />
+        <ActivityIndicator size="large" color={BLUE} />
         <Text style={styles.loadingText}>Cargando ranking...</Text>
       </View>
     );
@@ -157,7 +156,7 @@ export default function RankingScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => loadRanking(true)}
-            tintColor={WHITE}
+            tintColor={BLUE}
           />
         }
         ListEmptyComponent={
@@ -177,28 +176,27 @@ export default function RankingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: BG,
     paddingTop: 56,
   },
   centered: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
   loadingText: {
-    color: WHITE,
+    color: TEXT,
     marginTop: 14,
     fontSize: 14,
-    opacity: 0.9,
   },
   header: {
     paddingHorizontal: 18,
     marginBottom: 20,
   },
   title: {
-    color: WHITE,
+    color: TEXT,
     fontSize: 24,
     fontWeight: '800',
   },
@@ -206,7 +204,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 18,
     marginBottom: 12,
     backgroundColor: '#fee2e2',
-    borderRadius: 10,
+    borderRadius: 8,
     padding: 12,
   },
   errorText: {
@@ -221,17 +219,22 @@ const styles = StyleSheet.create({
   },
   row: {
     backgroundColor: WHITE,
-    borderRadius: 12,
+    borderRadius: 8,
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   rowHighlight: {
     backgroundColor: HIGHLIGHT,
     borderWidth: 2,
-    borderColor: '#0ea5e9',
+    borderColor: BLUE,
   },
   positionBox: {
     width: 40,
@@ -246,7 +249,7 @@ const styles = StyleSheet.create({
     color: GRAY,
   },
   positionHighlight: {
-    color: '#0284c7',
+    color: BLUE,
   },
   nameBox: {
     flex: 1,
@@ -258,14 +261,14 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: TEXT,
     flexShrink: 1,
   },
   nameHighlight: {
-    color: '#0284c7',
+    color: BLUE,
   },
   youTag: {
-    backgroundColor: '#0284c7',
+    backgroundColor: BLUE,
     color: WHITE,
     fontSize: 11,
     fontWeight: '700',
@@ -279,10 +282,10 @@ const styles = StyleSheet.create({
   count: {
     fontSize: 20,
     fontWeight: '900',
-    color: NAVY,
+    color: BLUE,
   },
   countHighlight: {
-    color: '#0284c7',
+    color: BLUE,
   },
   countLabel: {
     fontSize: 11,
@@ -290,13 +293,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   countLabelHighlight: {
-    color: '#0284c7',
+    color: BLUE,
   },
   emptyCard: {
     backgroundColor: WHITE,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 24,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   emptyText: {
     color: GRAY,

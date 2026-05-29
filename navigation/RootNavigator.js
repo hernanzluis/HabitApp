@@ -16,9 +16,10 @@ import ValidateHabitScreen from '../screens/ValidateHabitScreen';
 import RankingScreen from '../screens/RankingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 
-const NAVY = '#001f3f';
-const GRAY = '#64748b';
+const BG = '#F3F2EF';
 const WHITE = '#ffffff';
+const BLUE = '#0A66C2';
+const GRAY = '#666666';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -35,8 +36,8 @@ function TabNavigator() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: { backgroundColor: WHITE, borderTopColor: '#e2e8f0' },
-        tabBarActiveTintColor: NAVY,
+        tabBarStyle: { backgroundColor: WHITE, borderTopColor: '#E0E0E0' },
+        tabBarActiveTintColor: BLUE,
         tabBarInactiveTintColor: GRAY,
         tabBarIcon: ({ focused, color, size }) => {
           const [active, inactive] = TAB_ICONS[route.name] ?? ['ellipse', 'ellipse-outline'];
@@ -91,7 +92,7 @@ export default function RootNavigator() {
   if (initializing) {
     return (
       <View style={styles.splash}>
-        <ActivityIndicator size="large" color={WHITE} />
+        <ActivityIndicator size="large" color={BLUE} />
       </View>
     );
   }
@@ -106,7 +107,7 @@ export default function RootNavigator() {
 const styles = StyleSheet.create({
   splash: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',
   },

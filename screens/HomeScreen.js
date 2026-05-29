@@ -9,11 +9,14 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 
-const NAVY = '#001f3f';
+const BG = '#F3F2EF';
 const WHITE = '#ffffff';
-const GRAY = '#64748b';
+const BLUE = '#0A66C2';
+const TEXT = '#1D2226';
+const GRAY = '#666666';
 const ORANGE = '#f97316';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -91,7 +94,7 @@ export default function HomeScreen() {
 
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
-        .select('id, title, description, company_id, type, is_active, created_at, expires_at')
+        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at')
         .eq('company_id', profileData.company_id)
         .eq('is_active', true)
         .order('created_at', { ascending: true });
@@ -102,7 +105,35 @@ export default function HomeScreen() {
       const active = (habitsData ?? []).filter(
         (h) => !h.expires_at || new Date(h.expires_at) > now
       );
-      setHabits(active);
+
+      const habitIds = active.map((h) => h.id);
+
+      let logsData = [];
+      if (habitIds.length > 0) {
+        const { data: logs, error: logsError } = await supabase
+          .from('habit_logs')
+          .select('habit_id, created_at')
+          .eq('user_id', user.id)
+          .in('habit_id', habitIds);
+        if (logsError) throw logsError;
+        logsData = logs ?? [];
+      }
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const doneEver = new Set(logsData.map((l) => l.habit_id));
+      const doneToday = new Set(
+        logsData
+          .filter((l) => new Date(l.created_at) >= todayStart)
+          .map((l) => l.habit_id)
+      );
+
+      const processed = active
+        .filter((h) => h.recurrence !== 'once' || !doneEver.has(h.id))
+        .map((h) => ({ ...h, completedToday: h.recurrence === 'daily' && doneToday.has(h.id) }));
+
+      setHabits(processed);
     } catch (e) {
       if (attempt === 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -129,7 +160,7 @@ export default function HomeScreen() {
   const renderHabit = ({ item }) => {
     const urgent = item.expires_at && daysUntil(item.expires_at) <= 3;
     return (
-    <View style={styles.habitCard}>
+    <View style={[styles.habitCard, item.completedToday && styles.habitCardCompleted]}>
       <Text style={styles.habitTitle}>{item.title}</Text>
       {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
       {item.expires_at ? (
@@ -137,13 +168,20 @@ export default function HomeScreen() {
           Expira el {formatExpiry(item.expires_at)}
         </Text>
       ) : null}
-      <TouchableOpacity
-        style={styles.completeBtn}
-        onPress={() => onCompleteHabit(item)}
-        activeOpacity={0.9}
-      >
-        <Text style={styles.completeBtnText}>Completar</Text>
-      </TouchableOpacity>
+      {item.completedToday ? (
+        <View style={styles.completedRow}>
+          <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
+          <Text style={styles.completedText}>Completado hoy</Text>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.completeBtn}
+          onPress={() => onCompleteHabit(item)}
+          activeOpacity={0.9}
+        >
+          <Text style={styles.completeBtnText}>Completar</Text>
+        </TouchableOpacity>
+      )}
     </View>
     );
   };
@@ -151,7 +189,7 @@ export default function HomeScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={WHITE} />
+        <ActivityIndicator size="large" color={BLUE} />
         <Text style={styles.loadingText}>Cargando tus hábitos...</Text>
       </View>
     );
@@ -176,7 +214,7 @@ export default function HomeScreen() {
         renderItem={renderHabit}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadHomeData(true)} tintColor={WHITE} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadHomeData(true)} tintColor={BLUE} />
         }
         ListEmptyComponent={
           !error ? (
@@ -194,34 +232,32 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: BG,
     paddingTop: 56,
   },
   centered: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
   loadingText: {
-    color: WHITE,
+    color: TEXT,
     marginTop: 14,
     fontSize: 14,
-    opacity: 0.9,
   },
   header: {
     paddingHorizontal: 18,
     marginBottom: 16,
   },
   greeting: {
-    color: WHITE,
+    color: TEXT,
     fontSize: 24,
     fontWeight: '800',
   },
   date: {
-    color: WHITE,
-    opacity: 0.85,
+    color: GRAY,
     fontSize: 14,
     marginTop: 4,
     textTransform: 'capitalize',
@@ -230,7 +266,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 18,
     marginBottom: 12,
     backgroundColor: '#fee2e2',
-    borderRadius: 10,
+    borderRadius: 8,
     padding: 12,
   },
   errorText: {
@@ -245,14 +281,24 @@ const styles = StyleSheet.create({
   },
   habitCard: {
     backgroundColor: WHITE,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
     marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  habitCardCompleted: {
+    backgroundColor: '#F0FAF0',
+    borderLeftWidth: 3,
+    borderLeftColor: '#2E7D32',
   },
   habitTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0f172a',
+    color: TEXT,
   },
   habitDescription: {
     marginTop: 6,
@@ -271,22 +317,39 @@ const styles = StyleSheet.create({
   },
   completeBtn: {
     marginTop: 14,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: NAVY,
+    borderRadius: 4,
+    backgroundColor: BLUE,
+    alignSelf: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   completeBtnText: {
     color: WHITE,
-    fontWeight: '800',
+    fontWeight: '600',
     fontSize: 14,
+  },
+  completedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+  },
+  completedText: {
+    fontSize: 13,
+    color: GRAY,
   },
   emptyCard: {
     backgroundColor: WHITE,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 20,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   emptyText: {
     color: GRAY,
