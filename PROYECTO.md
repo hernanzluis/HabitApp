@@ -5,7 +5,7 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 - React Native con Expo SDK 52
 - Node.js v20
 - Supabase (base de datos y autenticación)
-- React Navigation (navegación entre pantallas)
+- React Navigation (navegación entre pantallas: bottom tabs + stack)
 - GitHub: https://github.com/hernanzluis/HabitApp
 ## Tipos de usuarios
 - Admin: crea equipos y hábitos corporativos, gestiona usuarios
@@ -46,6 +46,11 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 ### Pendientes 🔲
 - SplashScreen
 - AdminScreen: panel de administrador
+## Navegación
+- Bottom tabs con 4 secciones: Home (casa), Validar (check), Ranking (trofeo), Perfil (persona)
+- Barra de tabs con fondo blanco, icono activo en azul marino, inactivo en gris (Ionicons de @expo/vector-icons)
+- HabitDetail se abre como pantalla de stack por encima de las tabs, sin tabs visibles
+- Cerrar sesión está en ProfileScreen; el cambio de sesión lo gestiona RootNavigator automáticamente mediante onAuthStateChange
 ## Decisiones técnicas
 - iOS primero, Android siempre funcional
 - Diseño corporativo flat, azul marino y blanco
