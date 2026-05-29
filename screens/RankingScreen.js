@@ -5,10 +5,9 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 
 const NAVY = '#001f3f';
@@ -26,7 +25,6 @@ function ordinal(n) {
 }
 
 export default function RankingScreen() {
-  const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -90,7 +88,7 @@ export default function RankingScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [navigation]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -141,9 +139,6 @@ export default function RankingScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>← Volver</Text>
-        </TouchableOpacity>
         <Text style={styles.title}>Ranking del equipo</Text>
       </View>
 
@@ -201,15 +196,6 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 18,
     marginBottom: 20,
-  },
-  backBtn: {
-    marginBottom: 10,
-  },
-  backText: {
-    color: WHITE,
-    opacity: 0.8,
-    fontSize: 14,
-    fontWeight: '600',
   },
   title: {
     color: WHITE,

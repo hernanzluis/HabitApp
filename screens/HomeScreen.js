@@ -50,7 +50,6 @@ export default function HomeScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [logoutLoading, setLogoutLoading] = useState(false);
   const [error, setError] = useState('');
   const [profile, setProfile] = useState(null);
   const [habits, setHabits] = useState([]);
@@ -111,7 +110,7 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [navigation]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -119,24 +118,8 @@ export default function HomeScreen() {
     }, [loadHomeData])
   );
 
-  const onLogout = async () => {
-    if (logoutLoading) return;
-    setLogoutLoading(true);
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      setError(e?.message || 'No se pudo cerrar sesión.');
-    } finally {
-      setLogoutLoading(false);
-    }
-  };
-
   const onCompleteHabit = (habit) => {
     navigation.navigate('HabitDetail', { habit });
-  };
-
-  const onValidateHabits = () => {
-    navigation.navigate('ValidateHabit');
   };
 
   const renderHabit = ({ item }) => {
@@ -200,38 +183,6 @@ export default function HomeScreen() {
         }
       />
 
-      <TouchableOpacity style={styles.validateBtn} onPress={onValidateHabits} activeOpacity={0.9}>
-        <Text style={styles.validateBtnText}>Validar compañeros</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.rankingBtn}
-        onPress={() => navigation.navigate('Ranking')}
-        activeOpacity={0.9}
-      >
-        <Text style={styles.rankingBtnText}>Ver ranking</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.profileBtn}
-        onPress={() => navigation.navigate('Profile')}
-        activeOpacity={0.9}
-      >
-        <Text style={styles.profileBtnText}>Mi perfil</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.logoutBtn, logoutLoading && styles.logoutBtnDisabled]}
-        onPress={onLogout}
-        disabled={logoutLoading}
-        activeOpacity={0.9}
-      >
-        {logoutLoading ? (
-          <ActivityIndicator color={NAVY} />
-        ) : (
-          <Text style={styles.logoutBtnText}>Cerrar sesión</Text>
-        )}
-      </TouchableOpacity>
     </View>
   );
 }
@@ -338,60 +289,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
-  },
-  validateBtn: {
-    marginHorizontal: 18,
-    marginBottom: 10,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  validateBtnText: {
-    color: NAVY,
-    fontWeight: '800',
-  },
-  rankingBtn: {
-    marginHorizontal: 18,
-    marginBottom: 10,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rankingBtnText: {
-    color: NAVY,
-    fontWeight: '800',
-  },
-  profileBtn: {
-    marginHorizontal: 18,
-    marginBottom: 10,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileBtnText: {
-    color: NAVY,
-    fontWeight: '800',
-  },
-  logoutBtn: {
-    marginHorizontal: 18,
-    marginBottom: 28,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoutBtnDisabled: {
-    opacity: 0.7,
-  },
-  logoutBtnText: {
-    color: NAVY,
-    fontWeight: '800',
   },
 });
