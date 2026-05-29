@@ -9,7 +9,7 @@ import {
   View,
   Image,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -31,10 +31,12 @@ function formatDate(dateString) {
 }
 
 export default function ValidateHabitScreen() {
+  const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [items, setItems] = useState([]);
+  const [allDone, setAllDone] = useState(false);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -87,32 +89,53 @@ export default function ValidateHabitScreen() {
       const userIds = [...new Set(logsData.map((row) => row.user_id).filter(Boolean))];
       const habitIds = [...new Set(logsData.map((row) => row.habit_id).filter(Boolean))];
 
-      const [{ data: profilesData, error: profilesError }, { data: habitsData, error: habitsError }] =
-        await Promise.all([
-          userIds.length
-            ? supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds)
-            : Promise.resolve({ data: [], error: null }),
-          habitIds.length
-            ? supabase.from('habits').select('id, title, description, company_id').in('id', habitIds)
-            : Promise.resolve({ data: [], error: null }),
-        ]);
+      const logIds = logsData.map((l) => l.id);
+
+      const [
+        { data: profilesData, error: profilesError },
+        { data: habitsData, error: habitsError },
+        { data: validationsData, error: validationsError },
+      ] = await Promise.all([
+        userIds.length
+          ? supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds)
+          : Promise.resolve({ data: [], error: null }),
+        habitIds.length
+          ? supabase.from('habits').select('id, title, description, company_id').in('id', habitIds)
+          : Promise.resolve({ data: [], error: null }),
+        logIds.length
+          ? supabase.from('habit_validations').select('habit_log_id, validator_id, status').in('habit_log_id', logIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
       if (profilesError) throw profilesError;
       if (habitsError) throw habitsError;
-      console.log('Compañeros:', profilesData);
-      console.log('Hábitos:', habitsData);
+      if (validationsError) throw validationsError;
 
       const profilesMap = new Map((profilesData || []).map((p) => [p.id, p]));
       const habitsMap = new Map((habitsData || []).map((h) => [h.id, h]));
-      console.log('Hábitos:', habitsMap);
+
+      const validationsMap = {};
+      (validationsData || []).forEach((v) => {
+        if (!validationsMap[v.habit_log_id]) {
+          validationsMap[v.habit_log_id] = { validatedCount: 0, rejectedCount: 0, userValidated: false, userVote: null };
+        }
+        if (v.status === 'validated') validationsMap[v.habit_log_id].validatedCount++;
+        if (v.status === 'rejected') validationsMap[v.habit_log_id].rejectedCount++;
+        if (v.validator_id === user.id) {
+          validationsMap[v.habit_log_id].userValidated = true;
+          validationsMap[v.habit_log_id].userVote = v.status;
+        }
+      });
 
       const normalized = logsData
         .map((log) => ({
           ...log,
           companion: profilesMap.get(log.user_id) || null,
           habit: habitsMap.get(log.habit_id) || null,
+          ...(validationsMap[log.id] || { validatedCount: 0, rejectedCount: 0, userValidated: false, userVote: null }),
         }))
-        .filter((row) => row.habit && row.habit.company_id === profile.company_id);
+        .filter((row) => row.habit && row.habit.company_id === profile.company_id)
+        .filter((row) => !row.userValidated);
 
       setItems(normalized);
       console.log('Items finales:', normalized);
@@ -130,7 +153,7 @@ export default function ValidateHabitScreen() {
     }, [loadData])
   );
 
-  const updateStatus = async (logId, newStatus) => {
+  const submitValidation = async (logId, voteStatus) => {
     try {
       const {
         data: { user },
@@ -142,20 +165,23 @@ export default function ValidateHabitScreen() {
         return;
       }
 
-      const { error: updateError } = await supabase
-        .from('habit_logs')
-        .update({
-          status: newStatus,
-          validated_by: user.id,
-          validated_at: new Date().toISOString(),
-        })
-        .eq('id', logId);
+      const { error: insertError } = await supabase
+        .from('habit_validations')
+        .insert({ habit_log_id: logId, validator_id: user.id, status: voteStatus });
 
-      if (updateError) throw updateError;
+      if (insertError) throw insertError;
 
-      setItems((prev) => prev.filter((item) => item.id !== logId));
+      setItems((prev) => {
+        const updated = prev.filter((item) => item.id !== logId);
+        if (updated.length === 0) {
+          setAllDone(true);
+          setTimeout(() => navigation.navigate('Home'), 1000);
+        }
+        return updated;
+      });
     } catch (e) {
-      setError(e?.message || 'No se pudo actualizar el estado del hábito.');
+      console.log('Error al validar:', JSON.stringify(e));
+      setError(e?.message || 'No se pudo registrar la validación.');
     }
   };
 
@@ -163,6 +189,7 @@ export default function ValidateHabitScreen() {
     const { companion, habit } = item;
     const name = companion?.full_name || 'Compañero';
     const title = habit?.title || 'Hábito';
+    const { userValidated, userVote, validatedCount, rejectedCount } = item;
 
     return (
       <View style={styles.card}>
@@ -190,20 +217,30 @@ export default function ValidateHabitScreen() {
           </View>
         ) : null}
 
+        <View style={styles.countsRow}>
+          <Text style={styles.countApprove}>✓ {validatedCount}</Text>
+          <Text style={styles.countReject}>✗ {rejectedCount}</Text>
+          {userValidated ? (
+            <Text style={styles.votedLabel}>
+              {userVote === 'validated' ? 'Aprobaste' : 'Rechazaste'}
+            </Text>
+          ) : null}
+        </View>
+
         <View style={styles.actionsRow}>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.rejectBtn]}
-            onPress={() => updateStatus(item.id, 'rejected')}
-            activeOpacity={0.9}
+            style={[styles.actionBtn, styles.rejectBtn, userValidated && styles.actionBtnDisabled]}
+            onPress={() => !userValidated && submitValidation(item.id, 'rejected')}
+            activeOpacity={userValidated ? 1 : 0.9}
           >
-            <Text style={styles.rejectText}>Rechazar</Text>
+            <Text style={[styles.rejectText, userValidated && styles.actionTextDisabled]}>Rechazar</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.approveBtn]}
-            onPress={() => updateStatus(item.id, 'validated')}
-            activeOpacity={0.9}
+            style={[styles.actionBtn, styles.approveBtn, userValidated && styles.actionBtnDisabled]}
+            onPress={() => !userValidated && submitValidation(item.id, 'validated')}
+            activeOpacity={userValidated ? 1 : 0.9}
           >
-            <Text style={styles.approveText}>Aprobar</Text>
+            <Text style={[styles.approveText, userValidated && styles.actionTextDisabled]}>Aprobar</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -215,6 +252,14 @@ export default function ValidateHabitScreen() {
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={BLUE} />
         <Text style={styles.loadingText}>Cargando hábitos pendientes...</Text>
+      </View>
+    );
+  }
+
+  if (allDone) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.allDoneText}>Todo al día ✓</Text>
       </View>
     );
   }
@@ -267,6 +312,11 @@ const styles = StyleSheet.create({
     marginTop: 14,
     fontSize: 14,
   },
+  allDoneText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#166534',
+  },
   headerTitle: {
     color: TEXT,
     fontSize: 22,
@@ -275,11 +325,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   errorBanner: {
-    marginHorizontal: 18,
-    marginBottom: 12,
     backgroundColor: '#fee2e2',
-    borderRadius: 8,
-    padding: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 8,
   },
   errorText: {
     color: '#b91c1c',
@@ -287,19 +336,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listContent: {
-    paddingHorizontal: 18,
     paddingBottom: 18,
   },
   card: {
     backgroundColor: WHITE,
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 8,
   },
   row: {
     flexDirection: 'row',
@@ -344,7 +387,7 @@ const styles = StyleSheet.create({
   },
   photoWrapper: {
     marginTop: 10,
-    borderRadius: 8,
+    borderRadius: 4,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E0E0E0',
@@ -352,6 +395,28 @@ const styles = StyleSheet.create({
   photo: {
     width: '100%',
     height: 200,
+  },
+  countsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 10,
+  },
+  countApprove: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  countReject: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
+  votedLabel: {
+    fontSize: 12,
+    color: GRAY,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   actionsRow: {
     flexDirection: 'row',
@@ -364,6 +429,12 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  actionBtnDisabled: {
+    opacity: 0.4,
+  },
+  actionTextDisabled: {
+    opacity: 0.6,
   },
   rejectBtn: {
     marginRight: 8,
@@ -383,14 +454,8 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     backgroundColor: WHITE,
-    borderRadius: 8,
-    padding: 20,
+    padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   emptyText: {
     color: GRAY,

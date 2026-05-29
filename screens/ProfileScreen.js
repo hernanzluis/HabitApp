@@ -266,106 +266,106 @@ export default function ProfileScreen() {
 
         {data ? (
           <>
-            {/* Avatar */}
-            <TouchableOpacity
-              onPress={pickAvatar}
-              disabled={avatarUploading}
-              activeOpacity={0.85}
-              style={styles.avatarWrapper}
-            >
-              {data.avatarUrl ? (
-                <Image source={{ uri: data.avatarUrl }} style={styles.avatarImage} />
+            {/* Sección identidad */}
+            <View style={styles.identitySection}>
+              <TouchableOpacity
+                onPress={pickAvatar}
+                disabled={avatarUploading}
+                activeOpacity={0.85}
+                style={styles.avatarWrapper}
+              >
+                {data.avatarUrl ? (
+                  <Image source={{ uri: data.avatarUrl }} style={styles.avatarImage} />
+                ) : (
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarInitial}>
+                      {data.fullName?.trim()?.[0]?.toUpperCase() ?? '?'}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.cameraBadge}>
+                  {avatarUploading ? (
+                    <ActivityIndicator size="small" color={WHITE} />
+                  ) : (
+                    <Ionicons name="camera" size={13} color={WHITE} />
+                  )}
+                </View>
+              </TouchableOpacity>
+
+              {editingName ? (
+                <View style={styles.nameEditBlock}>
+                  <TextInput
+                    value={nameInput}
+                    onChangeText={setNameInput}
+                    style={styles.nameInput}
+                    autoFocus
+                    editable={!nameSaving}
+                    returnKeyType="done"
+                    onSubmitEditing={saveName}
+                  />
+                  <View style={styles.nameEditActions}>
+                    <TouchableOpacity onPress={saveName} disabled={nameSaving} activeOpacity={0.8}>
+                      {nameSaving ? (
+                        <ActivityIndicator size="small" color={BLUE} />
+                      ) : (
+                        <Text style={styles.nameSaveText}>Guardar</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setEditingName(false)} disabled={nameSaving} activeOpacity={0.8}>
+                      <Text style={styles.nameCancelText}>Cancelar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               ) : (
-                <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarInitial}>
-                    {data.fullName?.trim()?.[0]?.toUpperCase() ?? '?'}
-                  </Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.fullName}>{data.fullName || 'Usuario'}</Text>
+                  <TouchableOpacity
+                    onPress={() => { setNameInput(data.fullName || ''); setEditingName(true); }}
+                    activeOpacity={0.7}
+                    style={styles.editNameBtn}
+                  >
+                    <Ionicons name="create-outline" size={18} color={BLUE} />
+                  </TouchableOpacity>
                 </View>
               )}
-              <View style={styles.cameraBadge}>
-                {avatarUploading ? (
-                  <ActivityIndicator size="small" color={WHITE} />
-                ) : (
-                  <Ionicons name="camera" size={13} color={WHITE} />
-                )}
-              </View>
-            </TouchableOpacity>
 
-            {/* Nombre */}
-            {editingName ? (
-              <View style={styles.nameEditBlock}>
-                <TextInput
-                  value={nameInput}
-                  onChangeText={setNameInput}
-                  style={styles.nameInput}
-                  autoFocus
-                  editable={!nameSaving}
-                  returnKeyType="done"
-                  onSubmitEditing={saveName}
-                />
-                <View style={styles.nameEditActions}>
-                  <TouchableOpacity
-                    onPress={saveName}
-                    disabled={nameSaving}
-                    activeOpacity={0.8}
-                  >
-                    {nameSaving ? (
-                      <ActivityIndicator size="small" color={BLUE} />
-                    ) : (
-                      <Text style={styles.nameSaveText}>Guardar</Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setEditingName(false)}
-                    disabled={nameSaving}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.nameCancelText}>Cancelar</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.nameRow}>
-                <Text style={styles.fullName}>{data.fullName || 'Usuario'}</Text>
-                <TouchableOpacity
-                  onPress={() => { setNameInput(data.fullName || ''); setEditingName(true); }}
-                  activeOpacity={0.7}
-                  style={styles.editNameBtn}
-                >
-                  <Ionicons name="create-outline" size={18} color={BLUE} />
-                </TouchableOpacity>
-              </View>
-            )}
+              <Text style={styles.roleTag}>{data.role}</Text>
+            </View>
 
-            <Text style={styles.roleTag}>{data.role}</Text>
-
-            <View style={styles.card}>
+            {/* Sección info */}
+            <View style={styles.infoSection}>
               <InfoRow label="Email" value={data.email} />
               <View style={styles.divider} />
               <InfoRow label="Empresa" value={data.companyName} />
             </View>
 
-            <Text style={styles.sectionTitle}>Actividad</Text>
-            <View style={styles.statsRow}>
-              <StatCard label="Completados" value={data.totalCompleted} />
-              <StatCard label="Validados" value={data.totalValidated} />
-              <StatCard label="Validados a otros" value={data.totalValidatedForOthers} />
+            {/* Sección actividad */}
+            <View style={styles.activitySection}>
+              <Text style={styles.sectionTitle}>Actividad</Text>
+              <View style={styles.statsRow}>
+                <StatCard label="Completados" value={data.totalCompleted} />
+                <StatCard label="Validados" value={data.totalValidated} />
+                <StatCard label="Validados a otros" value={data.totalValidatedForOthers} />
+              </View>
             </View>
           </>
         ) : null}
 
-        <TouchableOpacity
-          style={[styles.logoutBtn, logoutLoading && styles.logoutBtnDisabled]}
-          onPress={onLogout}
-          disabled={logoutLoading}
-          activeOpacity={0.9}
-        >
-          {logoutLoading ? (
-            <ActivityIndicator color="#CC0000" />
-          ) : (
-            <Text style={styles.logoutBtnText}>→ Cerrar sesión</Text>
-          )}
-        </TouchableOpacity>
+        {/* Sección cerrar sesión */}
+        <View style={styles.logoutSection}>
+          <TouchableOpacity
+            style={[styles.logoutBtn, logoutLoading && styles.logoutBtnDisabled]}
+            onPress={onLogout}
+            disabled={logoutLoading}
+            activeOpacity={0.9}
+          >
+            {logoutLoading ? (
+              <ActivityIndicator color="#CC0000" />
+            ) : (
+              <Text style={styles.logoutBtnText}>→ Cerrar sesión</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
@@ -399,16 +399,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   scrollContent: {
-    paddingHorizontal: 18,
-    paddingBottom: 40,
-    alignItems: 'center',
+    paddingBottom: 8,
   },
   errorBanner: {
-    width: '100%',
-    marginBottom: 12,
     backgroundColor: '#fee2e2',
-    borderRadius: 8,
-    padding: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 8,
   },
   errorText: {
     color: '#b91c1c',
@@ -499,7 +496,7 @@ const styles = StyleSheet.create({
   // Role tag
   roleTag: {
     marginTop: 6,
-    marginBottom: 20,
+    marginBottom: 0,
     backgroundColor: '#E8E8E8',
     color: GRAY,
     fontSize: 12,
@@ -509,19 +506,30 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: 'hidden',
   },
-  // Info card
-  card: {
-    width: '100%',
+  identitySection: {
     backgroundColor: WHITE,
-    borderRadius: 8,
-    paddingVertical: 4,
     paddingHorizontal: 16,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    paddingVertical: 24,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  infoSection: {
+    backgroundColor: WHITE,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  activitySection: {
+    backgroundColor: WHITE,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    marginBottom: 8,
+  },
+  logoutSection: {
+    backgroundColor: WHITE,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    marginBottom: 8,
   },
   infoRow: {
     flexDirection: 'row',
@@ -547,7 +555,6 @@ const styles = StyleSheet.create({
   },
   // Stats
   sectionTitle: {
-    alignSelf: 'flex-start',
     color: TEXT,
     fontSize: 16,
     fontWeight: '800',
@@ -557,19 +564,11 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 32,
   },
   statCard: {
     flex: 1,
-    backgroundColor: WHITE,
-    borderRadius: 8,
-    paddingVertical: 16,
+    paddingVertical: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   statValue: {
     fontSize: 28,
@@ -585,7 +584,6 @@ const styles = StyleSheet.create({
   },
   // Logout
   logoutBtn: {
-    marginTop: 8,
     paddingVertical: 12,
     alignSelf: 'flex-start',
   },

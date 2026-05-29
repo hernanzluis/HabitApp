@@ -150,7 +150,7 @@ export default function HabitDetailScreen() {
   if (!habit) {
     return (
       <View style={styles.container}>
-        <View style={styles.card}>
+        <View style={styles.section}>
           <Text style={styles.errorText}>No se encontró el hábito.</Text>
         </View>
         <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.6}>
@@ -162,7 +162,7 @@ export default function HabitDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.card}>
+      <View style={styles.section}>
         <Text style={styles.title}>{habit.title}</Text>
         {habit.description ? <Text style={styles.description}>{habit.description}</Text> : null}
 
@@ -228,16 +228,12 @@ export default function HabitDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
-  content: { paddingHorizontal: 18, paddingTop: 64, paddingBottom: 28 },
-  card: {
+  content: { paddingTop: 64, paddingBottom: 28 },
+  section: {
     backgroundColor: WHITE,
-    borderRadius: 8,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 8,
   },
   title: { fontSize: 20, fontWeight: '800', color: TEXT },
   description: { marginTop: 10, fontSize: 14, color: GRAY, lineHeight: 20 },
@@ -248,14 +244,16 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 42,
     borderRadius: 4,
-    backgroundColor: '#E8E8E8',
+    backgroundColor: BG,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionBtnText: { color: TEXT, fontWeight: '700', fontSize: 14 },
+  actionBtnText: { color: TEXT, fontWeight: '600', fontSize: 14 },
   previewContainer: {
     marginTop: 14,
-    borderRadius: 8,
+    borderRadius: 4,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E0E0E0',
@@ -264,7 +262,7 @@ const styles = StyleSheet.create({
   previewPlaceholder: {
     marginTop: 14,
     height: 220,
-    borderRadius: 8,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: '#E0E0E0',
     backgroundColor: BG,
@@ -287,7 +285,8 @@ const styles = StyleSheet.create({
   submitBtnDisabled: { opacity: 0.7 },
   submitBtnText: { color: WHITE, fontWeight: '600', fontSize: 15 },
   backLink: {
-    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     color: BLUE,
     fontSize: 14,
     fontWeight: '600',

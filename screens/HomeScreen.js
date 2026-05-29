@@ -112,7 +112,7 @@ export default function HomeScreen() {
       if (habitIds.length > 0) {
         const { data: logs, error: logsError } = await supabase
           .from('habit_logs')
-          .select('habit_id, created_at')
+          .select('id, habit_id, created_at')
           .eq('user_id', user.id)
           .in('habit_id', habitIds);
         if (logsError) throw logsError;
@@ -123,15 +123,40 @@ export default function HomeScreen() {
       todayStart.setHours(0, 0, 0, 0);
 
       const doneEver = new Set(logsData.map((l) => l.habit_id));
-      const doneToday = new Set(
-        logsData
-          .filter((l) => new Date(l.created_at) >= todayStart)
-          .map((l) => l.habit_id)
-      );
+      const todayLogs = logsData.filter((l) => new Date(l.created_at) >= todayStart);
+      const doneToday = new Set(todayLogs.map((l) => l.habit_id));
+
+      const todayLogIdByHabit = {};
+      todayLogs.forEach((l) => { todayLogIdByHabit[l.habit_id] = l.id; });
+
+      const todayLogIds = Object.values(todayLogIdByHabit);
+      let validationsMap = {};
+      if (todayLogIds.length > 0) {
+        const { data: validations, error: validationsError } = await supabase
+          .from('habit_validations')
+          .select('habit_log_id, status')
+          .in('habit_log_id', todayLogIds);
+        if (validationsError) throw validationsError;
+        (validations ?? []).forEach((v) => {
+          if (!validationsMap[v.habit_log_id]) validationsMap[v.habit_log_id] = { validatedCount: 0, rejectedCount: 0 };
+          if (v.status === 'validated') validationsMap[v.habit_log_id].validatedCount++;
+          if (v.status === 'rejected') validationsMap[v.habit_log_id].rejectedCount++;
+        });
+      }
 
       const processed = active
         .filter((h) => h.recurrence !== 'once' || !doneEver.has(h.id))
-        .map((h) => ({ ...h, completedToday: h.recurrence === 'daily' && doneToday.has(h.id) }));
+        .map((h) => {
+          const completedToday = h.recurrence === 'daily' && doneToday.has(h.id);
+          const logId = todayLogIdByHabit[h.id];
+          const vCounts = (completedToday && logId && validationsMap[logId]) || null;
+          return {
+            ...h,
+            completedToday,
+            todayValidatedCount: vCounts?.validatedCount ?? 0,
+            todayRejectedCount: vCounts?.rejectedCount ?? 0,
+          };
+        });
 
       setHabits(processed);
     } catch (e) {
@@ -170,8 +195,16 @@ export default function HomeScreen() {
       ) : null}
       {item.completedToday ? (
         <View style={styles.completedRow}>
-          <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
-          <Text style={styles.completedText}>Completado hoy</Text>
+          <View style={styles.completedLeft}>
+            <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
+            <Text style={styles.completedText}>Completado hoy</Text>
+          </View>
+          {(item.todayValidatedCount > 0 || item.todayRejectedCount > 0) ? (
+            <View style={styles.validationRow}>
+              <Text style={styles.validationCount}>✓ {item.todayValidatedCount}</Text>
+              <Text style={styles.rejectionCount}>✗ {item.todayRejectedCount}</Text>
+            </View>
+          ) : null}
         </View>
       ) : (
         <TouchableOpacity
@@ -208,22 +241,26 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      <FlatList
-        data={habits}
-        keyExtractor={(item) => item.id}
-        renderItem={renderHabit}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadHomeData(true)} tintColor={BLUE} />
-        }
-        ListEmptyComponent={
-          !error ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No hay hábitos asignados hoy</Text>
-            </View>
-          ) : null
-        }
-      />
+      <View style={styles.listCard}>
+        <FlatList
+          data={habits}
+          keyExtractor={(item) => item.id}
+          renderItem={renderHabit}
+          contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListFooterComponent={() => habits.length > 0 ? <View style={styles.separator} /> : null}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => loadHomeData(true)} tintColor={BLUE} />
+          }
+          ListEmptyComponent={
+            !error ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>No hay hábitos asignados hoy</Text>
+              </View>
+            ) : null
+          }
+        />
+      </View>
 
     </View>
   );
@@ -274,21 +311,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  listContent: {
-    paddingHorizontal: 18,
-    paddingBottom: 16,
-    flexGrow: 1,
-  },
-  habitCard: {
+  listCard: {
+    flex: 1,
+    marginHorizontal: 18,
+    marginBottom: 16,
     backgroundColor: WHITE,
     borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+    overflow: 'hidden',
+  },
+  listContent: {
+    flexGrow: 1,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+  },
+  habitCard: {
+    backgroundColor: WHITE,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   habitCardCompleted: {
     backgroundColor: '#F0FAF0',
@@ -333,23 +379,36 @@ const styles = StyleSheet.create({
   completedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
     marginTop: 14,
+  },
+  completedLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   completedText: {
     fontSize: 13,
     color: GRAY,
   },
-  emptyCard: {
-    backgroundColor: WHITE,
-    borderRadius: 8,
-    padding: 20,
+  validationRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    gap: 8,
+  },
+  validationCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  rejectionCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
+  emptyState: {
+    padding: 24,
+    alignItems: 'center',
   },
   emptyText: {
     color: GRAY,

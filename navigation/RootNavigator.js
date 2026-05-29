@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -32,8 +32,56 @@ const TAB_ICONS = {
 };
 
 function TabNavigator() {
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const fetchPendingCount = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+      if (!profile?.company_id) return;
+
+      const { data: companyHabits } = await supabase
+        .from('habits')
+        .select('id')
+        .eq('company_id', profile.company_id);
+      const companyHabitIds = (companyHabits ?? []).map((h) => h.id);
+      if (!companyHabitIds.length) { setPendingCount(0); return; }
+
+      const { data: pendingLogs } = await supabase
+        .from('habit_logs')
+        .select('id')
+        .eq('status', 'pending')
+        .neq('user_id', user.id)
+        .in('habit_id', companyHabitIds);
+      if (!pendingLogs?.length) { setPendingCount(0); return; }
+
+      const logIds = pendingLogs.map((l) => l.id);
+      const { data: myValidations } = await supabase
+        .from('habit_validations')
+        .select('habit_log_id')
+        .eq('validator_id', user.id)
+        .in('habit_log_id', logIds);
+
+      const alreadyValidated = new Set((myValidations ?? []).map((v) => v.habit_log_id));
+      setPendingCount(pendingLogs.filter((l) => !alreadyValidated.has(l.id)).length);
+    } catch {
+      // badge failure is non-critical
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPendingCount();
+  }, [fetchPendingCount]);
+
   return (
     <Tab.Navigator
+      screenListeners={{ focus: fetchPendingCount }}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: { backgroundColor: WHITE, borderTopColor: '#E0E0E0' },
@@ -46,7 +94,24 @@ function TabNavigator() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Inicio' }} />
-      <Tab.Screen name="ValidateHabit" component={ValidateHabitScreen} options={{ title: 'Validar' }} />
+      <Tab.Screen
+        name="ValidateHabit"
+        component={ValidateHabitScreen}
+        options={{
+          title: 'Validar',
+          tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
+          tabBarButton: pendingCount === 0
+            ? (props) => (
+                <TouchableOpacity
+                  {...props}
+                  disabled
+                  activeOpacity={1}
+                  style={[props.style, { opacity: 0.35 }]}
+                />
+              )
+            : undefined,
+        }}
+      />
       <Tab.Screen name="Ranking" component={RankingScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil' }} />
     </Tab.Navigator>
