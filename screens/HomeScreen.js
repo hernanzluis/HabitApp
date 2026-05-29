@@ -54,7 +54,7 @@ export default function HomeScreen() {
   const [profile, setProfile] = useState(null);
   const [habits, setHabits] = useState([]);
 
-  const loadHomeData = useCallback(async (isRefresh = false) => {
+  const loadHomeData = useCallback(async (isRefresh = false, attempt = 1) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -104,6 +104,10 @@ export default function HomeScreen() {
       );
       setHabits(active);
     } catch (e) {
+      if (attempt === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return loadHomeData(isRefresh, 2);
+      }
       const message = e?.message || 'No se pudieron cargar los datos. Revisa tu conexión.';
       setError(message);
     } finally {
