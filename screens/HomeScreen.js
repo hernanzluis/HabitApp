@@ -35,8 +35,8 @@ function daysUntil(dateStr) {
   return Math.round((exp - now) / MS_PER_DAY);
 }
 
-function getFirstName(fullName) {
-  if (!fullName?.trim()) return 'Usuario';
+function getFirstName(fullName, fallback) {
+  if (!fullName?.trim()) return fallback;
   return fullName.trim().split(/\s+/)[0];
 }
 
@@ -246,7 +246,7 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.greeting}>{t('home.greeting', { name: getFirstName(profile?.full_name) })}</Text>
+        <Text style={styles.greeting}>{t('home.greeting', { name: getFirstName(profile?.full_name, t('profile.role_user')) })}</Text>
       </View>
 
       {error ? (

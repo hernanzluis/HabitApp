@@ -215,7 +215,7 @@ export default function SignUpScreen() {
             value={email}
             onChangeText={setEmail}
             style={styles.input}
-            placeholder="tu@email.com"
+            placeholder={t('common.email_placeholder')}
             placeholderTextColor={GRAY}
             autoCapitalize="none"
             keyboardType="email-address"

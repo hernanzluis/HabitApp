@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -19,10 +19,10 @@ const BLUE = '#0A66C2';
 const TEXT = '#1D2226';
 const GRAY = '#666666';
 
-function formatDate(dateString) {
+function formatDate(dateString, locale) {
   if (!dateString) return '';
   const d = new Date(dateString);
-  return d.toLocaleString('es-ES', {
+  return d.toLocaleString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -33,12 +33,20 @@ function formatDate(dateString) {
 
 export default function ValidateHabitScreen() {
   const navigation = useNavigation();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [items, setItems] = useState([]);
   const [allDone, setAllDone] = useState(false);
+  const navTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    };
+  }, []);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -72,17 +80,27 @@ export default function ValidateHabitScreen() {
         setItems([]);
         return;
       }
-      console.log('Profile:', profile);
+
+      const { data: companyHabits, error: companyHabitsError } = await supabase
+        .from('habits')
+        .select('id')
+        .eq('company_id', profile.company_id);
+      if (companyHabitsError) throw companyHabitsError;
+      const companyHabitIds = (companyHabits ?? []).map((h) => h.id);
+      if (!companyHabitIds.length) {
+        setItems([]);
+        return;
+      }
 
       const { data: logsData, error: logsError } = await supabase
         .from('habit_logs')
         .select('id, habit_id, user_id, photo_url, status, created_at')
         .eq('status', 'pending')
         .neq('user_id', user.id)
+        .in('habit_id', companyHabitIds)
         .order('created_at', { ascending: false });
 
       if (logsError) throw logsError;
-      console.log('Logs pendientes:', logsData);
       if (!logsData?.length) {
         setItems([]);
         return;
@@ -140,7 +158,6 @@ export default function ValidateHabitScreen() {
         .filter((row) => !row.userValidated);
 
       setItems(normalized);
-      console.log('Items finales:', normalized);
     } catch (e) {
       setError(e?.message || t('validate.error_load'));
     } finally {
@@ -177,12 +194,11 @@ export default function ValidateHabitScreen() {
         const updated = prev.filter((item) => item.id !== logId);
         if (updated.length === 0) {
           setAllDone(true);
-          setTimeout(() => navigation.navigate('Home'), 1000);
+          navTimeoutRef.current = setTimeout(() => navigation.navigate('Home'), 1000);
         }
         return updated;
       });
     } catch (e) {
-      console.log('Error al validar:', JSON.stringify(e));
       setError(e?.message || t('validate.error_submit'));
     }
   };
@@ -209,7 +225,7 @@ export default function ValidateHabitScreen() {
           <View style={styles.info}>
             <Text style={styles.name}>{name}</Text>
             <Text style={styles.habitTitle}>{title}</Text>
-            <Text style={styles.date}>{formatDate(item.created_at)}</Text>
+            <Text style={styles.date}>{formatDate(item.created_at, locale)}</Text>
           </View>
         </View>
 

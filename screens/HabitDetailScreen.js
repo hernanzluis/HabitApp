@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -61,6 +61,13 @@ export default function HabitDetailScreen() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const navTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    };
+  }, []);
 
   const pickFromGallery = async () => {
     setError('');
@@ -158,7 +165,7 @@ export default function HabitDetailScreen() {
       if (logError) throw logError;
 
       setSuccess(t('habit_detail.success'));
-      setTimeout(() => {
+      navTimeoutRef.current = setTimeout(() => {
         navigation.goBack();
       }, 1500);
     } catch (e) {

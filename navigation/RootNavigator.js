@@ -82,20 +82,24 @@ function TabNavigator() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // 1. company_id del usuario
       const { data: profile } = await supabase
         .from('profiles')
         .select('company_id')
         .eq('id', user.id)
         .single();
-      if (!profile?.company_id) return;
+      if (!profile?.company_id) { setPendingCount(0); return; }
 
+      // 2. habit_ids activos de la empresa
       const { data: companyHabits } = await supabase
         .from('habits')
         .select('id')
-        .eq('company_id', profile.company_id);
+        .eq('company_id', profile.company_id)
+        .eq('is_active', true);
       const companyHabitIds = (companyHabits ?? []).map((h) => h.id);
       if (!companyHabitIds.length) { setPendingCount(0); return; }
 
+      // 3. logs pendientes de compañeros de empresa
       const { data: pendingLogs } = await supabase
         .from('habit_logs')
         .select('id')
@@ -104,6 +108,7 @@ function TabNavigator() {
         .in('habit_id', companyHabitIds);
       if (!pendingLogs?.length) { setPendingCount(0); return; }
 
+      // 4. logs que el usuario ya votó
       const logIds = pendingLogs.map((l) => l.id);
       const { data: myValidations } = await supabase
         .from('habit_validations')
@@ -111,8 +116,9 @@ function TabNavigator() {
         .eq('validator_id', user.id)
         .in('habit_log_id', logIds);
 
-      const alreadyValidated = new Set((myValidations ?? []).map((v) => v.habit_log_id));
-      setPendingCount(pendingLogs.filter((l) => !alreadyValidated.has(l.id)).length);
+      // 5. badge = logs pendientes que el usuario aún no ha votado
+      const alreadyVoted = new Set((myValidations ?? []).map((v) => v.habit_log_id));
+      setPendingCount(pendingLogs.filter((l) => !alreadyVoted.has(l.id)).length);
     } catch {
       // non-critical
     }

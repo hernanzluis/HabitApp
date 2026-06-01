@@ -2,6 +2,7 @@
   "common": {
     "app_name": "HabitApp",
     "email": "Email",
+    "email_placeholder": "tu@email.com",
     "password": "Contraseña",
     "cancel": "Cancelar",
     "save": "Guardar",

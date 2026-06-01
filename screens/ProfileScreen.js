@@ -135,7 +135,7 @@ export default function ProfileScreen() {
         fullName: profile.full_name,
         email: profile.email ?? user.email,
         companyName,
-        role: profile.role === 'admin' ? t('profile.role_admin') : t('profile.role_user'),
+        role: profile.role ?? 'user',
         avatarUrl: profile.avatar_url ?? null,
         totalCompleted,
         totalValidated,
@@ -366,7 +366,7 @@ export default function ProfileScreen() {
                 </View>
               )}
 
-              <Text style={styles.roleTag}>{data.role}</Text>
+              <Text style={styles.roleTag}>{data.role === 'admin' ? t('profile.role_admin') : t('profile.role_user')}</Text>
             </View>
 
             {/* Sección info */}
