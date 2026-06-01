@@ -102,6 +102,22 @@
     "error_load": "No se pudieron cargar los hábitos pendientes.",
     "error_submit": "No se pudo registrar la validación."
   },
+  "admin": {
+    "header_title": "Administración",
+    "invite_section": "Código de invitación",
+    "invite_code_hint": "Comparte este código con tus compañeros",
+    "invite_share": "Compartir",
+    "invite_generate": "Generar código",
+    "invite_generating": "Generando...",
+    "invite_share_message": "Únete a mi empresa en HabitApp con el código de invitación: {{code}}",
+    "habits_section": "Hábitos",
+    "habit_expires": "Expira el {{date}}",
+    "empty_habits": "No hay hábitos creados todavía",
+    "loading": "Cargando...",
+    "error_load": "No se pudo cargar la información.",
+    "error_toggle": "No se pudo actualizar el hábito.",
+    "error_generate": "No se pudo generar el código."
+  },
   "history": {
     "header_title": "Historial",
     "loading": "Cargando historial...",

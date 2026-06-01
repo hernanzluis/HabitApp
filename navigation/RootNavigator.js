@@ -17,6 +17,7 @@ import HistoryScreen from '../screens/HistoryScreen';
 import ValidateHabitScreen from '../screens/ValidateHabitScreen';
 import RankingScreen from '../screens/RankingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import AdminScreen from '../screens/AdminScreen';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -52,6 +53,7 @@ function TabNavigator() {
   const { t } = useTranslation();
   const [pendingCount, setPendingCount] = useState(0);
   const [companyName, setCompanyName] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const fetchCompanyName = useCallback(async () => {
     try {
@@ -59,10 +61,11 @@ function TabNavigator() {
       if (!user) return;
       const { data: profile } = await supabase
         .from('profiles')
-        .select('company_id')
+        .select('company_id, role')
         .eq('id', user.id)
         .single();
       if (!profile?.company_id) return;
+      if (profile.role === 'admin') setIsAdmin(true);
       const { data: company } = await supabase
         .from('companies')
         .select('name')
@@ -142,6 +145,15 @@ function TabNavigator() {
           tabBarLabel: t('nav.home'),
           headerRight: () => (
             <View style={styles.headerBtns}>
+              {isAdmin ? (
+                <TouchableOpacity
+                  onPress={() => nav.navigate('Admin')}
+                  style={styles.headerBtn}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="shield-outline" size={24} color={TEXT} />
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 onPress={() => nav.navigate('History')}
                 style={styles.headerBtn}
@@ -208,6 +220,7 @@ function AppStack() {
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerBackTitle: '' }} />
       <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="History" component={HistoryScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="Admin" component={AdminScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
     </Stack.Navigator>
   );
 }

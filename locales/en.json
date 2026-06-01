@@ -143,6 +143,22 @@
     "language": "Language",
     "settings_title": "Settings"
   },
+  "admin": {
+    "header_title": "Administration",
+    "invite_section": "Invitation code",
+    "invite_code_hint": "Share this code with your colleagues",
+    "invite_share": "Share",
+    "invite_generate": "Generate code",
+    "invite_generating": "Generating...",
+    "invite_share_message": "Join my company on HabitApp with the invitation code: {{code}}",
+    "habits_section": "Habits",
+    "habit_expires": "Expires on {{date}}",
+    "empty_habits": "No habits created yet",
+    "loading": "Loading...",
+    "error_load": "Could not load information.",
+    "error_toggle": "Could not update the habit.",
+    "error_generate": "Could not generate the code."
+  },
   "nav": {
     "home": "Home",
     "validate": "Validate",
