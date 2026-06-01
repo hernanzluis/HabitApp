@@ -70,6 +70,9 @@
     "complete": "Complete",
     "completed_today": "Completed today",
     "expires": "Expires on {{date}}",
+    "status_validated": "Validated",
+    "status_rejected": "Rejected",
+    "status_pending": "Pending",
     "error_load": "Could not load data. Check your connection."
   },
   "habit_detail": {

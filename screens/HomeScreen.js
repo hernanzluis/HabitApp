@@ -187,8 +187,29 @@ export default function HomeScreen() {
 
   const renderHabit = ({ item }) => {
     const urgent = item.expires_at && daysUntil(item.expires_at) <= 3;
+
+    let completedCardStyle = null;
+    let statusText = '';
+    let statusColor = GRAY;
+
+    if (item.completedToday) {
+      if (item.todayValidatedCount > 0) {
+        completedCardStyle = styles.habitCardValidated;
+        statusText = t('home.status_validated');
+        statusColor = '#2E7D32';
+      } else if (item.todayRejectedCount > 0) {
+        completedCardStyle = styles.habitCardRejected;
+        statusText = t('home.status_rejected');
+        statusColor = '#DC2626';
+      } else {
+        completedCardStyle = styles.habitCardPending;
+        statusText = t('home.status_pending');
+        statusColor = '#F59E0B';
+      }
+    }
+
     return (
-    <View style={[styles.habitCard, item.completedToday && styles.habitCardCompleted]}>
+    <View style={[styles.habitCard, completedCardStyle]}>
       <Text style={styles.habitTitle}>{item.title}</Text>
       {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
       {item.expires_at ? (
@@ -199,8 +220,8 @@ export default function HomeScreen() {
       {item.completedToday ? (
         <View style={styles.completedRow}>
           <View style={styles.completedLeft}>
-            <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
-            <Text style={styles.completedText}>{t('home.completed_today')}</Text>
+            <Ionicons name="checkmark-circle" size={16} color={statusColor} />
+            <Text style={[styles.completedText, { color: statusColor }]}>{statusText}</Text>
           </View>
           {(item.todayValidatedCount > 0 || item.todayRejectedCount > 0) ? (
             <View style={styles.validationRow}>
@@ -339,10 +360,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  habitCardCompleted: {
+  habitCardValidated: {
     backgroundColor: '#F0FAF0',
     borderLeftWidth: 3,
     borderLeftColor: '#2E7D32',
+  },
+  habitCardRejected: {
+    backgroundColor: '#FEF2F2',
+    borderLeftWidth: 3,
+    borderLeftColor: '#DC2626',
+  },
+  habitCardPending: {
+    backgroundColor: '#FFFBEB',
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
   },
   habitTitle: {
     fontSize: 16,

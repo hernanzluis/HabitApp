@@ -70,6 +70,9 @@
     "complete": "Completar",
     "completed_today": "Completado hoy",
     "expires": "Expira el {{date}}",
+    "status_validated": "Validado",
+    "status_rejected": "Rechazado",
+    "status_pending": "Pendiente",
     "error_load": "No se pudieron cargar los datos. Revisa tu conexión."
   },
   "habit_detail": {
