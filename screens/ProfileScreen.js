@@ -14,6 +14,9 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LANG_STORAGE_KEY } from '../lib/i18n';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -41,6 +44,7 @@ function InfoRow({ label, value }) {
 }
 
 export default function ProfileScreen() {
+  const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
@@ -113,14 +117,14 @@ export default function ProfileScreen() {
         fullName: profile.full_name,
         email: profile.email ?? user.email,
         companyName,
-        role: profile.role === 'admin' ? 'Administrador' : 'Usuario',
+        role: profile.role === 'admin' ? t('profile.role_admin') : t('profile.role_user'),
         avatarUrl: profile.avatar_url ?? null,
         totalCompleted,
         totalValidated,
         totalValidatedForOthers: totalValidatedForOthers ?? 0,
       });
     } catch (e) {
-      setError(e?.message || 'No se pudo cargar el perfil. Revisa tu conexión.');
+      setError(e?.message || t('profile.error_load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -165,20 +169,20 @@ export default function ProfileScreen() {
       // Cache-bust in current session so the new photo shows immediately
       setData((prev) => ({ ...prev, avatarUrl: `${cleanUrl}?t=${Date.now()}` }));
     } catch (e) {
-      setError(e?.message || 'No se pudo actualizar la foto de perfil.');
+      setError(e?.message || t('profile.error_avatar'));
     } finally {
       setAvatarUploading(false);
     }
   };
 
   const pickAvatar = () => {
-    Alert.alert('Foto de perfil', '¿Cómo quieres actualizar tu foto?', [
+    Alert.alert(t('profile.avatar_title'), t('profile.avatar_prompt'), [
       {
-        text: 'Cámara',
+        text: t('common.camera'),
         onPress: async () => {
           const permission = await ImagePicker.requestCameraPermissionsAsync();
           if (!permission.granted) {
-            setError('Necesitamos permiso para usar la cámara.');
+            setError(t('common.error_camera_permission'));
             return;
           }
           const result = await ImagePicker.launchCameraAsync({
@@ -190,11 +194,11 @@ export default function ProfileScreen() {
         },
       },
       {
-        text: 'Galería',
+        text: t('common.gallery'),
         onPress: async () => {
           const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
           if (!permission.granted) {
-            setError('Necesitamos permiso para acceder a tu galería.');
+            setError(t('common.error_gallery_permission'));
             return;
           }
           const result = await ImagePicker.launchImageLibraryAsync({
@@ -206,7 +210,7 @@ export default function ProfileScreen() {
           if (!result.canceled && result.assets[0]) uploadAvatar(result.assets[0]);
         },
       },
-      { text: 'Cancelar', style: 'cancel' },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
 
@@ -231,10 +235,18 @@ export default function ProfileScreen() {
       setData((prev) => ({ ...prev, fullName: trimmed }));
       setEditingName(false);
     } catch (e) {
-      setError(e?.message || 'No se pudo guardar el nombre.');
+      setError(e?.message || t('profile.error_name'));
     } finally {
       setNameSaving(false);
     }
+  };
+
+  const showLanguagePicker = () => {
+    Alert.alert(t('profile.language'), undefined, [
+      { text: 'Español', onPress: () => { i18n.changeLanguage('es'); AsyncStorage.setItem(LANG_STORAGE_KEY, 'es').catch(() => {}); } },
+      { text: 'English', onPress: () => { i18n.changeLanguage('en'); AsyncStorage.setItem(LANG_STORAGE_KEY, 'en').catch(() => {}); } },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
   };
 
   const onLogout = async () => {
@@ -243,7 +255,7 @@ export default function ProfileScreen() {
     try {
       await supabase.auth.signOut();
     } catch (e) {
-      setError(e?.message || 'No se pudo cerrar sesión.');
+      setError(e?.message || t('profile.error_logout'));
       setLogoutLoading(false);
     }
   };
@@ -252,7 +264,7 @@ export default function ProfileScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={BLUE} />
-        <Text style={styles.loadingText}>Cargando perfil...</Text>
+        <Text style={styles.loadingText}>{t('profile.loading')}</Text>
       </View>
     );
   }
@@ -260,7 +272,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Mi perfil</Text>
+        <Text style={styles.title}>{t('profile.title')}</Text>
       </View>
 
       <ScrollView
@@ -319,17 +331,17 @@ export default function ProfileScreen() {
                       {nameSaving ? (
                         <ActivityIndicator size="small" color={BLUE} />
                       ) : (
-                        <Text style={styles.nameSaveText}>Guardar</Text>
+                        <Text style={styles.nameSaveText}>{t('common.save')}</Text>
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => setEditingName(false)} disabled={nameSaving} activeOpacity={0.8}>
-                      <Text style={styles.nameCancelText}>Cancelar</Text>
+                      <Text style={styles.nameCancelText}>{t('common.cancel')}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               ) : (
                 <View style={styles.nameRow}>
-                  <Text style={styles.fullName}>{data.fullName || 'Usuario'}</Text>
+                  <Text style={styles.fullName}>{data.fullName || t('profile.role_user')}</Text>
                   <TouchableOpacity
                     onPress={() => { setNameInput(data.fullName || ''); setEditingName(true); }}
                     activeOpacity={0.7}
@@ -345,18 +357,26 @@ export default function ProfileScreen() {
 
             {/* Sección info */}
             <View style={styles.infoSection}>
-              <InfoRow label="Email" value={data.email} />
+              <InfoRow label={t('common.email')} value={data.email} />
               <View style={styles.divider} />
-              <InfoRow label="Empresa" value={data.companyName} />
+              <InfoRow label={t('profile.company_label')} value={data.companyName} />
+              <View style={styles.divider} />
+              <TouchableOpacity style={styles.infoRow} onPress={showLanguagePicker} activeOpacity={0.7}>
+                <Text style={styles.infoLabel}>{t('profile.language')}</Text>
+                <View style={styles.langValue}>
+                  <Text style={[styles.infoValue, styles.langText]}>{i18n.language === 'es' ? 'Español' : 'English'}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={GRAY} />
+                </View>
+              </TouchableOpacity>
             </View>
 
             {/* Sección actividad */}
             <View style={styles.activitySection}>
-              <Text style={styles.sectionTitle}>Actividad</Text>
+              <Text style={styles.sectionTitle}>{t('profile.activity')}</Text>
               <View style={styles.statsRow}>
-                <StatCard label="Completados" value={data.totalCompleted} />
-                <StatCard label="Validados" value={data.totalValidated} />
-                <StatCard label="Validados a otros" value={data.totalValidatedForOthers} />
+                <StatCard label={t('profile.completed')} value={data.totalCompleted} />
+                <StatCard label={t('profile.validated')} value={data.totalValidated} />
+                <StatCard label={t('profile.validated_others')} value={data.totalValidatedForOthers} />
               </View>
             </View>
           </>
@@ -373,7 +393,7 @@ export default function ProfileScreen() {
             {logoutLoading ? (
               <ActivityIndicator color="#CC0000" />
             ) : (
-              <Text style={styles.logoutBtnText}>→ Cerrar sesión</Text>
+              <Text style={styles.logoutBtnText}>{t('profile.logout')}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -559,6 +579,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     maxWidth: '60%',
     textAlign: 'right',
+  },
+  langValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  langText: {
+    flexShrink: 0,
+    maxWidth: undefined,
   },
   divider: {
     height: 1,

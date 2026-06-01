@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 
 import { supabase } from '../lib/supabase';
 
@@ -32,6 +33,7 @@ const TAB_ICONS = {
 };
 
 function TabNavigator() {
+  const { t } = useTranslation();
   const [pendingCount, setPendingCount] = useState(0);
 
   const fetchPendingCount = useCallback(async () => {
@@ -93,12 +95,12 @@ function TabNavigator() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Inicio' }} />
+      <Tab.Screen name="Home" component={HomeScreen} options={{ title: t('nav.home') }} />
       <Tab.Screen
         name="ValidateHabit"
         component={ValidateHabitScreen}
         options={{
-          title: 'Validar',
+          title: t('nav.validate'),
           tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
           tabBarButton: pendingCount === 0
             ? (props) => (
@@ -112,8 +114,8 @@ function TabNavigator() {
             : undefined,
         }}
       />
-      <Tab.Screen name="Ranking" component={RankingScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil' }} />
+      <Tab.Screen name="Ranking" component={RankingScreen} options={{ title: t('nav.ranking') }} />
+      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: t('nav.profile') }} />
     </Tab.Navigator>
   );
 }

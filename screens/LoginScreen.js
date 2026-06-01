@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -10,67 +11,52 @@ const TEXT = '#1D2226';
 const GRAY = '#666666';
 const INPUT_BG = '#ffffff';
 
-function normalizeSupabaseError(message) {
-  if (!message) return 'Ocurrió un error. Intenta de nuevo.';
-
-  const msg = String(message);
-  if (/invalid login credentials/i.test(msg)) return 'Email o contraseña incorrectos.';
-  if (/invalid email/i.test(msg)) return 'El email no es válido.';
-  if (/password/i.test(msg) && /required|empty/i.test(msg)) return 'La contraseña es requerida.';
-
-  return msg;
-}
-
 function isValidEmail(email) {
-  // Regla simple para validación en UI (Supabase siempre valida en backend).
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 export default function LoginScreen() {
   const navigation = useNavigation();
+  const { t } = useTranslation();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
   const emailTrimmed = useMemo(() => email.trim(), [email]);
 
   const validate = () => {
-    if (!emailTrimmed) return 'Por favor, introduce tu email.';
-    if (!isValidEmail(emailTrimmed)) return 'Por favor, introduce un email válido.';
-    if (!password) return 'Por favor, introduce tu contraseña.';
-    if (password.length < 6) return 'La contraseña debe tener al menos 6 caracteres.';
+    if (!emailTrimmed) return t('errors.email_required');
+    if (!isValidEmail(emailTrimmed)) return t('errors.email_invalid');
+    if (!password) return t('errors.password_required');
+    if (password.length < 6) return t('errors.password_min', { count: 6 });
     return '';
+  };
+
+  const normalizeSupabaseError = (message) => {
+    if (!message) return t('errors.generic');
+    const msg = String(message);
+    if (/invalid login credentials/i.test(msg)) return t('login.error_credentials');
+    if (/invalid email/i.test(msg)) return t('errors.email_invalid');
+    if (/password/i.test(msg) && /required|empty/i.test(msg)) return t('errors.password_required');
+    return msg;
   };
 
   const onLogin = async () => {
     if (loading) return;
-
     const validationError = validate();
-    if (validationError) {
-      setFormError(validationError);
-      return;
-    }
+    if (validationError) { setFormError(validationError); return; }
 
     setFormError('');
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: emailTrimmed,
-        password,
-      });
-
-      if (error) {
-        setFormError(normalizeSupabaseError(error.message));
-        return;
-      }
-
-    } catch (e) {
-      setFormError('No se pudo iniciar sesión. Revisa tu conexión e inténtalo de nuevo.');
+      const { error } = await supabase.auth.signInWithPassword({ email: emailTrimmed, password });
+      if (error) { setFormError(normalizeSupabaseError(error.message)); return; }
+    } catch {
+      setFormError(t('login.error_network'));
     } finally {
       setLoading(false);
     }
@@ -79,12 +65,11 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.content}>
-        {/* Logo o nombre de la app */}
-        <Text style={styles.brand}>HabitApp</Text>
-        <Text style={styles.subtitle}>Accede a tu cuenta</Text>
+        <Text style={styles.brand}>{t('common.app_name')}</Text>
+        <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
 
         <View style={styles.card}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>{t('common.email')}</Text>
           <TextInput
             value={email}
             onChangeText={setEmail}
@@ -96,7 +81,7 @@ export default function LoginScreen() {
             editable={!loading}
           />
 
-          <Text style={[styles.label, { marginTop: 14 }]}>Contraseña</Text>
+          <Text style={[styles.label, { marginTop: 14 }]}>{t('common.password')}</Text>
           <View style={styles.passwordRow}>
             <TextInput
               value={password}
@@ -107,14 +92,13 @@ export default function LoginScreen() {
               secureTextEntry={!showPassword}
               editable={!loading}
             />
-
             <TouchableOpacity
               style={styles.toggleBtn}
               onPress={() => setShowPassword((v) => !v)}
               disabled={loading}
               activeOpacity={0.8}
             >
-              <Text style={styles.toggleBtnText}>{showPassword ? 'Ocultar' : 'Mostrar'}</Text>
+              <Text style={styles.toggleBtnText}>{showPassword ? t('common.hide') : t('common.show')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -126,17 +110,16 @@ export default function LoginScreen() {
             disabled={loading}
             activeOpacity={0.9}
           >
-            {loading ? <ActivityIndicator color={WHITE} /> : <Text style={styles.loginBtnText}>Login</Text>}
+            {loading ? <ActivityIndicator color={WHITE} /> : <Text style={styles.loginBtnText}>{t('login.submit')}</Text>}
           </TouchableOpacity>
         </View>
 
-        {/* Links */}
         <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')} disabled={loading} activeOpacity={0.8}>
-          <Text style={styles.link}>¿Olvidaste tu contraseña?</Text>
+          <Text style={styles.link}>{t('login.forgot_password')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate('SignUp')} disabled={loading} activeOpacity={0.8}>
-          <Text style={styles.link}>Crear cuenta</Text>
+          <Text style={styles.link}>{t('login.create_account')}</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -196,4 +179,3 @@ const styles = StyleSheet.create({
   loginBtnText: { color: WHITE, fontWeight: '600' },
   link: { color: BLUE, marginTop: 18, fontSize: 14, fontWeight: '600' },
 });
-

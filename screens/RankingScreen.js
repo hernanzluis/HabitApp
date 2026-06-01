@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -19,11 +20,8 @@ const HIGHLIGHT = '#EEF3FB';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-function ordinal(n) {
-  return `${n}º`;
-}
-
 export default function RankingScreen() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -53,7 +51,7 @@ export default function RankingScreen() {
         .eq('id', user.id)
         .single();
       if (profileError) throw profileError;
-      if (!profile?.company_id) throw new Error('Tu perfil no tiene una empresa asignada.');
+      if (!profile?.company_id) throw new Error(t('errors.no_company'));
 
       const { data: companyProfiles, error: profilesError } = await supabase
         .from('profiles')
@@ -97,7 +95,7 @@ export default function RankingScreen() {
 
       setRanking(sorted);
     } catch (e) {
-      setError(e?.message || 'No se pudo cargar el ranking. Revisa tu conexión.');
+      setError(e?.message || t('ranking.error_load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -121,20 +119,20 @@ export default function RankingScreen() {
             <Text style={styles.medal}>{MEDALS[index]}</Text>
           ) : (
             <Text style={[styles.position, isCurrentUser && styles.positionHighlight]}>
-              {ordinal(index + 1)}
+              {t('ranking.position', { count: index + 1 })}
             </Text>
           )}
         </View>
         <View style={styles.nameBox}>
           <Text style={[styles.name, isCurrentUser && styles.nameHighlight]} numberOfLines={1}>
-            {item.full_name || 'Usuario'}
+            {item.full_name || '—'}
           </Text>
-          {isCurrentUser && <Text style={styles.youTag}>Tú</Text>}
+          {isCurrentUser && <Text style={styles.youTag}>{t('ranking.you')}</Text>}
         </View>
         <View style={styles.countBox}>
           <Text style={[styles.count, isCurrentUser && styles.countHighlight]}>{item.count}</Text>
           <Text style={[styles.countLabel, isCurrentUser && styles.countLabelHighlight]}>
-            hábito{item.count !== 1 ? 's' : ''}
+            {t('ranking.habit', { count: item.count })}
           </Text>
         </View>
       </View>
@@ -145,7 +143,7 @@ export default function RankingScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={BLUE} />
-        <Text style={styles.loadingText}>Cargando ranking...</Text>
+        <Text style={styles.loadingText}>{t('ranking.loading')}</Text>
       </View>
     );
   }
@@ -153,7 +151,7 @@ export default function RankingScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Ranking del equipo</Text>
+        <Text style={styles.title}>{t('ranking.title')}</Text>
       </View>
 
       {error ? (
@@ -177,9 +175,7 @@ export default function RankingScreen() {
         ListEmptyComponent={
           !error ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>
-                Aún no hay hábitos validados en tu empresa
-              </Text>
+              <Text style={styles.emptyText}>{t('ranking.empty')}</Text>
             </View>
           ) : null
         }

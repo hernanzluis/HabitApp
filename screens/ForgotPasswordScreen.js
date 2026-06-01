@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -16,40 +17,28 @@ function isValidEmail(email) {
 
 export default function ForgotPasswordScreen() {
   const navigation = useNavigation();
+  const { t } = useTranslation();
 
   const [email, setEmail] = useState('');
   const emailTrimmed = useMemo(() => email.trim(), [email]);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const [sent, setSent] = useState(false);
 
   const onSend = async () => {
     if (loading) return;
     setError('');
 
-    if (!emailTrimmed) {
-      setError('Por favor, introduce tu email.');
-      return;
-    }
-
-    if (!isValidEmail(emailTrimmed)) {
-      setError('Por favor, introduce un email válido.');
-      return;
-    }
+    if (!emailTrimmed) { setError(t('errors.email_required')); return; }
+    if (!isValidEmail(emailTrimmed)) { setError(t('errors.email_invalid')); return; }
 
     setLoading(true);
-
     try {
       const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(emailTrimmed);
-      if (supabaseError) {
-        setError(supabaseError.message || 'No se pudo enviar el correo. Intenta de nuevo.');
-        return;
-      }
+      if (supabaseError) { setError(supabaseError.message || t('forgot.error_send')); return; }
       setSent(true);
-    } catch (e) {
-      setError('No se pudo enviar el correo. Revisa tu conexión e inténtalo de nuevo.');
+    } catch {
+      setError(t('forgot.error_network'));
     } finally {
       setLoading(false);
     }
@@ -58,11 +47,11 @@ export default function ForgotPasswordScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.content}>
-        <Text style={styles.brand}>HabitApp</Text>
-        <Text style={styles.subtitle}>Recupera tu acceso</Text>
+        <Text style={styles.brand}>{t('common.app_name')}</Text>
+        <Text style={styles.subtitle}>{t('forgot.subtitle')}</Text>
 
         <View style={styles.card}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>{t('common.email')}</Text>
           <TextInput
             value={email}
             onChangeText={setEmail}
@@ -75,12 +64,7 @@ export default function ForgotPasswordScreen() {
           />
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          {sent ? (
-            <Text style={styles.successText}>
-              Revisa tu correo para continuar el proceso de recuperación.
-            </Text>
-          ) : null}
+          {sent ? <Text style={styles.successText}>{t('forgot.success')}</Text> : null}
 
           <TouchableOpacity
             style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
@@ -88,11 +72,11 @@ export default function ForgotPasswordScreen() {
             disabled={loading || sent}
             activeOpacity={0.9}
           >
-            {loading ? <ActivityIndicator color={WHITE} /> : <Text style={styles.loginBtnText}>Enviar</Text>}
+            {loading ? <ActivityIndicator color={WHITE} /> : <Text style={styles.loginBtnText}>{t('forgot.submit')}</Text>}
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={loading} activeOpacity={0.8}>
-            <Text style={styles.link}>Volver a login</Text>
+            <Text style={styles.link}>{t('forgot.back_to_login')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -143,4 +127,3 @@ const styles = StyleSheet.create({
   loginBtnText: { color: WHITE, fontWeight: '600' },
   link: { color: BLUE, marginTop: 18, fontSize: 14, fontWeight: '600', textAlign: 'center' },
 });
-

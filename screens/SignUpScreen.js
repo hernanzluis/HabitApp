@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -24,15 +25,6 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function normalizeAuthError(message) {
-  if (!message) return 'No se pudo completar el registro. Intenta de nuevo.';
-  const msg = String(message);
-  if (/already registered|user.*exists|duplicate/i.test(msg)) return 'Este email ya está registrado.';
-  if (/invalid email/i.test(msg)) return 'El email no es válido.';
-  if (/password/i.test(msg)) return 'Revisa la contraseña e inténtalo de nuevo.';
-  return msg;
-}
-
 const EMPTY_ERRORS = {
   fullName: '',
   email: '',
@@ -44,6 +36,7 @@ const EMPTY_ERRORS = {
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
+  const { t } = useTranslation();
 
   const [mode, setMode] = useState('create');
 
@@ -72,21 +65,30 @@ export default function SignUpScreen() {
     setErrors(EMPTY_ERRORS);
   };
 
+  const normalizeAuthError = (message) => {
+    if (!message) return t('signup.error_generic');
+    const msg = String(message);
+    if (/already registered|user.*exists|duplicate/i.test(msg)) return t('signup.error_already_registered');
+    if (/invalid email/i.test(msg)) return t('errors.email_invalid');
+    if (/password/i.test(msg)) return t('errors.password_required');
+    return msg;
+  };
+
   const validate = () => {
     const next = { ...EMPTY_ERRORS };
 
-    if (!fullNameTrimmed) next.fullName = 'Por favor, introduce tu nombre completo.';
-    if (!emailTrimmed) next.email = 'Por favor, introduce tu email.';
-    else if (!isValidEmail(emailTrimmed)) next.email = 'Por favor, introduce un email válido.';
-    if (!password) next.password = 'Por favor, introduce una contraseña.';
-    else if (password.length < 8) next.password = 'La contraseña debe tener al menos 8 caracteres.';
-    if (!confirmPassword) next.confirmPassword = 'Por favor, confirma tu contraseña.';
-    else if (confirmPassword !== password) next.confirmPassword = 'Las contraseñas no coinciden.';
+    if (!fullNameTrimmed) next.fullName = t('errors.name_required');
+    if (!emailTrimmed) next.email = t('errors.email_required');
+    else if (!isValidEmail(emailTrimmed)) next.email = t('errors.email_invalid');
+    if (!password) next.password = t('errors.password_required');
+    else if (password.length < 8) next.password = t('errors.password_min', { count: 8 });
+    if (!confirmPassword) next.confirmPassword = t('errors.confirm_password_required');
+    else if (confirmPassword !== password) next.confirmPassword = t('errors.password_mismatch');
 
     if (mode === 'create') {
-      if (!companyNameTrimmed) next.companyName = 'Por favor, introduce el nombre de tu empresa.';
+      if (!companyNameTrimmed) next.companyName = t('errors.company_required');
     } else {
-      if (!inviteCodeTrimmed) next.inviteCode = 'Por favor, introduce el código de invitación.';
+      if (!inviteCodeTrimmed) next.inviteCode = t('errors.invite_required');
     }
 
     setErrors(next);
@@ -108,17 +110,13 @@ export default function SignUpScreen() {
           .eq('code', inviteCodeTrimmed)
           .maybeSingle();
 
-        console.log('[INVITE] código introducido:', inviteCodeTrimmed);
-        console.log('[INVITE] data:', JSON.stringify(invitation));
-        console.log('[INVITE] error:', JSON.stringify(inviteError));
-
         if (inviteError) throw inviteError;
         if (!invitation) {
-          setErrors((prev) => ({ ...prev, inviteCode: 'Código de invitación inválido.' }));
+          setErrors((prev) => ({ ...prev, inviteCode: t('signup.error_invite_invalid') }));
           return;
         }
         if (invitation.expires_at && new Date(invitation.expires_at) < new Date()) {
-          setErrors((prev) => ({ ...prev, inviteCode: 'Este código de invitación ha expirado.' }));
+          setErrors((prev) => ({ ...prev, inviteCode: t('signup.error_invite_expired') }));
           return;
         }
       }
@@ -131,21 +129,16 @@ export default function SignUpScreen() {
       if (signUpError) {
         const userError = normalizeAuthError(signUpError.message);
         if (/email/i.test(String(signUpError.message)) || /registered|duplicate/i.test(userError)) {
-          console.log('[ERROR] signUpError email:', JSON.stringify(signUpError));
           setErrors((prev) => ({ ...prev, email: userError }));
           return;
         }
-        console.log('[ERROR] signUpError general:', JSON.stringify(signUpError));
         setFormError(userError);
         return;
       }
 
       const user = authData?.user;
       if (!user?.id) {
-        console.log('[ERROR] no user after signUp, authData:', JSON.stringify(authData));
-        setFormError(
-          'No se pudo obtener el usuario tras el registro. Si debes confirmar el email, hazlo e inicia sesión.'
-        );
+        setFormError(t('signup.error_no_user'));
         return;
       }
 
@@ -156,7 +149,6 @@ export default function SignUpScreen() {
           user_full_name: fullNameTrimmed,
           company_name: companyNameTrimmed,
         });
-        console.log('[RPC create] error:', JSON.stringify(rpcError));
         if (rpcError) throw rpcError;
       } else {
         const { error: rpcError } = await supabase.rpc('handle_invited_user_registration', {
@@ -165,20 +157,13 @@ export default function SignUpScreen() {
           user_full_name: fullNameTrimmed,
           invitation_code: inviteCodeTrimmed,
         });
-        console.log('[RPC join] error:', JSON.stringify(rpcError));
         if (rpcError) throw rpcError;
       }
 
-      // Registro completado — onAuthStateChange desmontará el componente
       registered = true;
     } catch (e) {
-      console.log('Error completo:', JSON.stringify(e));
-      console.log('Error message:', e?.message);
-      console.log('Error code:', e?.code);
-      console.log('Error details:', e?.details);
-      setFormError(e?.message || 'No se pudo completar el registro. Revisa tu conexión e inténtalo de nuevo.');
+      setFormError(e?.message || t('signup.error_generic'));
     } finally {
-      // No actualizar estado si el registro fue exitoso: el componente ya se está desmontando
       if (!registered) setLoading(false);
     }
   };
@@ -186,8 +171,8 @@ export default function SignUpScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brand}>HabitApp</Text>
-        <Text style={styles.subtitle}>Crea tu cuenta</Text>
+        <Text style={styles.brand}>{t('common.app_name')}</Text>
+        <Text style={styles.subtitle}>{t('signup.subtitle')}</Text>
 
         <View style={styles.card}>
           <View style={styles.modeSelector}>
@@ -198,7 +183,7 @@ export default function SignUpScreen() {
               disabled={loading}
             >
               <Text style={[styles.modeBtnText, mode === 'create' && styles.modeBtnTextActive]}>
-                Crear empresa
+                {t('signup.mode_create')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -208,24 +193,24 @@ export default function SignUpScreen() {
               disabled={loading}
             >
               <Text style={[styles.modeBtnText, mode === 'join' && styles.modeBtnTextActive]}>
-                Tengo un código
+                {t('signup.mode_join')}
               </Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.label}>Nombre completo</Text>
+          <Text style={styles.label}>{t('signup.full_name')}</Text>
           <TextInput
             value={fullName}
             onChangeText={setFullName}
             style={styles.input}
-            placeholder="Juan Pérez"
+            placeholder={t('signup.full_name_placeholder')}
             placeholderTextColor={GRAY}
             autoCapitalize="words"
             editable={!loading}
           />
           {errors.fullName ? <Text style={styles.errorText}>{errors.fullName}</Text> : null}
 
-          <Text style={[styles.label, styles.mt]}>Email</Text>
+          <Text style={[styles.label, styles.mt]}>{t('common.email')}</Text>
           <TextInput
             value={email}
             onChangeText={setEmail}
@@ -238,7 +223,7 @@ export default function SignUpScreen() {
           />
           {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
 
-          <Text style={[styles.label, styles.mt]}>Contraseña</Text>
+          <Text style={[styles.label, styles.mt]}>{t('common.password')}</Text>
           <View style={styles.passwordRow}>
             <TextInput
               value={password}
@@ -255,12 +240,12 @@ export default function SignUpScreen() {
               disabled={loading}
               activeOpacity={0.8}
             >
-              <Text style={styles.toggleBtnText}>{showPassword ? 'Ocultar' : 'Mostrar'}</Text>
+              <Text style={styles.toggleBtnText}>{showPassword ? t('common.hide') : t('common.show')}</Text>
             </TouchableOpacity>
           </View>
           {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
 
-          <Text style={[styles.label, styles.mt]}>Confirmar contraseña</Text>
+          <Text style={[styles.label, styles.mt]}>{t('signup.confirm_password')}</Text>
           <View style={styles.passwordRow}>
             <TextInput
               value={confirmPassword}
@@ -277,19 +262,19 @@ export default function SignUpScreen() {
               disabled={loading}
               activeOpacity={0.8}
             >
-              <Text style={styles.toggleBtnText}>{showConfirmPassword ? 'Ocultar' : 'Mostrar'}</Text>
+              <Text style={styles.toggleBtnText}>{showConfirmPassword ? t('common.hide') : t('common.show')}</Text>
             </TouchableOpacity>
           </View>
           {errors.confirmPassword ? <Text style={styles.errorText}>{errors.confirmPassword}</Text> : null}
 
           {mode === 'create' ? (
             <>
-              <Text style={[styles.label, styles.mt]}>Nombre de la empresa</Text>
+              <Text style={[styles.label, styles.mt]}>{t('signup.company_name')}</Text>
               <TextInput
                 value={companyName}
                 onChangeText={setCompanyName}
                 style={styles.input}
-                placeholder="Habit Corp."
+                placeholder={t('signup.company_placeholder')}
                 placeholderTextColor={GRAY}
                 autoCapitalize="words"
                 editable={!loading}
@@ -298,12 +283,12 @@ export default function SignUpScreen() {
             </>
           ) : (
             <>
-              <Text style={[styles.label, styles.mt]}>Código de invitación</Text>
+              <Text style={[styles.label, styles.mt]}>{t('signup.invite_code')}</Text>
               <TextInput
                 value={inviteCode}
                 onChangeText={setInviteCode}
                 style={styles.input}
-                placeholder="XXXX-XXXX"
+                placeholder={t('signup.invite_placeholder')}
                 placeholderTextColor={GRAY}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -325,13 +310,13 @@ export default function SignUpScreen() {
               <ActivityIndicator color={WHITE} />
             ) : (
               <Text style={styles.submitBtnText}>
-                {mode === 'create' ? 'Crear cuenta' : 'Unirse a la empresa'}
+                {mode === 'create' ? t('signup.submit_create') : t('signup.submit_join')}
               </Text>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={loading} activeOpacity={0.8}>
-            <Text style={styles.link}>Volver a login</Text>
+            <Text style={styles.link}>{t('signup.back_to_login')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -369,17 +354,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modeBtnActive: {
-    backgroundColor: BLUE,
-  },
-  modeBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: GRAY,
-  },
-  modeBtnTextActive: {
-    color: WHITE,
-  },
+  modeBtnActive: { backgroundColor: BLUE },
+  modeBtnText: { fontSize: 13, fontWeight: '700', color: GRAY },
+  modeBtnTextActive: { color: WHITE },
   label: { fontSize: 13, fontWeight: '600', color: TEXT },
   mt: { marginTop: 14 },
   input: {

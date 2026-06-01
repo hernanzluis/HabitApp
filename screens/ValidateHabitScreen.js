@@ -10,6 +10,7 @@ import {
   Image,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -32,6 +33,7 @@ function formatDate(dateString) {
 
 export default function ValidateHabitScreen() {
   const navigation = useNavigation();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -54,7 +56,7 @@ export default function ValidateHabitScreen() {
 
       if (userError) throw userError;
       if (!user) {
-        setError('Debes iniciar sesión para validar hábitos.');
+        setError(t('validate.error_no_session'));
         return;
       }
 
@@ -66,7 +68,7 @@ export default function ValidateHabitScreen() {
 
       if (profileError) throw profileError;
       if (!profile?.company_id) {
-        setError('Tu perfil no tiene una empresa asignada.');
+        setError(t('errors.no_company'));
         setItems([]);
         return;
       }
@@ -140,7 +142,7 @@ export default function ValidateHabitScreen() {
       setItems(normalized);
       console.log('Items finales:', normalized);
     } catch (e) {
-      setError(e?.message || 'No se pudieron cargar los hábitos pendientes.');
+      setError(e?.message || t('validate.error_load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -161,7 +163,7 @@ export default function ValidateHabitScreen() {
       } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) {
-        setError('Debes iniciar sesión para validar hábitos.');
+        setError(t('validate.error_no_session'));
         return;
       }
 
@@ -181,14 +183,14 @@ export default function ValidateHabitScreen() {
       });
     } catch (e) {
       console.log('Error al validar:', JSON.stringify(e));
-      setError(e?.message || 'No se pudo registrar la validación.');
+      setError(e?.message || t('validate.error_submit'));
     }
   };
 
   const renderItem = ({ item }) => {
     const { companion, habit } = item;
-    const name = companion?.full_name || 'Compañero';
-    const title = habit?.title || 'Hábito';
+    const name = companion?.full_name || t('common.colleague');
+    const title = habit?.title || t('validate.habit_fallback');
     const { userValidated, userVote, validatedCount, rejectedCount } = item;
 
     return (
@@ -213,7 +215,7 @@ export default function ValidateHabitScreen() {
 
         {item.photo_url ? (
           <View style={styles.photoWrapper}>
-            <Image source={{ uri: item.photo_url }} style={styles.photo} resizeMode="cover" />
+            <Image source={{ uri: item.photo_url }} style={styles.photo} resizeMode="contain" />
           </View>
         ) : null}
 
@@ -222,7 +224,7 @@ export default function ValidateHabitScreen() {
           <Text style={styles.countReject}>✗ {rejectedCount}</Text>
           {userValidated ? (
             <Text style={styles.votedLabel}>
-              {userVote === 'validated' ? 'Aprobaste' : 'Rechazaste'}
+              {userVote === 'validated' ? t('validate.approved') : t('validate.rejected_label')}
             </Text>
           ) : null}
         </View>
@@ -233,14 +235,14 @@ export default function ValidateHabitScreen() {
             onPress={() => !userValidated && submitValidation(item.id, 'rejected')}
             activeOpacity={userValidated ? 1 : 0.9}
           >
-            <Text style={[styles.rejectText, userValidated && styles.actionTextDisabled]}>Rechazar</Text>
+            <Text style={[styles.rejectText, userValidated && styles.actionTextDisabled]}>{t('validate.reject')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, styles.approveBtn, userValidated && styles.actionBtnDisabled]}
             onPress={() => !userValidated && submitValidation(item.id, 'validated')}
             activeOpacity={userValidated ? 1 : 0.9}
           >
-            <Text style={[styles.approveText, userValidated && styles.actionTextDisabled]}>Aprobar</Text>
+            <Text style={[styles.approveText, userValidated && styles.actionTextDisabled]}>{t('validate.approve')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -251,7 +253,7 @@ export default function ValidateHabitScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={BLUE} />
-        <Text style={styles.loadingText}>Cargando hábitos pendientes...</Text>
+        <Text style={styles.loadingText}>{t('validate.loading')}</Text>
       </View>
     );
   }
@@ -259,14 +261,14 @@ export default function ValidateHabitScreen() {
   if (allDone) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.allDoneText}>Todo al día ✓</Text>
+        <Text style={styles.allDoneText}>{t('validate.all_done')}</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.headerTitle}>Validar hábitos</Text>
+      <Text style={styles.headerTitle}>{t('validate.title')}</Text>
 
       {error ? (
         <View style={styles.errorBanner}>
@@ -285,7 +287,7 @@ export default function ValidateHabitScreen() {
         ListEmptyComponent={
           !error ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No hay hábitos pendientes de validación</Text>
+              <Text style={styles.emptyText}>{t('validate.empty')}</Text>
             </View>
           ) : null
         }
@@ -389,12 +391,11 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 4,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    backgroundColor: '#000',
   },
   photo: {
     width: '100%',
-    height: 200,
+    height: 250,
   },
   countsRow: {
     flexDirection: 'row',

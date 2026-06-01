@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -39,8 +40,8 @@ function getFirstName(fullName) {
   return fullName.trim().split(/\s+/)[0];
 }
 
-function getTodayLabel() {
-  return new Date().toLocaleDateString('es-ES', {
+function getTodayLabel(locale) {
+  return new Date().toLocaleDateString(locale, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -50,6 +51,8 @@ function getTodayLabel() {
 
 export default function HomeScreen() {
   const navigation = useNavigation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -86,7 +89,7 @@ export default function HomeScreen() {
       if (!profileData?.company_id) {
         setProfile(profileData);
         setHabits([]);
-        setError('Tu perfil no tiene una empresa asignada.');
+        setError(t('errors.no_company'));
         return;
       }
 
@@ -164,7 +167,7 @@ export default function HomeScreen() {
         await new Promise((resolve) => setTimeout(resolve, 500));
         return loadHomeData(isRefresh, 2);
       }
-      const message = e?.message || 'No se pudieron cargar los datos. Revisa tu conexión.';
+      const message = e?.message || t('home.error_load');
       setError(message);
     } finally {
       setLoading(false);
@@ -190,14 +193,14 @@ export default function HomeScreen() {
       {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
       {item.expires_at ? (
         <Text style={[styles.expiryText, urgent && styles.expiryUrgent]}>
-          Expira el {formatExpiry(item.expires_at)}
+          {t('home.expires', { date: formatExpiry(item.expires_at) })}
         </Text>
       ) : null}
       {item.completedToday ? (
         <View style={styles.completedRow}>
           <View style={styles.completedLeft}>
             <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
-            <Text style={styles.completedText}>Completado hoy</Text>
+            <Text style={styles.completedText}>{t('home.completed_today')}</Text>
           </View>
           {(item.todayValidatedCount > 0 || item.todayRejectedCount > 0) ? (
             <View style={styles.validationRow}>
@@ -212,7 +215,7 @@ export default function HomeScreen() {
           onPress={() => onCompleteHabit(item)}
           activeOpacity={0.9}
         >
-          <Text style={styles.completeBtnText}>Completar</Text>
+          <Text style={styles.completeBtnText}>{t('home.complete')}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -223,7 +226,7 @@ export default function HomeScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={BLUE} />
-        <Text style={styles.loadingText}>Cargando tus hábitos...</Text>
+        <Text style={styles.loadingText}>{t('home.loading')}</Text>
       </View>
     );
   }
@@ -231,8 +234,8 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.greeting}>Hola, {getFirstName(profile?.full_name)}</Text>
-        <Text style={styles.date}>{getTodayLabel()}</Text>
+        <Text style={styles.greeting}>{t('home.greeting', { name: getFirstName(profile?.full_name) })}</Text>
+        <Text style={styles.date}>{getTodayLabel(locale)}</Text>
       </View>
 
       {error ? (
@@ -255,7 +258,7 @@ export default function HomeScreen() {
           ListEmptyComponent={
             !error ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No hay hábitos asignados hoy</Text>
+                <Text style={styles.emptyText}>{t('home.empty')}</Text>
               </View>
             ) : null
           }

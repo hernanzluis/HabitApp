@@ -120,6 +120,7 @@ HabitApp/
 | is_active | boolean | true | Solo se muestran hábitos activos |
 | created_at | timestamptz | now() | — |
 | expires_at | timestamptz | null | Si está en el pasado, no se muestra |
+| team_id | uuid | null | FK → teams(id), nullable — si null el hábito es visible para toda la empresa |
 
 ### `habit_logs`
 | Campo | Tipo | Default | Notas |
@@ -152,6 +153,15 @@ HabitApp/
 | created_by | uuid | — | FK → profiles(id) |
 | created_at | timestamptz | now() | — |
 
+### `team_members` _(creada, sin uso todavía)_
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| team_id | uuid | — | FK → teams(id) |
+| user_id | uuid | — | FK → profiles(id) |
+| created_at | timestamptz | now() | — |
+| — | UNIQUE | — | (team_id, user_id) — un usuario no puede estar dos veces en el mismo equipo |
+
 ### `invitations`
 | Campo | Tipo | Default | Notas |
 |---|---|---|---|
@@ -167,10 +177,14 @@ auth.users ──── profiles (1:1)
 companies  ──── profiles (1:N, company_id)
 companies  ──── habits   (1:N, company_id)
 companies  ──── invitations (1:N, company_id)
+companies  ──── teams    (1:N, company_id)
 habits     ──── habit_logs  (1:N, habit_id)
 profiles   ──── habit_logs  (1:N, user_id)
 habit_logs ──── habit_validations (1:N, habit_log_id)
 profiles   ──── habit_validations (1:N, validator_id)
+teams      ──── team_members (1:N, team_id)
+profiles   ──── team_members (1:N, user_id)
+teams      ──── habits   (1:N, team_id, nullable)
 ```
 
 ---
@@ -406,7 +420,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 ## 13. Funcionalidades Pendientes (v2)
 
 - **AdminScreen:** panel para que el admin cree hábitos (título, descripción, recurrence, expires_at), gestione usuarios de la empresa y vea invitaciones activas
-- **Implementar tabla `teams`:** ya creada en BD pero sin uso — asignar usuarios a equipos y mostrar rankings por equipo
+- **Sistema de equipos:** el admin crea equipos dentro de la empresa y asigna usuarios (un usuario puede pertenecer a N equipos, tabla `team_members`). Los hábitos se pueden asignar a toda la empresa (`team_id = null`), a un equipo específico (`team_id` del equipo), o dejarse sin equipo explícito (visibles para todos). HomeScreen filtraría los hábitos mostrando los de la empresa completa más los del equipo del usuario. Rankings podrían filtrarse por equipo. Requiere AdminScreen para la gestión.
 - **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un compañero valida tu hábito
 - **SplashScreen animada** con logo de la app
 - **Mejora de estadísticas en ProfileScreen:** racha actual (días consecutivos con hábito completado), gráfico de actividad mensual
@@ -415,7 +429,6 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - **Perfil de compañero:** al pulsar un nombre en ValidateHabit o Ranking, ver su perfil público (foto, stats, hábitos validados)
 - **Edición de perfil completo:** campo de empresa en ProfileScreen (actualmente solo lectura)
 - **Modo oscuro**
-- **Soporte multiidioma** (i18n)
 
 ---
 

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -34,6 +35,7 @@ function getContentType(mimeType) {
 export default function HabitDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
+  const { t } = useTranslation();
   const habit = route.params?.habit;
 
   const [photo, setPhoto] = useState(null);
@@ -45,7 +47,7 @@ export default function HabitDetailScreen() {
     setError('');
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      setError('Necesitamos permiso para acceder a tu galería.');
+      setError(t('common.error_gallery_permission'));
       return;
     }
 
@@ -65,7 +67,7 @@ export default function HabitDetailScreen() {
     setError('');
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      setError('Necesitamos permiso para usar la cámara.');
+      setError(t('common.error_camera_permission'));
       return;
     }
 
@@ -86,12 +88,12 @@ export default function HabitDetailScreen() {
     setSuccess('');
 
     if (!habit?.id) {
-      setError('No se encontró el hábito. Vuelve e inténtalo de nuevo.');
+      setError(t('habit_detail.error_not_found_retry'));
       return;
     }
 
     if (!photo?.uri) {
-      setError('Selecciona o toma una foto antes de enviar.');
+      setError(t('habit_detail.error_no_photo'));
       return;
     }
 
@@ -136,12 +138,12 @@ export default function HabitDetailScreen() {
 
       if (logError) throw logError;
 
-      setSuccess('¡Prueba enviada! Un compañero la validará pronto.');
+      setSuccess(t('habit_detail.success'));
       setTimeout(() => {
         navigation.goBack();
       }, 1500);
     } catch (e) {
-      setError(e?.message || 'No se pudo enviar la prueba. Revisa tu conexión e inténtalo de nuevo.');
+      setError(e?.message || t('habit_detail.error_upload'));
     } finally {
       setUploading(false);
     }
@@ -151,10 +153,10 @@ export default function HabitDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.section}>
-          <Text style={styles.errorText}>No se encontró el hábito.</Text>
+          <Text style={styles.errorText}>{t('habit_detail.error_not_found')}</Text>
         </View>
         <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.6}>
-          <Text style={styles.backLink}>← Volver</Text>
+          <Text style={styles.backLink}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -166,8 +168,8 @@ export default function HabitDetailScreen() {
         <Text style={styles.title}>{habit.title}</Text>
         {habit.description ? <Text style={styles.description}>{habit.description}</Text> : null}
 
-        <Text style={styles.sectionLabel}>Prueba del hábito</Text>
-        <Text style={styles.sectionHint}>Toma una foto o selecciónala de tu galería.</Text>
+        <Text style={styles.sectionLabel}>{t('habit_detail.proof_label')}</Text>
+        <Text style={styles.sectionHint}>{t('habit_detail.proof_hint')}</Text>
 
         <View style={styles.photoActions}>
           <TouchableOpacity
@@ -176,7 +178,7 @@ export default function HabitDetailScreen() {
             disabled={uploading}
             activeOpacity={0.9}
           >
-            <Text style={styles.actionBtnText}>Cámara</Text>
+            <Text style={styles.actionBtnText}>{t('common.camera')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
@@ -184,17 +186,17 @@ export default function HabitDetailScreen() {
             disabled={uploading}
             activeOpacity={0.9}
           >
-            <Text style={styles.actionBtnText}>Galería</Text>
+            <Text style={styles.actionBtnText}>{t('common.gallery')}</Text>
           </TouchableOpacity>
         </View>
 
         {photo?.uri ? (
           <View style={styles.previewContainer}>
-            <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="cover" />
+            <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="contain" />
           </View>
         ) : (
           <View style={styles.previewPlaceholder}>
-            <Text style={styles.previewPlaceholderText}>Sin foto seleccionada</Text>
+            <Text style={styles.previewPlaceholderText}>{t('habit_detail.no_photo')}</Text>
           </View>
         )}
 
@@ -210,7 +212,7 @@ export default function HabitDetailScreen() {
           {uploading ? (
             <ActivityIndicator color={WHITE} />
           ) : (
-            <Text style={styles.submitBtnText}>Enviar</Text>
+            <Text style={styles.submitBtnText}>{t('habit_detail.submit')}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -220,7 +222,7 @@ export default function HabitDetailScreen() {
         disabled={uploading}
         activeOpacity={0.6}
       >
-        <Text style={styles.backLink}>← Volver</Text>
+        <Text style={styles.backLink}>{t('common.back')}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -255,13 +257,12 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 4,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    backgroundColor: '#000',
   },
-  preview: { width: '100%', height: 220 },
+  preview: { width: '100%', height: 350 },
   previewPlaceholder: {
     marginTop: 14,
-    height: 220,
+    height: 350,
     borderRadius: 4,
     borderWidth: 1,
     borderColor: '#E0E0E0',
