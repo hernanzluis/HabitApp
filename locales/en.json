@@ -102,6 +102,12 @@
     "error_load": "Could not load pending habits.",
     "error_submit": "Could not register the validation."
   },
+  "history": {
+    "header_title": "History",
+    "loading": "Loading history...",
+    "empty": "You haven't completed any habits yet",
+    "error_load": "Could not load history. Check your connection."
+  },
   "ranking": {
     "title": "Team ranking",
     "loading": "Loading ranking...",
@@ -134,7 +140,8 @@
     "error_avatar": "Could not update profile photo.",
     "error_name": "Could not save name.",
     "error_logout": "Could not sign out.",
-    "language": "Language"
+    "language": "Language",
+    "settings_title": "Settings"
   },
   "nav": {
     "home": "Home",

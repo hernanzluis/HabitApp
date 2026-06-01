@@ -13,6 +13,7 @@ import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import HomeScreen from '../screens/HomeScreen';
 import HabitDetailScreen from '../screens/HabitDetailScreen';
+import HistoryScreen from '../screens/HistoryScreen';
 import ValidateHabitScreen from '../screens/ValidateHabitScreen';
 import RankingScreen from '../screens/RankingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -136,19 +137,28 @@ function TabNavigator() {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
-        options={{
+        options={({ navigation: nav }) => ({
           title: companyName || t('nav.home'),
           tabBarLabel: t('nav.home'),
           headerRight: () => (
-            <TouchableOpacity
-              onPress={() => Alert.alert(t('common.coming_soon'))}
-              style={styles.headerBtn}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="notifications-outline" size={24} color={TEXT} />
-            </TouchableOpacity>
+            <View style={styles.headerBtns}>
+              <TouchableOpacity
+                onPress={() => nav.navigate('History')}
+                style={styles.headerBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="time-outline" size={24} color={TEXT} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => Alert.alert(t('common.coming_soon'))}
+                style={styles.headerBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="notifications-outline" size={24} color={TEXT} />
+              </TouchableOpacity>
+            </View>
           ),
-        }}
+        })}
       />
       <Tab.Screen
         name="ValidateHabit"
@@ -176,18 +186,7 @@ function TabNavigator() {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{
-          title: t('nav.profile'),
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => Alert.alert(t('common.coming_soon'))}
-              style={styles.headerBtn}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="settings-outline" size={24} color={TEXT} />
-            </TouchableOpacity>
-          ),
-        }}
+        options={{ title: t('nav.profile') }}
       />
     </Tab.Navigator>
   );
@@ -208,6 +207,7 @@ function AppStack() {
     <Stack.Navigator screenOptions={{ headerShown: false, headerBackTitle: '' }}>
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerBackTitle: '' }} />
       <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="History" component={HistoryScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
     </Stack.Navigator>
   );
 }
@@ -251,7 +251,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 4,
+  },
   headerBtn: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
 });

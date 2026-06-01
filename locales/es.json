@@ -102,6 +102,12 @@
     "error_load": "No se pudieron cargar los hábitos pendientes.",
     "error_submit": "No se pudo registrar la validación."
   },
+  "history": {
+    "header_title": "Historial",
+    "loading": "Cargando historial...",
+    "empty": "Aún no has completado ningún hábito",
+    "error_load": "No se pudo cargar el historial. Revisa tu conexión."
+  },
   "ranking": {
     "title": "Ranking del equipo",
     "loading": "Cargando ranking...",
@@ -134,7 +140,8 @@
     "error_avatar": "No se pudo actualizar la foto de perfil.",
     "error_name": "No se pudo guardar el nombre.",
     "error_logout": "No se pudo cerrar sesión.",
-    "language": "Idioma"
+    "language": "Idioma",
+    "settings_title": "Ajustes"
   },
   "nav": {
     "home": "Inicio",

@@ -1,8 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Pressable,
   ScrollView,
   RefreshControl,
   StyleSheet,
@@ -11,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
@@ -44,17 +46,33 @@ function InfoRow({ label, value }) {
 }
 
 export default function ProfileScreen() {
+  const navigation = useNavigation();
   const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [nameSaving, setNameSaving] = useState(false);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => setSettingsVisible(true)}
+          style={styles.headerBtn}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="settings-outline" size={24} color={TEXT} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   const loadProfile = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -356,14 +374,6 @@ export default function ProfileScreen() {
               <InfoRow label={t('common.email')} value={data.email} />
               <View style={styles.divider} />
               <InfoRow label={t('profile.company_label')} value={data.companyName} />
-              <View style={styles.divider} />
-              <TouchableOpacity style={styles.infoRow} onPress={showLanguagePicker} activeOpacity={0.7}>
-                <Text style={styles.infoLabel}>{t('profile.language')}</Text>
-                <View style={styles.langValue}>
-                  <Text style={[styles.infoValue, styles.langText]}>{i18n.language === 'es' ? 'Español' : 'English'}</Text>
-                  <Ionicons name="chevron-forward" size={16} color={GRAY} />
-                </View>
-              </TouchableOpacity>
             </View>
 
             {/* Sección actividad */}
@@ -378,22 +388,57 @@ export default function ProfileScreen() {
           </>
         ) : null}
 
-        {/* Sección cerrar sesión */}
-        <View style={styles.logoutSection}>
-          <TouchableOpacity
-            style={[styles.logoutBtn, logoutLoading && styles.logoutBtnDisabled]}
-            onPress={onLogout}
-            disabled={logoutLoading}
-            activeOpacity={0.9}
-          >
-            {logoutLoading ? (
-              <ActivityIndicator color="#CC0000" />
-            ) : (
-              <Text style={styles.logoutBtnText}>{t('profile.logout')}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+
+      {/* Modal de ajustes */}
+      <Modal
+        visible={settingsVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSettingsVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setSettingsVisible(false)}>
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>{t('profile.settings_title')}</Text>
+            <View style={styles.modalDivider} />
+
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => { setSettingsVisible(false); setTimeout(showLanguagePicker, 300); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalOptionText}>{t('profile.language')}</Text>
+              <Ionicons name="chevron-forward" size={16} color={GRAY} />
+            </TouchableOpacity>
+
+            <View style={styles.modalDivider} />
+
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => { setSettingsVisible(false); onLogout(); }}
+              activeOpacity={0.7}
+              disabled={logoutLoading}
+            >
+              {logoutLoading ? (
+                <ActivityIndicator color="#CC0000" />
+              ) : (
+                <Text style={[styles.modalOptionText, styles.modalOptionLogout]}>{t('profile.logout')}</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.modalSectionGap} />
+
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => setSettingsVisible(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalOptionCancel}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -542,12 +587,6 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     marginBottom: 8,
   },
-  logoutSection: {
-    backgroundColor: WHITE,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    marginBottom: 8,
-  },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -565,15 +604,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     maxWidth: '60%',
     textAlign: 'right',
-  },
-  langValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  langText: {
-    flexShrink: 0,
-    maxWidth: undefined,
   },
   divider: {
     height: 1,
@@ -608,17 +638,64 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  // Logout
-  logoutBtn: {
-    paddingVertical: 12,
-    alignSelf: 'flex-start',
+  headerBtn: {
+    paddingHorizontal: 16,
   },
-  logoutBtnDisabled: {
-    opacity: 0.4,
+  // Modal de ajustes
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
   },
-  logoutBtnText: {
-    color: '#CC0000',
+  modalSheet: {
+    backgroundColor: WHITE,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 32,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E0E0E0',
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  modalTitle: {
+    fontSize: 16,
     fontWeight: '600',
-    fontSize: 14,
+    color: TEXT,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  modalOptionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: TEXT,
+  },
+  modalOptionLogout: {
+    color: '#CC0000',
+  },
+  modalOptionCancel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: GRAY,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#F0F0F0',
+    marginHorizontal: 16,
+  },
+  modalSectionGap: {
+    height: 8,
+    backgroundColor: BG,
   },
 });
