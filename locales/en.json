@@ -12,7 +12,8 @@
     "hide": "Hide",
     "colleague": "Colleague",
     "error_camera_permission": "We need permission to use the camera.",
-    "error_gallery_permission": "We need permission to access your gallery."
+    "error_gallery_permission": "We need permission to access your gallery.",
+    "coming_soon": "Coming soon"
   },
   "errors": {
     "generic": "An error occurred. Please try again.",
@@ -76,6 +77,7 @@
     "error_load": "Could not load data. Check your connection."
   },
   "habit_detail": {
+    "header_title": "Complete habit",
     "proof_label": "Habit proof",
     "proof_hint": "Take a photo or select one from your gallery.",
     "no_photo": "No photo selected",
@@ -108,6 +110,11 @@
     "position": "#{{count}}",
     "habit_one": "habit",
     "habit_other": "habits",
+    "period_week": "This week",
+    "period_month": "This month",
+    "period_all": "All time",
+    "filter_habit_label": "Habit",
+    "filter_all_habits": "All",
     "error_load": "Could not load the ranking. Check your connection."
   },
   "profile": {

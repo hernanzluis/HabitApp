@@ -40,19 +40,10 @@ function getFirstName(fullName) {
   return fullName.trim().split(/\s+/)[0];
 }
 
-function getTodayLabel(locale) {
-  return new Date().toLocaleDateString(locale, {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
 
 export default function HomeScreen() {
   const navigation = useNavigation();
-  const { t, i18n } = useTranslation();
-  const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
+  const { t } = useTranslation();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -256,7 +247,6 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.greeting}>{t('home.greeting', { name: getFirstName(profile?.full_name) })}</Text>
-        <Text style={styles.date}>{getTodayLabel(locale)}</Text>
       </View>
 
       {error ? (
@@ -294,7 +284,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BG,
-    paddingTop: 56,
   },
   centered: {
     flex: 1,
@@ -310,18 +299,13 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 18,
+    paddingTop: 12,
     marginBottom: 16,
   },
   greeting: {
-    color: TEXT,
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  date: {
     color: GRAY,
-    fontSize: 14,
-    marginTop: 4,
-    textTransform: 'capitalize',
+    fontSize: 16,
+    fontWeight: '500',
   },
   errorBanner: {
     marginHorizontal: 18,

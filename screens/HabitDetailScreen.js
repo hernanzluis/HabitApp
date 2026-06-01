@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -37,6 +37,25 @@ export default function HabitDetailScreen() {
   const route = useRoute();
   const { t } = useTranslation();
   const habit = route.params?.habit;
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerShown: true,
+      title: t('habit_detail.header_title'),
+      headerBackTitle: '',
+      headerStyle: {
+        backgroundColor: WHITE,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E0E0E0',
+      },
+      headerTitleStyle: {
+        fontSize: 17,
+        fontWeight: '600',
+        color: TEXT,
+      },
+      headerTitleAlign: 'center',
+    });
+  }, [navigation, t]);
 
   const [photo, setPhoto] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -155,9 +174,6 @@ export default function HabitDetailScreen() {
         <View style={styles.section}>
           <Text style={styles.errorText}>{t('habit_detail.error_not_found')}</Text>
         </View>
-        <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.6}>
-          <Text style={styles.backLink}>{t('common.back')}</Text>
-        </TouchableOpacity>
       </View>
     );
   }
@@ -216,29 +232,21 @@ export default function HabitDetailScreen() {
           )}
         </TouchableOpacity>
       </View>
-
-      <TouchableOpacity
-        onPress={() => navigation.goBack()}
-        disabled={uploading}
-        activeOpacity={0.6}
-      >
-        <Text style={styles.backLink}>{t('common.back')}</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
-  content: { paddingTop: 64, paddingBottom: 28 },
+  content: { paddingBottom: 28 },
   section: {
     backgroundColor: WHITE,
     paddingHorizontal: 16,
     paddingVertical: 16,
     marginBottom: 8,
   },
-  title: { fontSize: 20, fontWeight: '800', color: TEXT },
-  description: { marginTop: 10, fontSize: 14, color: GRAY, lineHeight: 20 },
+  title: { fontSize: 18, fontWeight: '600', color: TEXT },
+  description: { marginTop: 8, fontSize: 14, color: GRAY, lineHeight: 20 },
   sectionLabel: { marginTop: 20, fontSize: 14, fontWeight: '800', color: TEXT },
   sectionHint: { marginTop: 4, fontSize: 13, color: GRAY },
   photoActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
@@ -285,11 +293,4 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { opacity: 0.7 },
   submitBtnText: { color: WHITE, fontWeight: '600', fontSize: 15 },
-  backLink: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: BLUE,
-    fontSize: 14,
-    fontWeight: '600',
-  },
 });

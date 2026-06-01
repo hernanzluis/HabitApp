@@ -271,10 +271,6 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{t('profile.title')}</Text>
-      </View>
-
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -406,7 +402,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BG,
-    paddingTop: 56,
   },
   centered: {
     flex: 1,
@@ -419,15 +414,6 @@ const styles = StyleSheet.create({
     color: TEXT,
     marginTop: 14,
     fontSize: 14,
-  },
-  header: {
-    paddingHorizontal: 18,
-    marginBottom: 20,
-  },
-  title: {
-    color: TEXT,
-    fontSize: 24,
-    fontWeight: '800',
   },
   scrollContent: {
     paddingBottom: 8,

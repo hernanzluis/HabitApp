@@ -268,8 +268,6 @@ export default function ValidateHabitScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.headerTitle}>{t('validate.title')}</Text>
-
       {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
@@ -300,7 +298,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BG,
-    paddingTop: 56,
   },
   centered: {
     flex: 1,
@@ -318,13 +315,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#166534',
-  },
-  headerTitle: {
-    color: TEXT,
-    fontSize: 22,
-    fontWeight: '800',
-    paddingHorizontal: 18,
-    marginBottom: 12,
   },
   errorBanner: {
     backgroundColor: '#fee2e2',

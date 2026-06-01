@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -20,6 +20,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
 const BLUE = '#0A66C2';
+const TEXT = '#1D2226';
 const GRAY = '#666666';
 
 const Stack = createNativeStackNavigator();
@@ -32,9 +33,45 @@ const TAB_ICONS = {
   Profile: ['person', 'person-outline'],
 };
 
+const HEADER_OPTIONS = {
+  headerStyle: {
+    backgroundColor: WHITE,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  headerTitleStyle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: TEXT,
+  },
+  headerTitleAlign: 'center',
+};
+
 function TabNavigator() {
   const { t } = useTranslation();
   const [pendingCount, setPendingCount] = useState(0);
+  const [companyName, setCompanyName] = useState('');
+
+  const fetchCompanyName = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+      if (!profile?.company_id) return;
+      const { data: company } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', profile.company_id)
+        .single();
+      if (company?.name) setCompanyName(company.name);
+    } catch {
+      // non-critical
+    }
+  }, []);
 
   const fetchPendingCount = useCallback(async () => {
     try {
@@ -73,19 +110,20 @@ function TabNavigator() {
       const alreadyValidated = new Set((myValidations ?? []).map((v) => v.habit_log_id));
       setPendingCount(pendingLogs.filter((l) => !alreadyValidated.has(l.id)).length);
     } catch {
-      // badge failure is non-critical
+      // non-critical
     }
   }, []);
 
   useEffect(() => {
+    fetchCompanyName();
     fetchPendingCount();
-  }, [fetchPendingCount]);
+  }, [fetchCompanyName, fetchPendingCount]);
 
   return (
     <Tab.Navigator
       screenListeners={{ focus: fetchPendingCount }}
       screenOptions={({ route }) => ({
-        headerShown: false,
+        ...HEADER_OPTIONS,
         tabBarStyle: { backgroundColor: WHITE, borderTopColor: '#E0E0E0' },
         tabBarActiveTintColor: BLUE,
         tabBarInactiveTintColor: GRAY,
@@ -95,7 +133,23 @@ function TabNavigator() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: t('nav.home') }} />
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          title: companyName || t('nav.home'),
+          tabBarLabel: t('nav.home'),
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => Alert.alert(t('common.coming_soon'))}
+              style={styles.headerBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="notifications-outline" size={24} color={TEXT} />
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <Tab.Screen
         name="ValidateHabit"
         component={ValidateHabitScreen}
@@ -114,8 +168,27 @@ function TabNavigator() {
             : undefined,
         }}
       />
-      <Tab.Screen name="Ranking" component={RankingScreen} options={{ title: t('nav.ranking') }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: t('nav.profile') }} />
+      <Tab.Screen
+        name="Ranking"
+        component={RankingScreen}
+        options={{ title: t('nav.ranking') }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: t('nav.profile'),
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => Alert.alert(t('common.coming_soon'))}
+              style={styles.headerBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="settings-outline" size={24} color={TEXT} />
+            </TouchableOpacity>
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -132,9 +205,9 @@ function AuthStack() {
 
 function AppStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Tabs" component={TabNavigator} />
-      <Stack.Screen name="HabitDetail" component={HabitDetailScreen} />
+    <Stack.Navigator screenOptions={{ headerShown: false, headerBackTitle: '' }}>
+      <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerBackTitle: '' }} />
+      <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
     </Stack.Navigator>
   );
 }
@@ -177,5 +250,8 @@ const styles = StyleSheet.create({
     backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerBtn: {
+    paddingHorizontal: 16,
   },
 });

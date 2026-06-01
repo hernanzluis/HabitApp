@@ -12,7 +12,8 @@
     "hide": "Ocultar",
     "colleague": "Compañero",
     "error_camera_permission": "Necesitamos permiso para usar la cámara.",
-    "error_gallery_permission": "Necesitamos permiso para acceder a tu galería."
+    "error_gallery_permission": "Necesitamos permiso para acceder a tu galería.",
+    "coming_soon": "Próximamente"
   },
   "errors": {
     "generic": "Ocurrió un error. Intenta de nuevo.",
@@ -76,6 +77,7 @@
     "error_load": "No se pudieron cargar los datos. Revisa tu conexión."
   },
   "habit_detail": {
+    "header_title": "Completar hábito",
     "proof_label": "Prueba del hábito",
     "proof_hint": "Toma una foto o selecciónala de tu galería.",
     "no_photo": "Sin foto seleccionada",
@@ -108,6 +110,11 @@
     "position": "{{count}}º",
     "habit_one": "hábito",
     "habit_other": "hábitos",
+    "period_week": "Esta semana",
+    "period_month": "Este mes",
+    "period_all": "Total",
+    "filter_habit_label": "Hábito",
+    "filter_all_habits": "Todos",
     "error_load": "No se pudo cargar el ranking. Revisa tu conexión."
   },
   "profile": {
