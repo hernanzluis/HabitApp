@@ -72,8 +72,10 @@ HabitApp/
 │   ├── HomeScreen.js
 │   ├── HabitDetailScreen.js
 │   ├── ValidateHabitScreen.js
+│   ├── HistoryScreen.js
 │   ├── RankingScreen.js
-│   └── ProfileScreen.js
+│   ├── ProfileScreen.js
+│   └── AdminScreen.js
 ├── App.js                      # Punto de entrada (renderiza RootNavigator)
 ├── index.js                    # Registro de la app con Expo
 ├── app.json                    # Configuración de Expo
@@ -334,6 +336,31 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 - Tras votar el último pendiente → muestra "Todo al día ✓" → navega a Home tras 1 segundo
 - Pull-to-refresh, estado vacío
 
+### `HistoryScreen`
+- Accesible desde el icono de reloj (🕐) en el header de Home
+- **Datos:** todos los `habit_logs` del usuario actual, ordenados por `created_at DESC`
+- **Queries:**
+  1. `habit_logs` → `id, habit_id, photo_url, created_at` donde `user_id = currentUser`
+  2. **Promise.all** con:
+     - `habits` → `id, title` para los habitIds encontrados
+     - `habit_validations` → `habit_log_id, status` para los logIds encontrados
+- **Estado derivado por log:** si hay ≥1 validación `'validated'` → "Validado" (verde); si hay rechazos y ningún validado → "Rechazado" (rojo); si no hay validaciones → "Pendiente" (naranja)
+- **UI por tarjeta:** thumbnail 64×64 de la foto (modal al pulsar para verla a pantalla completa), título del hábito, fecha/hora, badge de estado con color
+- Modal de foto: pantalla negra, imagen `resizeMode="contain"`, cierra al pulsar
+- Pull-to-refresh, estado vacío, manejo de errores
+
+### `AdminScreen`
+- Solo accesible para usuarios con `role = 'admin'` (visible vía icono escudo en header de Home)
+- **Sección 1 — Código de invitación:**
+  - Muestra el código activo más reciente de la empresa (query a `invitations` ORDER BY created_at DESC LIMIT 1)
+  - Botón "Compartir" → `Share.share()` nativo con mensaje i18n
+  - Botón "Generar código" → genera un código `XXXX-XXXX` aleatorio, INSERT en `invitations` con `expires_at` a 7 días
+- **Sección 2 — Hábitos:**
+  - Lista todos los hábitos de la empresa ordenados por `created_at DESC`
+  - Switch por hábito para activar/desactivar (`is_active`) con actualización optimista + rollback en error
+  - Muestra `expires_at` si existe
+- Pull-to-refresh, estado vacío, manejo de errores por sección
+
 ### `RankingScreen`
 - **Queries:**
   1. `profiles` → obtiene `company_id` del usuario actual
@@ -389,12 +416,15 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - **AppStack** (con sesión):
   - `Tabs` → TabNavigator con 4 tabs
   - `HabitDetail` → stack screen por encima de las tabs (sin barra inferior visible)
+  - `History` → stack screen accesible desde icono reloj en header de Home
+  - `Admin` → stack screen accesible desde icono escudo en header de Home (solo admins)
 - **TabNavigator:**
   - `Home` (icono casa) — Inicio
   - `ValidateHabit` (icono check) — Validar
   - `Ranking` (icono trofeo) — Ranking
   - `Profile` (icono persona) — Perfil
 - **Tab "Validar":** badge rojo con número de logs pendientes para el usuario; si pendingCount = 0, la tab se deshabilita (gris, no pulsable con `tabBarButton` + `disabled`). El conteo se recalcula al montar y con `screenListeners={{ focus }}`.
+- **Header de Home:** icono reloj → navega a History; icono escudo → navega a Admin (solo visible si `role = 'admin'`); icono campana → coming soon. El título del header muestra el nombre de la empresa (query en RootNavigator al montar).
 - La sesión la gestiona `RootNavigator` via `supabase.auth.onAuthStateChange`; no hay navegación manual tras login/logout.
 
 ---
@@ -419,7 +449,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 
 ## 13. Funcionalidades Pendientes (v2)
 
-- **AdminScreen:** panel para que el admin cree hábitos (título, descripción, recurrence, expires_at), gestione usuarios de la empresa y vea invitaciones activas
+- **AdminScreen (ampliación):** actualmente muestra código de invitación y toggle de hábitos. Pendiente: creación de hábitos nuevos (título, descripción, recurrence, expires_at), gestión de usuarios de la empresa y vista de invitaciones históricas
 - **Sistema de equipos:** el admin crea equipos dentro de la empresa y asigna usuarios (un usuario puede pertenecer a N equipos, tabla `team_members`). Los hábitos se pueden asignar a toda la empresa (`team_id = null`), a un equipo específico (`team_id` del equipo), o dejarse sin equipo explícito (visibles para todos). HomeScreen filtraría los hábitos mostrando los de la empresa completa más los del equipo del usuario. Rankings podrían filtrarse por equipo. Requiere AdminScreen para la gestión.
 - **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un compañero valida tu hábito
 - **SplashScreen animada** con logo de la app
