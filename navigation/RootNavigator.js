@@ -31,7 +31,7 @@ const Tab = createBottomTabNavigator();
 const TAB_ICONS = {
   Home: ['home', 'home-outline'],
   ValidateHabit: ['checkmark-circle', 'checkmark-circle-outline'],
-  Ranking: ['trophy', 'trophy-outline'],
+  Ranking: ['people', 'people-outline'],
   Profile: ['person', 'person-outline'],
 };
 
@@ -199,7 +199,7 @@ function TabNavigator() {
       <Tab.Screen
         name="Ranking"
         component={RankingScreen}
-        options={{ title: t('nav.ranking') }}
+        options={{ title: t('activity.header_title'), tabBarLabel: t('nav.ranking') }}
       />
       <Tab.Screen
         name="Profile"

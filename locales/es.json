@@ -11,7 +11,7 @@
     "gallery": "Galería",
     "show": "Mostrar",
     "hide": "Ocultar",
-    "colleague": "Compañero",
+    "colleague": "Familiar",
     "error_camera_permission": "Necesitamos permiso para usar la cámara.",
     "error_gallery_permission": "Necesitamos permiso para acceder a tu galería.",
     "coming_soon": "Próximamente"
@@ -25,9 +25,9 @@
     "password_mismatch": "Las contraseñas no coinciden.",
     "confirm_password_required": "Por favor, confirma tu contraseña.",
     "name_required": "Por favor, introduce tu nombre completo.",
-    "company_required": "Por favor, introduce el nombre de tu empresa.",
+    "company_required": "Por favor, introduce el nombre de tu grupo.",
     "invite_required": "Por favor, introduce el código de invitación.",
-    "no_company": "Tu perfil no tiene una empresa asignada."
+    "no_company": "Tu perfil no tiene un grupo asignado."
   },
   "login": {
     "subtitle": "Accede a tu cuenta",
@@ -47,17 +47,17 @@
   },
   "signup": {
     "subtitle": "Crea tu cuenta",
-    "mode_create": "Crear empresa",
-    "mode_join": "Tengo un código",
+    "mode_create": "Crear grupo",
+    "mode_join": "Tengo un código de invitación",
     "full_name": "Nombre completo",
     "full_name_placeholder": "Juan Pérez",
     "confirm_password": "Confirmar contraseña",
-    "company_name": "Nombre de la empresa",
-    "company_placeholder": "Habit Corp.",
+    "company_name": "Nombre del grupo",
+    "company_placeholder": "Familia García",
     "invite_code": "Código de invitación",
     "invite_placeholder": "XXXX-XXXX",
     "submit_create": "Crear cuenta",
-    "submit_join": "Unirse a la empresa",
+    "submit_join": "Unirse al grupo",
     "back_to_login": "Volver a login",
     "error_already_registered": "Este email ya está registrado.",
     "error_invite_invalid": "Código de invitación inválido.",
@@ -75,6 +75,7 @@
     "status_validated": "Validado",
     "status_rejected": "Rechazado",
     "status_pending": "Pendiente",
+    "due_before": "Antes de las {{time}}",
     "error_load": "No se pudieron cargar los datos. Revisa tu conexión."
   },
   "habit_detail": {
@@ -83,7 +84,9 @@
     "proof_hint": "Toma una foto o selecciónala de tu galería.",
     "no_photo": "Sin foto seleccionada",
     "submit": "Enviar",
-    "success": "¡Prueba enviada! Un compañero la validará pronto.",
+    "note_label": "Nota",
+    "note_placeholder": "Añade una nota opcional...",
+    "success": "¡Prueba enviada! Un familiar la validará pronto.",
     "error_not_found": "No se encontró el hábito.",
     "error_not_found_retry": "No se encontró el hábito. Vuelve e inténtalo de nuevo.",
     "error_no_photo": "Selecciona o toma una foto antes de enviar.",
@@ -106,18 +109,38 @@
   "admin": {
     "header_title": "Administración",
     "invite_section": "Código de invitación",
-    "invite_code_hint": "Comparte este código con tus compañeros",
+    "invite_code_hint": "Comparte este código con tu familia",
     "invite_share": "Compartir",
     "invite_generate": "Generar código",
     "invite_generating": "Generando...",
-    "invite_share_message": "Únete a mi empresa en HabitApp con el código de invitación: {{code}}",
+    "invite_share_message": "Únete a mi grupo en HabitApp con el código de invitación: {{code}}",
     "habits_section": "Hábitos",
     "habit_expires": "Expira el {{date}}",
     "empty_habits": "No hay hábitos creados todavía",
     "loading": "Cargando...",
     "error_load": "No se pudo cargar la información.",
     "error_toggle": "No se pudo actualizar el hábito.",
-    "error_generate": "No se pudo generar el código."
+    "error_generate": "No se pudo generar el código.",
+    "due_time_label": "Hora límite (opcional)",
+    "due_time_placeholder": "Sin hora límite",
+    "expires_at_label": "Fecha y hora límite (opcional)",
+    "expires_at_placeholder": "Sin fecha límite",
+    "expires_at_clear": "Quitar fecha",
+    "habit_new": "Nuevo hábito",
+    "habit_title_placeholder": "Nombre del hábito",
+    "habit_description_placeholder": "Descripción opcional",
+    "habit_recurrence_label": "Frecuencia",
+    "habit_recurrence_daily": "Diario",
+    "habit_recurrence_once": "Una vez",
+    "habit_assign_label": "Asignar a",
+    "habit_save": "Guardar",
+    "habit_assigned_count": "{{count}} asignado(s)",
+    "habit_assignments_title": "Asignaciones",
+    "error_create": "No se pudo crear el hábito.",
+    "error_title_required": "El nombre del hábito es obligatorio.",
+    "delete_habit_title": "Eliminar hábito",
+    "delete_habit_message": "Se eliminarán también todas las fotos y validaciones asociadas. Esta acción no se puede deshacer.",
+    "delete_habit_confirm": "Eliminar"
   },
   "history": {
     "header_title": "Historial",
@@ -128,7 +151,7 @@
   "ranking": {
     "title": "Ranking del equipo",
     "loading": "Cargando ranking...",
-    "empty": "Aún no hay hábitos validados en tu empresa",
+    "empty": "Aún no hay hábitos validados en tu grupo",
     "you": "Tú",
     "position": "{{count}}º",
     "habit_one": "hábito",
@@ -143,7 +166,7 @@
   "profile": {
     "title": "Mi perfil",
     "loading": "Cargando perfil...",
-    "company_label": "Empresa",
+    "company_label": "Grupo",
     "activity": "Actividad",
     "completed": "Completados",
     "validated": "Validados",
@@ -163,7 +186,17 @@
   "nav": {
     "home": "Inicio",
     "validate": "Validar",
-    "ranking": "Ranking",
+    "ranking": "Actividad",
     "profile": "Perfil"
+  },
+  "activity": {
+    "header_title": "Actividad del grupo",
+    "loading": "Cargando actividad...",
+    "empty": "Aún no hay actividad esta semana",
+    "error_load": "No se pudo cargar la actividad. Revisa tu conexión.",
+    "period": "Semana del {{from}} al {{to}}",
+    "completed": "completados",
+    "validated": "validados",
+    "you": "Tú"
   }
 }

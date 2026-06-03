@@ -2,17 +2,13 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
-  Pressable,
+  Image,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
@@ -23,55 +19,55 @@ const TEXT = '#1D2226';
 const GRAY = '#666666';
 const HIGHLIGHT = '#EEF3FB';
 
-const MEDALS = ['🥇', '🥈', '🥉'];
-
-function getWeekStart() {
+function getWeekBounds() {
   const now = new Date();
   const day = now.getDay();
   const diff = day === 0 ? -6 : 1 - day;
+
   const monday = new Date(now);
   monday.setDate(now.getDate() + diff);
   monday.setHours(0, 0, 0, 0);
-  return monday.toISOString();
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
+
+  return { monday, sunday, todayEnd };
 }
 
-function getMonthStart() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+function formatShortDate(date, locale) {
+  return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 }
 
 export default function RankingScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [ranking, setRanking] = useState([]);
+  const [members, setMembers] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
-  const [period, setPeriod] = useState('week');
-  const [selectedHabit, setSelectedHabit] = useState(null);
-  const [habits, setHabits] = useState([]);
-  const [habitModalVisible, setHabitModalVisible] = useState(false);
+  const [periodLabel, setPeriodLabel] = useState('');
 
-  const PERIODS = [
-    { value: 'week', label: t('ranking.period_week') },
-    { value: 'month', label: t('ranking.period_month') },
-    { value: 'all', label: t('ranking.period_all') },
-  ];
-
-  const selectedHabitLabel = selectedHabit
-    ? (habits.find((h) => h.id === selectedHabit)?.title ?? t('ranking.filter_all_habits'))
-    : t('ranking.filter_all_habits');
-
-  const loadRanking = useCallback(async (isRefresh = false) => {
+  const loadActivity = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError('');
 
+    const { monday, sunday, todayEnd } = getWeekBounds();
+
+    setPeriodLabel(
+      t('activity.period', {
+        from: formatShortDate(monday, locale),
+        to: formatShortDate(sunday, locale),
+      })
+    );
+
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) return;
 
@@ -87,31 +83,63 @@ export default function RankingScreen() {
 
       const [
         { data: companyProfiles, error: profilesError },
-        { data: habitsData, error: habitsError },
+        { data: activeHabits, error: habitsError },
       ] = await Promise.all([
-        supabase.from('profiles').select('id, full_name').eq('company_id', profile.company_id),
+        supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .eq('company_id', profile.company_id),
         supabase
           .from('habits')
-          .select('id, title')
+          .select('id')
           .eq('company_id', profile.company_id)
-          .eq('is_active', true)
-          .order('title'),
+          .eq('is_active', true),
       ]);
       if (profilesError) throw profilesError;
       if (habitsError) throw habitsError;
 
-      setHabits(habitsData ?? []);
-
       const userIds = (companyProfiles ?? []).map((p) => p.id);
+      const activeHabitIds = (activeHabits ?? []).map((h) => h.id);
 
-      let logsQuery = supabase
+      // Assignments: cuántos hábitos tiene asignados cada miembro
+      let assignments = [];
+      if (activeHabitIds.length > 0 && userIds.length > 0) {
+        const { data: assignData, error: assignError } = await supabase
+          .from('habit_assignments')
+          .select('habit_id, user_id')
+          .in('habit_id', activeHabitIds)
+          .in('user_id', userIds);
+        if (assignError) throw assignError;
+        assignments = assignData ?? [];
+      }
+
+      const assignedMap = {};
+      assignments.forEach((a) => {
+        assignedMap[a.user_id] = (assignedMap[a.user_id] || 0) + 1;
+      });
+
+      // No active habits — show all members with zero counts
+      if (!activeHabitIds.length) {
+        setMembers(
+          (companyProfiles ?? []).map((p) => ({
+            id: p.id,
+            full_name: p.full_name,
+            avatar_url: p.avatar_url,
+            assigned: 0,
+            completed: 0,
+            validated: 0,
+          }))
+        );
+        return;
+      }
+
+      const { data: logs, error: logsError } = await supabase
         .from('habit_logs')
         .select('id, user_id')
-        .in('user_id', userIds);
-      if (selectedHabit) {
-        logsQuery = logsQuery.eq('habit_id', selectedHabit);
-      }
-      const { data: logs, error: logsError } = await logsQuery;
+        .in('habit_id', activeHabitIds)
+        .in('user_id', userIds)
+        .gte('created_at', monday.toISOString())
+        .lte('created_at', todayEnd.toISOString());
       if (logsError) throw logsError;
 
       const logIds = (logs ?? []).map((l) => l.id);
@@ -120,80 +148,98 @@ export default function RankingScreen() {
 
       let validations = [];
       if (logIds.length > 0) {
-        let valQuery = supabase
+        const { data: validationsData, error: validationsError } = await supabase
           .from('habit_validations')
           .select('habit_log_id')
           .eq('status', 'validated')
           .in('habit_log_id', logIds);
-
-        if (period === 'week') {
-          valQuery = valQuery.gte('created_at', getWeekStart());
-        } else if (period === 'month') {
-          valQuery = valQuery.gte('created_at', getMonthStart());
-        }
-
-        const { data: validationsData, error: validationsError } = await valQuery;
         if (validationsError) throw validationsError;
         validations = validationsData ?? [];
       }
 
-      const counts = {};
-      validations.forEach((v) => {
-        const userId = logUserMap[v.habit_log_id];
-        if (userId) counts[userId] = (counts[userId] || 0) + 1;
+      // Aggregate per user
+      const completedMap = {};
+      (logs ?? []).forEach((l) => {
+        completedMap[l.user_id] = (completedMap[l.user_id] || 0) + 1;
       });
 
-      const sorted = (companyProfiles ?? [])
-        .map((p) => ({ id: p.id, full_name: p.full_name, count: counts[p.id] || 0 }))
-        .filter((p) => p.count > 0)
-        .sort((a, b) => b.count - a.count);
+      const validatedMap = {};
+      validations.forEach((v) => {
+        const userId = logUserMap[v.habit_log_id];
+        if (userId) validatedMap[userId] = (validatedMap[userId] || 0) + 1;
+      });
 
-      setRanking(sorted);
+      const result = (companyProfiles ?? [])
+        .map((p) => ({
+          id: p.id,
+          full_name: p.full_name,
+          avatar_url: p.avatar_url,
+          assigned: assignedMap[p.id] || 0,
+          completed: completedMap[p.id] || 0,
+          validated: validatedMap[p.id] || 0,
+        }))
+        .sort((a, b) => b.completed - a.completed || (a.full_name ?? '').localeCompare(b.full_name ?? ''));
+
+      setMembers(result);
     } catch (e) {
-      setError(e?.message || t('ranking.error_load'));
+      setError(e?.message || t('activity.error_load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [period, selectedHabit]);
+  }, [t, locale]);
 
   useFocusEffect(
     useCallback(() => {
-      loadRanking();
-    }, [loadRanking])
+      loadActivity();
+    }, [loadActivity])
   );
 
-  const selectHabit = (id) => {
-    setSelectedHabit(id);
-    setHabitModalVisible(false);
-  };
-
-  const renderItem = ({ item, index }) => {
+  const renderItem = ({ item }) => {
     const isCurrentUser = item.id === currentUserId;
-    const isTopThree = index < 3;
+    const name = item.full_name || '—';
+    const initial = name.charAt(0).toUpperCase();
 
     return (
       <View style={[styles.row, isCurrentUser && styles.rowHighlight]}>
-        <View style={styles.positionBox}>
-          {isTopThree ? (
-            <Text style={styles.medal}>{MEDALS[index]}</Text>
+        {/* Avatar */}
+        <View style={styles.avatarWrapper}>
+          {item.avatar_url ? (
+            <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
           ) : (
-            <Text style={[styles.position, isCurrentUser && styles.positionHighlight]}>
-              {t('ranking.position', { count: index + 1 })}
-            </Text>
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarInitial}>{initial}</Text>
+            </View>
           )}
         </View>
+
+        {/* Nombre */}
         <View style={styles.nameBox}>
           <Text style={[styles.name, isCurrentUser && styles.nameHighlight]} numberOfLines={1}>
-            {item.full_name || '—'}
+            {name}
           </Text>
-          {isCurrentUser && <Text style={styles.youTag}>{t('ranking.you')}</Text>}
+          {isCurrentUser && <Text style={styles.youTag}>{t('activity.you')}</Text>}
         </View>
-        <View style={styles.countBox}>
-          <Text style={[styles.count, isCurrentUser && styles.countHighlight]}>{item.count}</Text>
-          <Text style={[styles.countLabel, isCurrentUser && styles.countLabelHighlight]}>
-            {t('ranking.habit', { count: item.count })}
-          </Text>
+
+        {/* Contadores */}
+        <View style={styles.countersBox}>
+          <View style={styles.counter}>
+            <Text style={[styles.counterValue, isCurrentUser && styles.counterValueHighlight]}>
+              {item.completed}
+              <Text style={styles.counterDenom}>/{item.assigned}</Text>
+            </Text>
+            <Text style={[styles.counterLabel, isCurrentUser && styles.counterLabelHighlight]}>
+              {t('activity.completed')}
+            </Text>
+          </View>
+          <View style={[styles.counter, styles.counterRight]}>
+            <Text style={[styles.counterValue, isCurrentUser && styles.counterValueHighlight]}>
+              {item.validated}
+            </Text>
+            <Text style={[styles.counterLabel, isCurrentUser && styles.counterLabelHighlight]}>
+              {t('activity.validated')}
+            </Text>
+          </View>
         </View>
       </View>
     );
@@ -203,53 +249,19 @@ export default function RankingScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={BLUE} />
-        <Text style={styles.loadingText}>{t('ranking.loading')}</Text>
+        <Text style={styles.loadingText}>{t('activity.loading')}</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Filtros */}
-      <View style={styles.filtersCard}>
-        {/* Pills de período */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillRow}
-        >
-          {PERIODS.map((p) => (
-            <TouchableOpacity
-              key={p.value}
-              style={[styles.pill, period === p.value && styles.pillActive]}
-              onPress={() => setPeriod(p.value)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.pillText, period === p.value && styles.pillTextActive]}>
-                {p.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Dropdown de hábito */}
-        {habits.length > 0 && (
-          <>
-            <View style={styles.divider} />
-            <TouchableOpacity
-              style={styles.dropdownRow}
-              onPress={() => setHabitModalVisible(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.dropdownLabel}>{t('ranking.filter_habit_label')}</Text>
-              <View style={styles.dropdownValue}>
-                <Text style={styles.dropdownValueText} numberOfLines={1}>{selectedHabitLabel}</Text>
-                <Ionicons name="chevron-down" size={16} color={GRAY} />
-              </View>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
+      {/* Cabecera de período */}
+      {periodLabel ? (
+        <View style={styles.periodBanner}>
+          <Text style={styles.periodText}>{periodLabel}</Text>
+        </View>
+      ) : null}
 
       {error ? (
         <View style={styles.errorBanner}>
@@ -258,73 +270,27 @@ export default function RankingScreen() {
       ) : null}
 
       <FlatList
-        data={ranking}
+        data={members}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListFooterComponent={() => members.length > 0 ? <View style={styles.separator} /> : null}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => loadRanking(true)}
+            onRefresh={() => loadActivity(true)}
             tintColor={BLUE}
           />
         }
         ListEmptyComponent={
           !error ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>{t('ranking.empty')}</Text>
+              <Text style={styles.emptyText}>{t('activity.empty')}</Text>
             </View>
           ) : null
         }
       />
-
-      {/* Modal selector de hábito */}
-      <Modal
-        visible={habitModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setHabitModalVisible(false)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setHabitModalVisible(false)}>
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>{t('ranking.filter_habit_label')}</Text>
-            <ScrollView bounces={false}>
-              {/* Opción "Todos" */}
-              <TouchableOpacity
-                style={styles.modalOption}
-                onPress={() => selectHabit(null)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.modalOptionText, selectedHabit === null && styles.modalOptionTextActive]}>
-                  {t('ranking.filter_all_habits')}
-                </Text>
-                {selectedHabit === null && (
-                  <Ionicons name="checkmark" size={18} color={BLUE} />
-                )}
-              </TouchableOpacity>
-              <View style={styles.modalDivider} />
-              {habits.map((h, index) => (
-                <React.Fragment key={h.id}>
-                  <TouchableOpacity
-                    style={styles.modalOption}
-                    onPress={() => selectHabit(h.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.modalOptionText, selectedHabit === h.id && styles.modalOptionTextActive]}>
-                      {h.title}
-                    </Text>
-                    {selectedHabit === h.id && (
-                      <Ionicons name="checkmark" size={18} color={BLUE} />
-                    )}
-                  </TouchableOpacity>
-                  {index < habits.length - 1 && <View style={styles.modalDivider} />}
-                </React.Fragment>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -346,62 +312,16 @@ const styles = StyleSheet.create({
     marginTop: 14,
     fontSize: 14,
   },
-  filtersCard: {
+  periodBanner: {
     backgroundColor: WHITE,
-    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     marginBottom: 8,
   },
-  pillRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 14,
-    gap: 8,
-    paddingVertical: 4,
-    paddingBottom: 10,
-  },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: BG,
-  },
-  pillActive: {
-    backgroundColor: BLUE,
-  },
-  pillText: {
+  periodText: {
     fontSize: 13,
     fontWeight: '600',
-    color: TEXT,
-  },
-  pillTextActive: {
-    color: WHITE,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-  },
-  dropdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  dropdownLabel: {
-    fontSize: 14,
-    fontWeight: '600',
     color: GRAY,
-  },
-  dropdownValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    maxWidth: '60%',
-  },
-  dropdownValueText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: TEXT,
-    flexShrink: 1,
   },
   errorBanner: {
     backgroundColor: '#fee2e2',
@@ -415,14 +335,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listContent: {
-    paddingBottom: 28,
     flexGrow: 1,
+    paddingBottom: 28,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
   },
   row: {
     backgroundColor: WHITE,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -431,27 +354,33 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: BLUE,
   },
-  positionBox: {
+  avatarWrapper: {
+    marginRight: 12,
+  },
+  avatar: {
     width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  avatarFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E8E8E8',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  medal: {
-    fontSize: 24,
-  },
-  position: {
+  avatarInitial: {
     fontSize: 16,
     fontWeight: '800',
-    color: GRAY,
-  },
-  positionHighlight: {
     color: BLUE,
   },
   nameBox: {
     flex: 1,
-    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingRight: 8,
   },
   name: {
     fontSize: 15,
@@ -470,24 +399,43 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
+    overflow: 'hidden',
   },
-  countBox: {
-    alignItems: 'flex-end',
+  countersBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
-  count: {
-    fontSize: 20,
+  counter: {
+    alignItems: 'center',
+    minWidth: 52,
+  },
+  counterRight: {
+    borderLeftWidth: 1,
+    borderLeftColor: '#E0E0E0',
+    paddingLeft: 16,
+  },
+  counterValue: {
+    fontSize: 18,
     fontWeight: '900',
+    color: TEXT,
+  },
+  counterValueHighlight: {
     color: BLUE,
   },
-  countHighlight: {
-    color: BLUE,
-  },
-  countLabel: {
-    fontSize: 11,
-    color: GRAY,
+  counterDenom: {
+    fontSize: 13,
     fontWeight: '600',
+    color: GRAY,
   },
-  countLabelHighlight: {
+  counterLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: GRAY,
+    textAlign: 'center',
+    marginTop: 1,
+  },
+  counterLabelHighlight: {
     color: BLUE,
   },
   emptyCard: {
@@ -501,55 +449,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     lineHeight: 22,
-  },
-  // Modal
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: WHITE,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 32,
-    maxHeight: '70%',
-  },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E0E0E0',
-    alignSelf: 'center',
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  modalTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: TEXT,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  modalOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  modalOptionText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: TEXT,
-    flex: 1,
-  },
-  modalOptionTextActive: {
-    color: BLUE,
-  },
-  modalDivider: {
-    height: 1,
-    backgroundColor: '#F0F0F0',
-    marginHorizontal: 16,
   },
 });

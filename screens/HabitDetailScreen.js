@@ -5,9 +5,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
@@ -58,6 +60,7 @@ export default function HabitDetailScreen() {
   }, [navigation, t]);
 
   const [photo, setPhoto] = useState(null);
+  const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -68,26 +71,6 @@ export default function HabitDetailScreen() {
       if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
     };
   }, []);
-
-  const pickFromGallery = async () => {
-    setError('');
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError(t('common.error_gallery_permission'));
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setPhoto(result.assets[0]);
-    }
-  };
 
   const takePhoto = async () => {
     setError('');
@@ -160,6 +143,7 @@ export default function HabitDetailScreen() {
         user_id: user.id,
         photo_url: photoUrl,
         status: 'pending',
+        notes: notes.trim() || null,
       });
 
       if (logError) throw logError;
@@ -194,40 +178,47 @@ export default function HabitDetailScreen() {
         <Text style={styles.sectionLabel}>{t('habit_detail.proof_label')}</Text>
         <Text style={styles.sectionHint}>{t('habit_detail.proof_hint')}</Text>
 
-        <View style={styles.photoActions}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={takePhoto}
-            disabled={uploading}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.actionBtnText}>{t('common.camera')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={pickFromGallery}
-            disabled={uploading}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.actionBtnText}>{t('common.gallery')}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Botón principal: cámara */}
+        <TouchableOpacity
+          style={[styles.cameraBtn, uploading && styles.btnDisabled]}
+          onPress={takePhoto}
+          disabled={uploading}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="camera-outline" size={22} color={WHITE} style={styles.cameraBtnIcon} />
+          <Text style={styles.cameraBtnText}>{t('common.camera')}</Text>
+        </TouchableOpacity>
 
+        {/* Área de previsualización */}
         {photo?.uri ? (
           <View style={styles.previewContainer}>
             <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="contain" />
           </View>
         ) : (
           <View style={styles.previewPlaceholder}>
+            <Ionicons name="image-outline" size={28} color="#C0C0C0" />
             <Text style={styles.previewPlaceholderText}>{t('habit_detail.no_photo')}</Text>
           </View>
         )}
+
+        {/* Campo de nota opcional */}
+        <Text style={styles.noteLabel}>{t('habit_detail.note_label')}</Text>
+        <TextInput
+          style={styles.noteInput}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder={t('habit_detail.note_placeholder')}
+          placeholderTextColor={GRAY}
+          multiline
+          maxLength={150}
+          editable={!uploading}
+        />
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {success ? <Text style={styles.successText}>{success}</Text> : null}
 
         <TouchableOpacity
-          style={[styles.submitBtn, (uploading || !!success) && styles.submitBtnDisabled]}
+          style={[styles.submitBtn, (uploading || !!success) && styles.btnDisabled]}
           onPress={onSubmit}
           disabled={uploading || !!success}
           activeOpacity={0.9}
@@ -256,48 +247,61 @@ const styles = StyleSheet.create({
   description: { marginTop: 8, fontSize: 14, color: GRAY, lineHeight: 20 },
   sectionLabel: { marginTop: 20, fontSize: 14, fontWeight: '800', color: TEXT },
   sectionHint: { marginTop: 4, fontSize: 13, color: GRAY },
-  photoActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  actionBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 4,
-    backgroundColor: BG,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+  cameraBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 16,
+    minHeight: 56,
+    borderRadius: 4,
+    backgroundColor: BLUE,
+    gap: 8,
   },
-  actionBtnText: { color: TEXT, fontWeight: '600', fontSize: 14 },
+  cameraBtnIcon: { marginRight: 2 },
+  cameraBtnText: { color: WHITE, fontWeight: '700', fontSize: 16 },
   previewContainer: {
-    marginTop: 14,
+    marginTop: 16,
     borderRadius: 4,
     overflow: 'hidden',
     backgroundColor: '#000',
   },
-  preview: { width: '100%', height: 350 },
+  preview: { width: '100%', height: 220 },
   previewPlaceholder: {
-    marginTop: 14,
-    height: 350,
+    marginTop: 16,
+    height: 120,
     borderRadius: 4,
     borderWidth: 1,
     borderColor: '#E0E0E0',
     backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
   },
-  previewPlaceholderText: { color: GRAY, fontSize: 13, fontWeight: '600' },
+  previewPlaceholderText: { color: '#C0C0C0', fontSize: 12, fontWeight: '600' },
+  noteLabel: { marginTop: 20, fontSize: 13, fontWeight: '600', color: GRAY },
+  noteInput: {
+    marginTop: 6,
+    minHeight: 80,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: WHITE,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: TEXT,
+    textAlignVertical: 'top',
+  },
   errorText: { marginTop: 12, color: '#b91c1c', fontSize: 13, fontWeight: '600' },
   successText: { marginTop: 12, color: '#0f766e', fontSize: 13, fontWeight: '700' },
   submitBtn: {
     marginTop: 16,
-    height: 44,
+    minHeight: 56,
     borderRadius: 4,
     backgroundColor: BLUE,
-    alignSelf: 'center',
-    paddingHorizontal: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  submitBtnDisabled: { opacity: 0.7 },
-  submitBtnText: { color: WHITE, fontWeight: '600', fontSize: 15 },
+  btnDisabled: { opacity: 0.7 },
+  submitBtnText: { color: WHITE, fontWeight: '700', fontSize: 16 },
 });

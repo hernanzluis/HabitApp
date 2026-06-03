@@ -20,20 +20,25 @@ const TEXT = '#1D2226';
 const GRAY = '#666666';
 const ORANGE = '#f97316';
 
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 function formatExpiry(dateStr) {
   const d = new Date(dateStr);
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const date = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  if (d.getHours() !== 0 || d.getMinutes() !== 0) {
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${date} ${hh}:${mm}`;
+  }
+  return date;
 }
 
-function daysUntil(dateStr) {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const exp = new Date(dateStr);
-  exp.setHours(0, 0, 0, 0);
-  return Math.round((exp - now) / MS_PER_DAY);
+function isDuePast(dueTime) {
+  const [hh, mm] = dueTime.split(':').map(Number);
+  const limit = new Date();
+  limit.setHours(hh, mm, 0, 0);
+  return new Date() > limit;
 }
+
 
 function getFirstName(fullName, fallback) {
   if (!fullName?.trim()) return fallback;
@@ -86,11 +91,25 @@ export default function HomeScreen() {
 
       setProfile(profileData);
 
+      // Solo hábitos asignados explícitamente al usuario
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('habit_assignments')
+        .select('habit_id')
+        .eq('user_id', user.id);
+      if (assignmentsError) throw assignmentsError;
+
+      const assignedIds = (assignments ?? []).map((a) => a.habit_id);
+      if (!assignedIds.length) {
+        setHabits([]);
+        return;
+      }
+
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
-        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at')
+        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time')
         .eq('company_id', profileData.company_id)
         .eq('is_active', true)
+        .in('id', assignedIds)
         .order('created_at', { ascending: true });
 
       if (habitsError) throw habitsError;
@@ -177,7 +196,6 @@ export default function HomeScreen() {
   };
 
   const renderHabit = ({ item }) => {
-    const urgent = item.expires_at && daysUntil(item.expires_at) <= 3;
 
     let completedCardStyle = null;
     let statusText = '';
@@ -203,8 +221,13 @@ export default function HomeScreen() {
     <View style={[styles.habitCard, completedCardStyle]}>
       <Text style={styles.habitTitle}>{item.title}</Text>
       {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
+      {item.recurrence === 'daily' && item.due_time ? (
+        <Text style={[styles.dueTimeText, !item.completedToday && isDuePast(item.due_time) && styles.dueTimeUrgent]}>
+          {t('home.due_before', { time: item.due_time.slice(0, 5) })}
+        </Text>
+      ) : null}
       {item.expires_at ? (
-        <Text style={[styles.expiryText, urgent && styles.expiryUrgent]}>
+        <Text style={styles.expiryText}>
           {t('home.expires', { date: formatExpiry(item.expires_at) })}
         </Text>
       ) : null}
@@ -370,14 +393,20 @@ const styles = StyleSheet.create({
     color: GRAY,
     lineHeight: 20,
   },
+  dueTimeText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
+    color: GRAY,
+  },
+  dueTimeUrgent: {
+    color: ORANGE,
+  },
   expiryText: {
     marginTop: 8,
     fontSize: 12,
     fontWeight: '600',
     color: GRAY,
-  },
-  expiryUrgent: {
-    color: ORANGE,
   },
   completeBtn: {
     marginTop: 14,

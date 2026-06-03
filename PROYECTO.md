@@ -124,14 +124,26 @@ HabitApp/
 | expires_at | timestamptz | null | Si está en el pasado, no se muestra |
 | team_id | uuid | null | FK → teams(id), nullable — si null el hábito es visible para toda la empresa |
 
+### `habit_assignments`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| habit_id | uuid | — | FK → habits(id) ON DELETE CASCADE |
+| user_id | uuid | — | FK → profiles(id) ON DELETE CASCADE |
+| created_at | timestamptz | now() | — |
+| — | UNIQUE | — | (habit_id, user_id) — un usuario no puede tener el mismo hábito asignado dos veces |
+
+Un hábito solo aparece en HomeScreen si existe una fila en esta tabla con `user_id = usuario_actual`. El admin gestiona las asignaciones desde AdminScreen (crear hábito + asignar, o editar asignaciones de un hábito existente).
+
 ### `habit_logs`
 | Campo | Tipo | Default | Notas |
 |---|---|---|---|
 | id | uuid | gen_random_uuid() | PK |
-| habit_id | uuid | — | FK → habits(id) |
+| habit_id | uuid | — | FK → habits(id) ON DELETE CASCADE |
 | user_id | uuid | — | FK → profiles(id) — quién lo hizo |
 | photo_url | text | — | URL pública en Storage bucket habit-photos |
 | status | text | 'pending' | 'pending', 'validated', 'rejected' |
+| notes | text | null | Nota opcional añadida al completar el hábito |
 | validated_by | uuid | null | FK → profiles(id) — legado, no se usa desde v2 |
 | validated_at | timestamptz | null | Legado, no se usa desde v2 |
 | created_at | timestamptz | now() | — |
@@ -175,18 +187,20 @@ HabitApp/
 
 ### Relaciones entre tablas
 ```
-auth.users ──── profiles (1:1)
-companies  ──── profiles (1:N, company_id)
-companies  ──── habits   (1:N, company_id)
-companies  ──── invitations (1:N, company_id)
-companies  ──── teams    (1:N, company_id)
-habits     ──── habit_logs  (1:N, habit_id)
-profiles   ──── habit_logs  (1:N, user_id)
-habit_logs ──── habit_validations (1:N, habit_log_id)
-profiles   ──── habit_validations (1:N, validator_id)
-teams      ──── team_members (1:N, team_id)
-profiles   ──── team_members (1:N, user_id)
-teams      ──── habits   (1:N, team_id, nullable)
+auth.users   ──── profiles          (1:1)
+companies    ──── profiles          (1:N, company_id)
+companies    ──── habits            (1:N, company_id)
+companies    ──── invitations       (1:N, company_id)
+companies    ──── teams             (1:N, company_id)
+habits       ──── habit_assignments (1:N, habit_id)   ← asignación explícita por usuario
+profiles     ──── habit_assignments (1:N, user_id)
+habits       ──── habit_logs        (1:N, habit_id)
+profiles     ──── habit_logs        (1:N, user_id)
+habit_logs   ──── habit_validations (1:N, habit_log_id)
+profiles     ──── habit_validations (1:N, validator_id)
+teams        ──── team_members      (1:N, team_id)
+profiles     ──── team_members      (1:N, user_id)
+teams        ──── habits            (1:N, team_id, nullable)
 ```
 
 ---
@@ -239,6 +253,7 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 ### `habits`
 - **SELECT:** `true` — lectura abierta (se filtra por company_id en el cliente)
 - **INSERT:** usuarios autenticados con `role = 'admin'`
+- **DELETE:** usuarios con `role = 'admin'` de la misma empresa
 
 ### `habit_logs`
 - **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y RankingScreen)
@@ -511,3 +526,9 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - Gestión de hábitos, usuarios, equipos e invitaciones
 
 **Estado actual:** página pública en desarrollo, hero y nav implementados
+
+---
+
+## 17. Forma de trabajo con Claude
+
+Cuando generes instrucciones para ejecutar en Claude Code, inclúyelas siempre dentro de un bloque de código con triple backtick para que aparezca el botón de copiar. Nunca las escribas como texto plano o lista.

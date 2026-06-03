@@ -94,7 +94,7 @@ export default function ValidateHabitScreen() {
 
       const { data: logsData, error: logsError } = await supabase
         .from('habit_logs')
-        .select('id, habit_id, user_id, photo_url, status, created_at')
+        .select('id, habit_id, user_id, photo_url, status, notes, created_at')
         .eq('status', 'pending')
         .neq('user_id', user.id)
         .in('habit_id', companyHabitIds)
@@ -232,6 +232,12 @@ export default function ValidateHabitScreen() {
         {item.photo_url ? (
           <View style={styles.photoWrapper}>
             <Image source={{ uri: item.photo_url }} style={styles.photo} resizeMode="contain" />
+          </View>
+        ) : null}
+
+        {item.notes ? (
+          <View style={styles.notesBox}>
+            <Text style={styles.notesText}>{item.notes}</Text>
           </View>
         ) : null}
 
@@ -469,6 +475,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  notesBox: {
+    marginTop: 8,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 4,
+    padding: 8,
+  },
+  notesText: {
+    color: GRAY,
+    fontSize: 13,
   },
 });
 
