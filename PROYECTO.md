@@ -479,3 +479,35 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 | hernanz.luis@gmail.com | admin | — |
 
 > Las contraseñas no se almacenan en este documento. La confirmación de email está desactivada en el proyecto de Supabase de desarrollo.
+
+---
+
+## 16. Producto Web — HabitTeam.app
+
+**Repositorio web:** habitteam-web (proyecto separado, mismo Supabase)
+**Dominio:** habitteam.app (registrado en Namecheap)
+**Stack web:** React + React Router + Tailwind CSS v3 + @supabase/supabase-js
+**Despliegue:** Vercel (gratuito)
+
+**Modelo de negocio:**
+- Hasta 20 usuarios por empresa/grupo: gratuito
+- Más de 20 usuarios: de pago (precio por definir)
+
+**Público objetivo:**
+- Familias y grupos de amigos como punto de entrada (boca a boca orgánico)
+- Equipos pequeños de empresa que entran solos sin proceso comercial
+- Estrategia bottom-up: el usuario individual adopta el producto y lo lleva a su entorno
+
+**Página corporativa (pública):**
+- Hero con titular impactante, mensaje cercano no corporativo
+- Sección Cómo funciona (3 pasos)
+- Sección Características
+- Sección Precios (freemium: gratis hasta 20 usuarios)
+- Footer
+
+**Panel de administración (privado /admin):**
+- Pendiente de implementar
+- Login con Supabase Auth
+- Gestión de hábitos, usuarios, equipos e invitaciones
+
+**Estado actual:** página pública en desarrollo, hero y nav implementados
