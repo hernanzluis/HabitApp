@@ -521,6 +521,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 | Cache-bust de avatar con `?t=Date.now()` | React Native cachea agresivamente imágenes por URI. Al cambiar la URI se fuerza la recarga inmediata sin borrar la URL guardada en DB. |
 | Expo Go sin builds nativos | En desarrollo, evita tiempos de compilación. Solo se necesitará EAS Build para producción (notificaciones push, actualizaciones OTA). |
 | iOS primero, Android funcional | El equipo de desarrollo usa Mac/iPhone. Los estilos base se prueban en iOS y se verifica que no rompan en Android. |
+| Un usuario pertenece a un solo grupo | Simplifica el modelo de datos y toda la lógica de contexto de la app. El caso de uso principal es una familia en un único grupo. Para usuarios que necesiten pertenecer a varios grupos el workaround es usar un correo diferente por grupo. Cambio postpuesto deliberadamente a v2 cuando haya demanda real — requeriría tabla group_members (N:N), selector de grupo activo en login y refactor de filtros en todas las pantallas. |
 
 ---
 
@@ -538,6 +539,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - **Perfil de miembro:** al pulsar un nombre en ValidateHabit o ActivityScreen, ver su perfil público (foto, stats, hábitos validados)
 - **Edición de perfil completo:** campo de grupo en ProfileScreen (actualmente solo lectura)
 - **Modo oscuro**
+- **Múltiples grupos por usuario:** tabla group_members (usuario → grupo N:N), selector de grupo activo tras login, filtrado de toda la app por grupo activo seleccionado.
 
 ---
 

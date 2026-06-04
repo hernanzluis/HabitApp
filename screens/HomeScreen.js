@@ -140,16 +140,18 @@ export default function HomeScreen() {
 
       const habitIds = active.map((h) => h.id);
 
-      let logsData = [];
-      if (habitIds.length > 0) {
-        const { data: logs, error: logsError } = await supabase
-          .from('habit_logs')
-          .select('id, habit_id, created_at')
-          .eq('user_id', user.id)
-          .in('habit_id', habitIds);
-        if (logsError) throw logsError;
-        logsData = logs ?? [];
-      }
+      const [logsResult, catsResult] = await Promise.all([
+        habitIds.length > 0
+          ? supabase.from('habit_logs').select('id, habit_id, created_at, habit_validations(habit_log_id, status)').eq('user_id', user.id).in('habit_id', habitIds)
+          : Promise.resolve({ data: [], error: null }),
+        supabase.from('categories').select('id, name, icon, color').or(`company_id.is.null,company_id.eq.${profileData.company_id}`),
+      ]);
+      if (logsResult.error) throw logsResult.error;
+
+      const logsData = logsResult.data ?? [];
+      const cMap = {};
+      (catsResult.data ?? []).forEach((c) => { cMap[c.id] = c; });
+      setCategoriesMap(cMap);
 
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
@@ -161,20 +163,16 @@ export default function HomeScreen() {
       const todayLogIdByHabit = {};
       todayLogs.forEach((l) => { todayLogIdByHabit[l.habit_id] = l.id; });
 
-      const todayLogIds = Object.values(todayLogIdByHabit);
-      let validationsMap = {};
-      if (todayLogIds.length > 0) {
-        const { data: validations, error: validationsError } = await supabase
-          .from('habit_validations')
-          .select('habit_log_id, status')
-          .in('habit_log_id', todayLogIds);
-        if (validationsError) throw validationsError;
-        (validations ?? []).forEach((v) => {
-          if (!validationsMap[v.habit_log_id]) validationsMap[v.habit_log_id] = { validatedCount: 0, rejectedCount: 0 };
-          if (v.status === 'validated') validationsMap[v.habit_log_id].validatedCount++;
-          if (v.status === 'rejected') validationsMap[v.habit_log_id].rejectedCount++;
-        });
-      }
+      const validationsMap = {};
+      todayLogs.forEach((l) => {
+        if (l.habit_validations?.length) {
+          validationsMap[l.id] = { validatedCount: 0, rejectedCount: 0 };
+          l.habit_validations.forEach((v) => {
+            if (v.status === 'validated') validationsMap[l.id].validatedCount++;
+            if (v.status === 'rejected') validationsMap[l.id].rejectedCount++;
+          });
+        }
+      });
 
       const processed = active
         .filter((h) => h.recurrence !== 'once' || !doneEver.has(h.id))
@@ -191,15 +189,6 @@ export default function HomeScreen() {
         });
 
       setHabits(processed);
-
-      // Cargar categorías para badges
-      const { data: catsData } = await supabase
-        .from('categories')
-        .select('id, name, icon, color')
-        .or(`company_id.is.null,company_id.eq.${profileData.company_id}`);
-      const cMap = {};
-      (catsData ?? []).forEach((c) => { cMap[c.id] = c; });
-      setCategoriesMap(cMap);
     } catch (e) {
       if (attempt === 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -211,7 +200,7 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(
     useCallback(() => {

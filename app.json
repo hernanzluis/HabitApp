@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "HabitApp",
+    "name": "HabitTeam",
     "slug": "HabitApp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -30,8 +30,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "HabitApp necesita acceder a tus fotos para subir pruebas de hábitos.",
-          "cameraPermission": "HabitApp necesita acceder a la cámara para tomar fotos de tus hábitos."
+          "photosPermission": "HabitTeam necesita acceder a tus fotos para subir pruebas de hábitos.",
+          "cameraPermission": "HabitTeam necesita acceder a la cámara para tomar fotos de tus hábitos."
         }
       ]
     ]

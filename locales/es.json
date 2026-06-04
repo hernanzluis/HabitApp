@@ -46,15 +46,12 @@
     "error_network": "No se pudo enviar el correo. Revisa tu conexión e inténtalo de nuevo."
   },
   "signup": {
-    "subtitle": "Crea tu cuenta",
     "welcome_title": "Bienvenido a HabitTeam",
     "welcome_subtitle": "¿Cómo quieres empezar?",
     "create_group": "Crear un grupo familiar",
     "create_group_desc": "Empieza tú e invita a tu familia",
     "join_group": "Unirme a un grupo",
     "join_group_desc": "Tienes un código de invitación",
-    "mode_create": "Crear grupo",
-    "mode_join": "Tengo un código de invitación",
     "full_name": "Nombre completo",
     "full_name_placeholder": "Juan Pérez",
     "confirm_password": "Confirmar contraseña",
@@ -120,7 +117,7 @@
     "invite_share": "Compartir",
     "invite_generate": "Generar código",
     "invite_generating": "Generando...",
-    "invite_share_message": "Únete a mi grupo en HabitApp con el código de invitación: {{code}}",
+    "invite_share_message": "Únete a mi grupo en HabitTeam con el código de invitación: {{code}}",
     "habits_section": "Hábitos",
     "habit_expires": "Expira el {{date}}",
     "empty_habits": "No hay hábitos creados todavía",
@@ -168,23 +165,7 @@
     "empty": "Aún no has completado ningún hábito",
     "error_load": "No se pudo cargar el historial. Revisa tu conexión."
   },
-  "ranking": {
-    "title": "Ranking del equipo",
-    "loading": "Cargando ranking...",
-    "empty": "Aún no hay hábitos validados en tu grupo",
-    "you": "Tú",
-    "position": "{{count}}º",
-    "habit_one": "hábito",
-    "habit_other": "hábitos",
-    "period_week": "Esta semana",
-    "period_month": "Este mes",
-    "period_all": "Total",
-    "filter_habit_label": "Hábito",
-    "filter_all_habits": "Todos",
-    "error_load": "No se pudo cargar el ranking. Revisa tu conexión."
-  },
   "profile": {
-    "title": "Mi perfil",
     "loading": "Cargando perfil...",
     "company_label": "Grupo",
     "activity": "Actividad",

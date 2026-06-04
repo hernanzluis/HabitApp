@@ -46,15 +46,12 @@
     "error_network": "Could not send the email. Check your connection and try again."
   },
   "signup": {
-    "subtitle": "Create your account",
     "welcome_title": "Welcome to HabitTeam",
     "welcome_subtitle": "How do you want to start?",
     "create_group": "Create a family group",
     "create_group_desc": "Start and invite your family",
     "join_group": "Join a group",
     "join_group_desc": "You have an invitation code",
-    "mode_create": "Create group",
-    "mode_join": "I have an invitation code",
     "full_name": "Full name",
     "full_name_placeholder": "John Doe",
     "confirm_password": "Confirm password",
@@ -119,23 +116,7 @@
     "empty": "You haven't completed any habits yet",
     "error_load": "Could not load history. Check your connection."
   },
-  "ranking": {
-    "title": "Team ranking",
-    "loading": "Loading ranking...",
-    "empty": "No validated habits in your group yet",
-    "you": "You",
-    "position": "#{{count}}",
-    "habit_one": "habit",
-    "habit_other": "habits",
-    "period_week": "This week",
-    "period_month": "This month",
-    "period_all": "All time",
-    "filter_habit_label": "Habit",
-    "filter_all_habits": "All",
-    "error_load": "Could not load the ranking. Check your connection."
-  },
   "profile": {
-    "title": "My profile",
     "loading": "Loading profile...",
     "company_label": "Group",
     "activity": "Activity",
@@ -161,7 +142,7 @@
     "invite_share": "Share",
     "invite_generate": "Generate code",
     "invite_generating": "Generating...",
-    "invite_share_message": "Join my group on HabitApp with the invitation code: {{code}}",
+    "invite_share_message": "Join my group on HabitTeam with the invitation code: {{code}}",
     "habits_section": "Habits",
     "habit_expires": "Expires on {{date}}",
     "empty_habits": "No habits created yet",

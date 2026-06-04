@@ -82,7 +82,7 @@ export default function HistoryScreen() {
 
       const { data: logs, error: logsError } = await supabase
         .from('habit_logs')
-        .select('id, habit_id, photo_url, created_at')
+        .select('id, habit_id, photo_url, notes, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       if (logsError) throw logsError;
@@ -121,6 +121,7 @@ export default function HistoryScreen() {
           id: log.id,
           habitTitle: habitsMap.get(log.habit_id) ?? '—',
           photoUrl: log.photo_url,
+          notes: log.notes ?? null,
           createdAt: log.created_at,
           status: deriveStatus(counts.validated, counts.rejected),
         };
@@ -154,6 +155,11 @@ export default function HistoryScreen() {
           <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
             <Text style={[styles.statusText, { color: cfg.color }]}>{t(cfg.textKey)}</Text>
           </View>
+          {item.notes ? (
+            <View style={styles.notesBox}>
+              <Text style={styles.notesText}>{item.notes}</Text>
+            </View>
+          ) : null}
         </View>
       </TouchableOpacity>
     );
@@ -246,7 +252,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: WHITE,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
@@ -287,6 +293,16 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  notesBox: {
+    marginTop: 8,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 4,
+    padding: 8,
+  },
+  notesText: {
+    color: GRAY,
+    fontSize: 13,
   },
   emptyCard: {
     backgroundColor: WHITE,

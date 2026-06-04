@@ -324,7 +324,7 @@ export default function AdminScreen() {
         .insert({ name: newCatName.trim(), icon: newCatIcon, color: newCatColor, company_id: companyId });
       if (insertError) throw insertError;
       setCatModalVisible(false);
-      loadData();
+      await loadData();
     } catch (e) {
       setModalError(e?.message || t('admin.error_create'));
     } finally {
