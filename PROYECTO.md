@@ -2,7 +2,7 @@
 
 ## 1. Descripción
 
-Plataforma de bienestar corporativo con validación social entre compañeros. Los empleados registran hábitos saludables diarios y sus compañeros de empresa los validan mediante fotografías como prueba. El objetivo es fomentar hábitos positivos mediante la responsabilidad social y la gamificación (rankings).
+Plataforma de hábitos compartidos con validación social entre miembros del grupo. Los usuarios registran hábitos saludables diarios y sus familiares o compañeros de grupo los validan mediante fotografías como prueba. El objetivo es fomentar hábitos positivos mediante la responsabilidad compartida. Diseñado para familias, grupos de amigos y equipos pequeños.
 
 ---
 
@@ -24,6 +24,7 @@ Plataforma de bienestar corporativo con validación social entre compañeros. Lo
 | react-native-safe-area-context | ~5.6.0 |
 | react-native-screens | ~4.16.0 |
 | react-native-url-polyfill | ^3.0.0 |
+| @react-native-community/datetimepicker | incluido en Expo SDK |
 | Node.js | v20 |
 
 **Backend:** Supabase (PostgreSQL + Auth + Storage)
@@ -121,8 +122,9 @@ HabitApp/
 | recurrence | text | — | 'daily' o 'once' |
 | is_active | boolean | true | Solo se muestran hábitos activos |
 | created_at | timestamptz | now() | — |
-| expires_at | timestamptz | null | Si está en el pasado, no se muestra |
-| team_id | uuid | null | FK → teams(id), nullable — si null el hábito es visible para toda la empresa |
+| expires_at | timestamptz | null | Para hábitos 'once': fecha y hora límite combinadas. Si está en el pasado, no se muestra |
+| due_time | time | null | Para hábitos 'daily': hora límite opcional. Si la hora actual la supera y el hábito no está completado, se muestra en naranja |
+| team_id | uuid | null | FK → teams(id), nullable — sin uso activo todavía |
 
 ### `habit_assignments`
 | Campo | Tipo | Default | Notas |
@@ -134,6 +136,17 @@ HabitApp/
 | — | UNIQUE | — | (habit_id, user_id) — un usuario no puede tener el mismo hábito asignado dos veces |
 
 Un hábito solo aparece en HomeScreen si existe una fila en esta tabla con `user_id = usuario_actual`. El admin gestiona las asignaciones desde AdminScreen (crear hábito + asignar, o editar asignaciones de un hábito existente).
+
+### `habit_validators`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| habit_id | uuid | — | FK → habits(id) ON DELETE CASCADE |
+| user_id | uuid | — | FK → profiles(id) ON DELETE CASCADE |
+| created_at | timestamptz | now() | — |
+| — | UNIQUE | — | (habit_id, user_id) |
+
+Solo los usuarios que aparecen en esta tabla para un `habit_id` dado verán los logs pendientes de ese hábito en ValidateHabitScreen. Un usuario asignado al hábito (`habit_assignments`) no debe añadirse también como validador.
 
 ### `habit_logs`
 | Campo | Tipo | Default | Notas |
@@ -157,6 +170,30 @@ Un hábito solo aparece en HomeScreen si existe una fila en esta tabla con `user
 | status | text | — | 'validated' o 'rejected' |
 | created_at | timestamptz | now() | — |
 | — | UNIQUE | — | (habit_log_id, validator_id) — un voto por usuario por log |
+
+### `categories`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| name | text | — | Nombre de la categoría |
+| icon | text | 'ellipsis-horizontal' | Nombre del icono Ionicons |
+| color | text | '#9E9E9E' | Color hex para el badge |
+| company_id | uuid | null | null = predefinida del sistema; uuid = categoría personalizada de la empresa |
+| created_at | timestamptz | now() | — |
+
+Las categorías con `company_id = null` son predefinidas del sistema y no se pueden eliminar desde la app.
+
+**Categorías predefinidas:**
+| Nombre | Icono | Color |
+|---|---|---|
+| Ejercicio | fitness | #4CAF50 |
+| Alimentación | restaurant | #FF9800 |
+| Lectura | book | #2196F3 |
+| Descanso | moon | #9C27B0 |
+| Salud | medical | #F44336 |
+| Hidratación | water | #00BCD4 |
+| Bienestar | heart | #9E9E9E |
+| Hogar | home | #009688 |
 
 ### `teams` _(creada, sin uso todavía)_
 | Campo | Tipo | Default | Notas |
@@ -193,6 +230,10 @@ companies    ──── habits            (1:N, company_id)
 companies    ──── invitations       (1:N, company_id)
 companies    ──── teams             (1:N, company_id)
 habits       ──── habit_assignments (1:N, habit_id)   ← asignación explícita por usuario
+habits       ──── habit_validators  (1:N, habit_id)   ← quién puede validar cada hábito
+profiles     ──── habit_validators  (1:N, user_id)
+categories   ──── habits            (1:N, category_id, nullable)
+companies    ──── categories        (1:N, company_id, nullable — null = predefinida)
 profiles     ──── habit_assignments (1:N, user_id)
 habits       ──── habit_logs        (1:N, habit_id)
 profiles     ──── habit_logs        (1:N, user_id)
@@ -255,8 +296,13 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 - **INSERT:** usuarios autenticados con `role = 'admin'`
 - **DELETE:** usuarios con `role = 'admin'` de la misma empresa
 
+### `habit_assignments`
+- **SELECT:** `true` — lectura abierta (necesario para HomeScreen y ActivityScreen)
+- **INSERT:** `auth.uid() IS NOT NULL` — el admin inserta asignaciones al crear o editar un hábito
+- **DELETE:** usuarios con `role = 'admin'` de la misma empresa (para editar asignaciones)
+
 ### `habit_logs`
-- **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y RankingScreen)
+- **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y ActivityScreen)
 - **INSERT:** `auth.uid() IS NOT NULL` — cualquier usuario autenticado puede insertar su propio log
 - **UPDATE:** `auth.uid() IS NOT NULL` — cualquier autenticado puede actualizar (para validadores)
 
@@ -304,50 +350,53 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 - Muestra mensaje de confirmación tras enviar
 
 ### `SignUpScreen`
-- Dos modos seleccionables con toggle: **"Crear empresa"** y **"Tengo un código"**
+- Dos modos seleccionables con toggle: **"Crear grupo"** y **"Tengo un código de invitación"**
 - Campos comunes: nombre completo, email, contraseña, confirmar contraseña
-- Modo "Crear empresa": campo nombre de empresa → llama a RPC `handle_new_user_registration`
-- Modo "Tengo un código": campo código de invitación → valida código en `invitations` antes de crear auth user → llama a RPC `handle_invited_user_registration`
+- Modo "Crear grupo": campo nombre del grupo → llama a RPC `handle_new_user_registration`
+- Modo "Tengo un código de invitación": campo código → valida código en `invitations` antes de crear auth user → llama a RPC `handle_invited_user_registration`
 - Validación inline por campo antes de enviar
 - Tras éxito, `onAuthStateChange` navega automáticamente sin necesidad de `navigation.navigate`
 
 ### `HomeScreen`
-- **Datos:** perfil del usuario, hábitos activos de la empresa, habit_logs del usuario, habit_validations
+- **Datos:** perfil del usuario, hábitos asignados al usuario, habit_logs del usuario, habit_validations
 - **Queries:**
   1. `profiles` → obtiene `full_name` y `company_id`
-  2. `habits` → filtra por `company_id` e `is_active = true`, ordenados por `created_at`
-  3. `habit_logs` → filtra por `user_id` e `habit_id IN [...]`, selecciona `id, habit_id, created_at`
-  4. `habit_validations` → filtra por `habit_log_id IN [logs de hoy]`
+  2. `habit_assignments` → `habit_id` donde `user_id = currentUser` — solo hábitos asignados explícitamente
+  3. `habits` → filtra por `company_id`, `is_active = true` e `id IN [assignedIds]`, ordenados por `created_at`
+  4. `habit_logs` → filtra por `user_id` e `habit_id IN [...]`, selecciona `id, habit_id, created_at`
+  5. `habit_validations` → filtra por `habit_log_id IN [logs de hoy]`
 - **Lógica recurrence:**
   - `once`: si ya existe cualquier log para ese hábito → no se muestra
   - `daily`: si existe log de hoy → muestra tarjeta "Completado hoy" con check verde
 - **Tarjeta completada:** fondo verde muy suave (#F0FAF0), borde izquierdo 3px verde (#2E7D32), icono check Ionicons + texto "Completado hoy" + contadores ✓ N / ✗ N de validaciones recibidas ese día (alineados a la derecha)
 - **Tarjeta pendiente:** botón "Completar" → navega a HabitDetailScreen
-- Expiración: fecha visible en gris; si quedan ≤3 días, en naranja
+- **Hora límite (`due_time`):** para hábitos `daily` con `due_time`, muestra "Antes de las HH:MM" en gris. Si la hora ya pasó y el hábito no está completado, se muestra en naranja
+- **Expiración (`expires_at`):** fecha (y hora si no es 00:00) visible siempre en gris. Sin color naranja por proximidad de fecha
 - Reintento automático (500ms) en primer load para evitar race condition de sesión
 - Pull-to-refresh, estado vacío, manejo de errores
 
 ### `HabitDetailScreen`
 - Recibe el objeto `habit` como param de navegación
-- Permite tomar foto (cámara) o seleccionar de galería (expo-image-picker)
-- Preview de la foto seleccionada
+- **Foto:** botón principal ancho completo "Cámara" (Ionicons `camera-outline`, fondo BLUE). Sin opción de galería
+- Preview de la foto seleccionada (height 220)
+- **Nota opcional:** TextInput multiline, máx 150 caracteres, debajo del preview
 - Al enviar:
   1. Sube la imagen a Storage `habit-photos/{user_id}/{habit_id}/{timestamp}.ext`
   2. Obtiene la URL pública
-  3. INSERT en `habit_logs` con `status = 'pending'`
+  3. INSERT en `habit_logs` con `status = 'pending'` y `notes` (null si vacío)
 - Spinner durante la subida, mensaje de éxito "¡Prueba enviada!", vuelve a Home tras 1.5s
 
 ### `ValidateHabitScreen`
-- **Datos:** habit_logs pendientes de compañeros de la misma empresa, filtrados para excluir los ya votados por el usuario actual
+- **Datos:** habit_logs pendientes de miembros del mismo grupo, filtrados para excluir los ya votados por el usuario actual
 - **Queries:**
-  1. `habit_logs` → `status = 'pending'`, `user_id != currentUser`, ordenados por `created_at desc` _(consulta previa al Promise.all para obtener logIds)_
+  1. `habit_logs` → `status = 'pending'`, `user_id != currentUser`, selecciona `id, habit_id, user_id, photo_url, status, notes, created_at`, ordenados por `created_at desc`
   2. **Promise.all** con:
      - `profiles` → nombres y avatares de los autores (por userIds extraídos de los logs)
-     - `habits` → títulos y `company_id` para filtrar por empresa (por habitIds extraídos)
+     - `habits` → títulos y `company_id` para filtrar por grupo (por habitIds extraídos)
      - `habit_validations` → todos los votos para los logIds obtenidos
 - **Filtrado:** solo muestra logs de hábitos con `company_id` coincidente y donde `userValidated = false`
 - **Votación:** INSERT en `habit_validations` con `status = 'validated'` o `'rejected'`; la constraint UNIQUE previene doble voto a nivel DB
-- **UI por tarjeta:** avatar del compañero (foto real si tiene `avatar_url`, inicial si no), nombre, título del hábito, fecha, foto de prueba, contadores ✓ N / ✗ N, botones Aprobar/Rechazar
+- **UI por tarjeta:** avatar del miembro (foto real si tiene `avatar_url`, inicial si no), nombre, título del hábito, fecha, foto de prueba, nota del log (si existe, en caja gris #F9F9F9), contadores ✓ N / ✗ N, botones Aprobar/Rechazar
 - Tras votar el último pendiente → muestra "Todo al día ✓" → navega a Home tras 1 segundo
 - Pull-to-refresh, estado vacío
 
@@ -367,24 +416,37 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 ### `AdminScreen`
 - Solo accesible para usuarios con `role = 'admin'` (visible vía icono escudo en header de Home)
 - **Sección 1 — Código de invitación:**
-  - Muestra el código activo más reciente de la empresa (query a `invitations` ORDER BY created_at DESC LIMIT 1)
+  - Muestra el código activo más reciente del grupo (query a `invitations` ORDER BY created_at DESC LIMIT 1)
   - Botón "Compartir" → `Share.share()` nativo con mensaje i18n
   - Botón "Generar código" → genera un código `XXXX-XXXX` aleatorio, INSERT en `invitations` con `expires_at` a 7 días
 - **Sección 2 — Hábitos:**
-  - Lista todos los hábitos de la empresa ordenados por `created_at DESC`
+  - Lista todos los hábitos del grupo ordenados por `created_at DESC`; cada fila muestra "X asignado(s)" (tappable) y un icono de papelera
   - Switch por hábito para activar/desactivar (`is_active`) con actualización optimista + rollback en error
-  - Muestra `expires_at` si existe
+  - **Icono papelera:** Alert de confirmación destructiva → DELETE en `habits` (CASCADE elimina habit_assignments, habit_logs y habit_validations); actualización optimista del estado local
+  - **Botón "Nuevo hábito":** abre modal de creación
+- **Modal crear hábito:**
+  - Campos: título (obligatorio), descripción opcional, recurrencia (pills Diario / Una vez)
+  - Para `daily`: selector nativo de hora (`DateTimePicker` mode='time') para `due_time` opcional
+  - Para `once`: selector nativo de fecha + hora (`DateTimePicker` mode='date' y mode='time') para `expires_at` opcional
+  - Lista de miembros del grupo con checkboxes para asignar
+  - Al guardar: INSERT en `habits` + INSERT en `habit_assignments` por cada miembro seleccionado
+- **Modal editar asignaciones:** al pulsar "X asignado(s)" de un hábito → lista de miembros con estado actual → al guardar: DELETE todas asignaciones del hábito + INSERT nuevas
 - Pull-to-refresh, estado vacío, manejo de errores por sección
 
-### `RankingScreen`
+### `ActivityScreen` _(antes RankingScreen)_
+- Tab "Actividad" (icono `people-outline`), header "Actividad del grupo"
+- **Período:** semana actual — lunes 00:00:00 hasta hoy 23:59:59 (hora local)
+- **Cabecera:** "Semana del DD Mon al DD Mon"
 - **Queries:**
   1. `profiles` → obtiene `company_id` del usuario actual
-  2. `profiles` → obtiene todos los perfiles de la empresa
-  3. `habit_logs` → `id, user_id` donde `user_id IN [companyUserIds]` (todos los logs, sin filtro de status)
-  4. `habit_validations` → `habit_log_id` donde `status = 'validated'` y `habit_log_id IN [logIds]`
-- Construye un mapa `logId → userId` y cuenta validaciones por usuario, ordena descendente
-- Top 3: emojis de medalla (🥇🥈🥉); resto: posición ordinal (4º, 5º…)
-- Usuario actual destacado con fondo azul claro, borde izquierdo azul y etiqueta "Tú"
+  2. `profiles` → todos los miembros del grupo (`id, full_name, avatar_url`)
+  3. `habits` → hábitos activos del grupo (para obtener `activeHabitIds`)
+  4. `habit_assignments` → filtra por `activeHabitIds` y `userIds` → cuenta hábitos asignados por miembro
+  5. `habit_logs` → logs del período, por `activeHabitIds` y `userIds`
+  6. `habit_validations` → `status = 'validated'` para los log IDs del período
+- **Por miembro:** avatar + nombre a la izquierda; contadores `completados/asignados` y `validados` a la derecha
+- Sin ranking competitivo. Usuario actual destacado con fondo HIGHLIGHT, borde azul y etiqueta "Tú"
+- Ordenado por completados DESC (alfabético como desempate)
 - Pull-to-refresh, estado vacío
 
 ### `ProfileScreen`
@@ -396,7 +458,7 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
   5. `habit_validations` → COUNT donde `validator_id = currentUser` (totalValidatedForOthers)
 - **Edición de nombre:** icono lápiz → TextInput inline → guarda con UPDATE en `profiles`
 - **Edición de avatar:** Alert con opciones Cámara/Galería → expo-image-picker → upload a Storage `avatars/{user_id}/avatar.jpg` (upsert) → UPDATE en `profiles.avatar_url`
-- Estadísticas: hábitos completados, hábitos validados, validaciones hechas a compañeros
+- Estadísticas: hábitos completados, hábitos validados, validaciones hechas a otros miembros
 - Cerrar sesión: `supabase.auth.signOut()` → `onAuthStateChange` navega a AuthStack automáticamente
 
 ---
@@ -412,8 +474,8 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 | BLUE | #0A66C2 | Primario, botones, enlaces, tabs activos |
 | TEXT | #1D2226 | Texto principal |
 | GRAY | #666666 | Texto secundario, tabs inactivos |
-| ORANGE | #f97316 | Alertas de expiración (≤3 días) |
-| HIGHLIGHT | #EEF3FB | Fondo de fila del usuario en ranking |
+| ORANGE | #f97316 | Hora límite `due_time` superada (hábito no completado) |
+| HIGHLIGHT | #EEF3FB | Fondo de fila del usuario en ActivityScreen |
 
 **Botones primarios:** `height: 44`, `borderRadius: 4`, `backgroundColor: BLUE`, `alignSelf: 'center'`, `paddingHorizontal: 32`, `fontWeight: '600'`
 
@@ -436,7 +498,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - **TabNavigator:**
   - `Home` (icono casa) — Inicio
   - `ValidateHabit` (icono check) — Validar
-  - `Ranking` (icono trofeo) — Ranking
+  - `Ranking` (icono `people-outline`) — Actividad
   - `Profile` (icono persona) — Perfil
 - **Tab "Validar":** badge rojo con número de logs pendientes para el usuario; si pendingCount = 0, la tab se deshabilita (gris, no pulsable con `tabBarButton` + `disabled`). El conteo se recalcula al montar y con `screenListeners={{ focus }}`.
 - **Header de Home:** icono reloj → navega a History; icono escudo → navega a Admin (solo visible si `role = 'admin'`); icono campana → coming soon. El título del header muestra el nombre de la empresa (query en RootNavigator al montar).
@@ -464,15 +526,17 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 
 ## 13. Funcionalidades Pendientes (v2)
 
-- **AdminScreen (ampliación):** actualmente muestra código de invitación y toggle de hábitos. Pendiente: creación de hábitos nuevos (título, descripción, recurrence, expires_at), gestión de usuarios de la empresa y vista de invitaciones históricas
-- **Sistema de equipos:** el admin crea equipos dentro de la empresa y asigna usuarios (un usuario puede pertenecer a N equipos, tabla `team_members`). Los hábitos se pueden asignar a toda la empresa (`team_id = null`), a un equipo específico (`team_id` del equipo), o dejarse sin equipo explícito (visibles para todos). HomeScreen filtraría los hábitos mostrando los de la empresa completa más los del equipo del usuario. Rankings podrían filtrarse por equipo. Requiere AdminScreen para la gestión.
-- **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un compañero valida tu hábito
+- ~~**AdminScreen (ampliación):** creación de hábitos nuevos con asignación por miembro~~ ✅ Implementado
+- ~~**Sistema de asignación de hábitos:** `habit_assignments` para mostrar solo los hábitos asignados a cada usuario~~ ✅ Implementado
+- **AdminScreen — gestión de usuarios:** vista de miembros del grupo, posibilidad de eliminar/cambiar rol
+- **AdminScreen — invitaciones históricas:** lista de códigos generados con fecha y estado
+- **Sistema de equipos:** el admin crea subgrupos dentro del grupo principal; `team_members` ya creada, sin uso activo. Los hábitos podrían asignarse a subgrupos. Requiere extensión de AdminScreen.
+- **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un familiar valida tu hábito
 - **SplashScreen animada** con logo de la app
 - **Mejora de estadísticas en ProfileScreen:** racha actual (días consecutivos con hábito completado), gráfico de actividad mensual
-- **Hábitos personales:** tipo 'personal', visibles solo para el usuario, sin validación por compañeros
-- **Rankings por período:** filtro semana / mes / histórico
-- **Perfil de compañero:** al pulsar un nombre en ValidateHabit o Ranking, ver su perfil público (foto, stats, hábitos validados)
-- **Edición de perfil completo:** campo de empresa en ProfileScreen (actualmente solo lectura)
+- **Hábitos personales:** tipo 'personal', visibles solo para el usuario, sin validación
+- **Perfil de miembro:** al pulsar un nombre en ValidateHabit o ActivityScreen, ver su perfil público (foto, stats, hábitos validados)
+- **Edición de perfil completo:** campo de grupo en ProfileScreen (actualmente solo lectura)
 - **Modo oscuro**
 
 ---

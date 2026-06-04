@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -28,6 +28,17 @@ const TEXT = '#1D2226';
 const GRAY = '#666666';
 const BLUE = '#0A66C2';
 
+const CATEGORY_ICONS = [
+  'fitness', 'medical', 'restaurant', 'book', 'moon', 'calendar',
+  'water', 'home', 'heart', 'star', 'bicycle', 'walk', 'barbell',
+  'pill', 'school', 'ellipsis-horizontal',
+];
+
+const CATEGORY_COLORS = [
+  '#4CAF50', '#F44336', '#FF9800', '#2196F3',
+  '#9C27B0', '#00BCD4', '#009688', '#9E9E9E',
+];
+
 function generateInviteCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const seg = () => Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
@@ -55,6 +66,21 @@ function formatDisplayDate(date) {
   return `${dd}/${mm}/${date.getFullYear()}`;
 }
 
+function groupHabitsByCategory(habits, catMap) {
+  const buckets = {};
+  habits.forEach((h) => {
+    const key = h.category_id ?? 'none';
+    if (!buckets[key]) buckets[key] = { category: h.category_id ? catMap[h.category_id] ?? null : null, habits: [] };
+    buckets[key].habits.push(h);
+  });
+  return Object.values(buckets).sort((a, b) => {
+    if (!a.category && !b.category) return 0;
+    if (!a.category) return 1;
+    if (!b.category) return -1;
+    return (a.category.name ?? '').localeCompare(b.category.name ?? '');
+  });
+}
+
 function buildExpiresAt(dateObj, timeObj) {
   if (!dateObj) return null;
   const d = new Date(dateObj);
@@ -78,6 +104,7 @@ export default function AdminScreen() {
   const [inviteCode, setInviteCode] = useState('');
   const [habits, setHabits] = useState([]);
   const [members, setMembers] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [companyId, setCompanyId] = useState(null);
   const [generating, setGenerating] = useState(false);
 
@@ -86,6 +113,7 @@ export default function AdminScreen() {
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newRecurrence, setNewRecurrence] = useState('daily');
+  const [categoryId, setCategoryId] = useState(null);
   const [dueTime, setDueTime] = useState(null);        // Date|null para daily
   const [expiresDate, setExpiresDate] = useState(null); // Date|null para once
   const [expiresTime, setExpiresTime] = useState(null); // Date|null para once (opcional)
@@ -93,13 +121,20 @@ export default function AdminScreen() {
   const [showExpDatePicker, setShowExpDatePicker] = useState(false);
   const [showExpTimePicker, setShowExpTimePicker] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState(new Set());
+  const [validatorIds, setValidatorIds] = useState(new Set());
   const [savingHabit, setSavingHabit] = useState(false);
   const [modalError, setModalError] = useState('');
 
-  // ── Edit-assignments modal state ─────────────────────────────────────────
-  const [assignModalVisible, setAssignModalVisible] = useState(false);
-  const [assigningHabitId, setAssigningHabitId] = useState(null);
-  const [assigningHabitTitle, setAssigningHabitTitle] = useState('');
+  // ── New-category modal state ─────────────────────────────────────────────
+  const [catModalVisible, setCatModalVisible] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatIcon, setNewCatIcon] = useState('ellipsis-horizontal');
+  const [newCatColor, setNewCatColor] = useState('#4CAF50');
+  const [savingCat, setSavingCat] = useState(false);
+
+  // ── Edit-habit modal state ───────────────────────────────────────────────
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingHabit, setEditingHabit] = useState(null);
 
   useEffect(() => {
     navigation.setOptions({
@@ -142,6 +177,7 @@ export default function AdminScreen() {
         { data: invitations, error: invError },
         { data: habitsData, error: habitsError },
         { data: membersData, error: membersError },
+        { data: categoriesData, error: categoriesError },
       ] = await Promise.all([
         supabase
           .from('invitations')
@@ -151,34 +187,41 @@ export default function AdminScreen() {
           .limit(1),
         supabase
           .from('habits')
-          .select('id, title, is_active, expires_at')
+          .select('id, title, description, recurrence, is_active, expires_at, due_time, category_id')
           .eq('company_id', profile.company_id)
           .order('created_at', { ascending: false }),
         supabase
           .from('profiles')
           .select('id, full_name')
           .eq('company_id', profile.company_id),
+        supabase
+          .from('categories')
+          .select('id, name, icon, color, company_id')
+          .or(`company_id.is.null,company_id.eq.${profile.company_id}`)
+          .order('name'),
       ]);
       if (invError) throw invError;
       if (habitsError) throw habitsError;
       if (membersError) throw membersError;
+      if (categoriesError) throw categoriesError;
 
       setInviteCode(invitations?.[0]?.code ?? '');
       setMembers(membersData ?? []);
+      setCategories(categoriesData ?? []);
 
-      // Enrich habits with assignment counts
+      // Enrich habits with assignment and validator counts
       const habitIds = (habitsData ?? []).map((h) => h.id);
       if (habitIds.length > 0) {
-        const { data: assignData } = await supabase
-          .from('habit_assignments')
-          .select('habit_id, user_id')
-          .in('habit_id', habitIds);
+        const [{ data: assignData }, { data: validatorData }] = await Promise.all([
+          supabase.from('habit_assignments').select('habit_id, user_id').in('habit_id', habitIds),
+          supabase.from('habit_validators').select('habit_id, user_id').in('habit_id', habitIds),
+        ]);
 
         const countMap = {};
-        (assignData ?? []).forEach((a) => {
-          countMap[a.habit_id] = (countMap[a.habit_id] || 0) + 1;
-        });
-        setHabits((habitsData ?? []).map((h) => ({ ...h, assignedCount: countMap[h.id] || 0 })));
+        const validMap = {};
+        (assignData ?? []).forEach((a) => { countMap[a.habit_id] = (countMap[a.habit_id] || 0) + 1; });
+        (validatorData ?? []).forEach((v) => { validMap[v.habit_id] = (validMap[v.habit_id] || 0) + 1; });
+        setHabits((habitsData ?? []).map((h) => ({ ...h, assignedCount: countMap[h.id] || 0, validatorCount: validMap[h.id] || 0 })));
       } else {
         setHabits([]);
       }
@@ -261,11 +304,63 @@ export default function AdminScreen() {
     );
   };
 
+  // ── Category handlers ────────────────────────────────────────────────────
+  const openCatModal = () => {
+    setNewCatName('');
+    setNewCatIcon('ellipsis-horizontal');
+    setNewCatColor('#4CAF50');
+    setModalError('');
+    setCatModalVisible(true);
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCatName.trim()) { setModalError(t('admin.category_name')); return; }
+    if (!companyId) return;
+    setSavingCat(true);
+    setModalError('');
+    try {
+      const { error: insertError } = await supabase
+        .from('categories')
+        .insert({ name: newCatName.trim(), icon: newCatIcon, color: newCatColor, company_id: companyId });
+      if (insertError) throw insertError;
+      setCatModalVisible(false);
+      loadData();
+    } catch (e) {
+      setModalError(e?.message || t('admin.error_create'));
+    } finally {
+      setSavingCat(false);
+    }
+  };
+
+  const handleDeleteCategory = (cat) => {
+    Alert.alert(
+      t('admin.delete_habit_title'),
+      t('admin.delete_habit_message'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('admin.delete_habit_confirm'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error: deleteError } = await supabase.from('categories').delete().eq('id', cat.id);
+              if (deleteError) throw deleteError;
+              setCategories((prev) => prev.filter((c) => c.id !== cat.id));
+            } catch (e) {
+              setError(e?.message || t('admin.error_load'));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // ── Create habit ─────────────────────────────────────────────────────────
   const openCreateModal = () => {
     setNewTitle('');
     setNewDescription('');
     setNewRecurrence('daily');
+    setCategoryId(null);
     setDueTime(null);
     setExpiresDate(null);
     setExpiresTime(null);
@@ -273,12 +368,21 @@ export default function AdminScreen() {
     setShowExpDatePicker(false);
     setShowExpTimePicker(false);
     setSelectedMembers(new Set());
+    setValidatorIds(new Set());
     setModalError('');
     setCreateModalVisible(true);
   };
 
   const toggleMember = (userId) => {
     setSelectedMembers((prev) => {
+      const next = new Set(prev);
+      next.has(userId) ? next.delete(userId) : next.add(userId);
+      return next;
+    });
+  };
+
+  const toggleValidator = (userId) => {
+    setValidatorIds((prev) => {
       const next = new Set(prev);
       next.has(userId) ? next.delete(userId) : next.add(userId);
       return next;
@@ -303,6 +407,7 @@ export default function AdminScreen() {
           type: 'custom',
           recurrence: newRecurrence,
           is_active: true,
+          category_id: categoryId || null,
           due_time: newRecurrence === 'daily' && dueTime ? `${formatDisplayTime(dueTime)}:00` : null,
           expires_at: newRecurrence === 'once' ? buildExpiresAt(expiresDate, expiresTime) : null,
         })
@@ -311,14 +416,17 @@ export default function AdminScreen() {
       if (habitError) throw habitError;
 
       if (selectedMembers.size > 0) {
-        const assignments = [...selectedMembers].map((userId) => ({
-          habit_id: newHabit.id,
-          user_id: userId,
-        }));
         const { error: assignError } = await supabase
           .from('habit_assignments')
-          .insert(assignments);
+          .insert([...selectedMembers].map((userId) => ({ habit_id: newHabit.id, user_id: userId })));
         if (assignError) throw assignError;
+      }
+
+      if (validatorIds.size > 0) {
+        const { error: validError } = await supabase
+          .from('habit_validators')
+          .insert([...validatorIds].map((userId) => ({ habit_id: newHabit.id, user_id: userId })));
+        if (validError) throw validError;
       }
 
       setCreateModalVisible(false);
@@ -330,40 +438,81 @@ export default function AdminScreen() {
     }
   };
 
-  // ── Edit assignments ──────────────────────────────────────────────────────
-  const openAssignModal = async (habit) => {
-    setAssigningHabitId(habit.id);
-    setAssigningHabitTitle(habit.title);
-    setModalError('');
+  // ── Edit habit ───────────────────────────────────────────────────────────
+  const openEditModal = async (habit) => {
+    const [{ data: current }, { data: currentValidators }] = await Promise.all([
+      supabase.from('habit_assignments').select('user_id').eq('habit_id', habit.id),
+      supabase.from('habit_validators').select('user_id').eq('habit_id', habit.id),
+    ]);
 
-    const { data: current } = await supabase
-      .from('habit_assignments')
-      .select('user_id')
-      .eq('habit_id', habit.id);
+    setEditingHabit(habit);
+    setNewTitle(habit.title);
+    setNewDescription(habit.description || '');
+    setNewRecurrence(habit.recurrence || 'daily');
+    setCategoryId(habit.category_id || null);
+
+    if (habit.due_time && habit.recurrence === 'daily') {
+      const [hh, mm] = habit.due_time.split(':').map(Number);
+      const d = new Date(); d.setHours(hh, mm, 0, 0);
+      setDueTime(d);
+    } else { setDueTime(null); }
+
+    if (habit.expires_at && habit.recurrence === 'once') {
+      const d = new Date(habit.expires_at);
+      setExpiresDate(d);
+      setExpiresTime(d.getHours() !== 0 || d.getMinutes() !== 0 ? d : null);
+    } else { setExpiresDate(null); setExpiresTime(null); }
+
+    setShowDuePicker(false);
+    setShowExpDatePicker(false);
+    setShowExpTimePicker(false);
     setSelectedMembers(new Set((current ?? []).map((a) => a.user_id)));
-    setAssignModalVisible(true);
+    setValidatorIds(new Set((currentValidators ?? []).map((v) => v.user_id)));
+    setModalError('');
+    setEditModalVisible(true);
   };
 
-  const handleSaveAssignments = async () => {
-    if (!assigningHabitId) return;
+  const handleSaveEdit = async () => {
+    if (!newTitle.trim()) { setModalError(t('admin.error_title_required')); return; }
+    if (!editingHabit) return;
     setSavingHabit(true);
     setModalError('');
     try {
-      await supabase.from('habit_assignments').delete().eq('habit_id', assigningHabitId);
+      const updatedFields = {
+        title: newTitle.trim(),
+        description: newDescription.trim() || null,
+        recurrence: newRecurrence,
+        category_id: categoryId || null,
+        due_time: newRecurrence === 'daily' && dueTime ? `${formatDisplayTime(dueTime)}:00` : null,
+        expires_at: newRecurrence === 'once' ? buildExpiresAt(expiresDate, expiresTime) : null,
+      };
+      const { error: updateError } = await supabase
+        .from('habits').update(updatedFields).eq('id', editingHabit.id);
+      if (updateError) throw updateError;
 
+      await supabase.from('habit_assignments').delete().eq('habit_id', editingHabit.id);
       if (selectedMembers.size > 0) {
-        const assignments = [...selectedMembers].map((userId) => ({
-          habit_id: assigningHabitId,
-          user_id: userId,
-        }));
-        const { error: assignError } = await supabase
-          .from('habit_assignments')
-          .insert(assignments);
+        const { error: assignError } = await supabase.from('habit_assignments').insert(
+          [...selectedMembers].map((userId) => ({ habit_id: editingHabit.id, user_id: userId }))
+        );
         if (assignError) throw assignError;
       }
 
-      setAssignModalVisible(false);
-      loadData();
+      await supabase.from('habit_validators').delete().eq('habit_id', editingHabit.id);
+      if (validatorIds.size > 0) {
+        const { error: validError } = await supabase.from('habit_validators').insert(
+          [...validatorIds].map((userId) => ({ habit_id: editingHabit.id, user_id: userId }))
+        );
+        if (validError) throw validError;
+      }
+
+      setHabits((prev) => prev.map((h) =>
+        h.id === editingHabit.id
+          ? { ...h, ...updatedFields, assignedCount: selectedMembers.size, validatorCount: validatorIds.size }
+          : h
+      ));
+      setEditModalVisible(false);
+      setEditingHabit(null);
     } catch (e) {
       setModalError(e?.message || t('admin.error_create'));
     } finally {
@@ -371,10 +520,23 @@ export default function AdminScreen() {
     }
   };
 
-  // ── Render habit row ─────────────────────────────────────────────────────
-  const renderHabit = ({ item }) => (
+  // ── Flat list data (sections + habits interleaved) ───────────────────────
+  const flatListData = useMemo(() => {
+    const catMap = {};
+    categories.forEach((c) => { catMap[c.id] = c; });
+    const sections = groupHabitsByCategory(habits, catMap);
+    const flat = [];
+    sections.forEach((section) => {
+      flat.push({ type: 'section_header', id: `hdr-${section.category?.id ?? 'none'}`, section });
+      section.habits.forEach((h) => flat.push({ type: 'habit', ...h }));
+    });
+    return flat;
+  }, [habits, categories]);
+
+  // ── Render helpers ───────────────────────────────────────────────────────
+  const renderHabitRow = (item) => (
     <View style={styles.habitRow}>
-      <View style={styles.habitInfo}>
+      <TouchableOpacity onPress={() => openEditModal(item)} activeOpacity={0.7} style={styles.habitInfo}>
         <Text style={styles.habitTitle} numberOfLines={2}>{item.title}</Text>
         <View style={styles.habitMeta}>
           {item.expires_at ? (
@@ -382,13 +544,14 @@ export default function AdminScreen() {
               {t('admin.habit_expires', { date: formatDate(item.expires_at, locale) })}
             </Text>
           ) : null}
-          <TouchableOpacity onPress={() => openAssignModal(item)} activeOpacity={0.7}>
-            <Text style={styles.habitAssigned}>
-              {t('admin.habit_assigned_count', { count: item.assignedCount })}
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.habitAssigned}>
+            {t('admin.habit_assigned_count', { count: item.assignedCount })}
+          </Text>
+          <Text style={styles.habitValidators}>
+            {t('admin.habit_validator_count', { count: item.validatorCount ?? 0 })}
+          </Text>
         </View>
-      </View>
+      </TouchableOpacity>
       <View style={styles.habitRowActions}>
         <Switch
           value={!!item.is_active}
@@ -407,7 +570,26 @@ export default function AdminScreen() {
     </View>
   );
 
-  // ── Member toggle row (shared between both modals) ────────────────────────
+  const renderItem = ({ item }) => {
+    if (item.type === 'section_header') {
+      const { category } = item.section;
+      return (
+        <View style={[styles.categoryHeader, { backgroundColor: category ? category.color + '1A' : BG }]}>
+          <Ionicons
+            name={category ? category.icon : 'help-circle-outline'}
+            size={15}
+            color={category ? category.color : GRAY}
+          />
+          <Text style={[styles.categoryHeaderText, { color: category ? category.color : GRAY }]}>
+            {category ? category.name : t('admin.no_category')}
+          </Text>
+        </View>
+      );
+    }
+    return renderHabitRow(item);
+  };
+
+  // ── Member / validator toggle rows ──────────────────────────────────────
   const renderMemberToggle = (member) => (
     <TouchableOpacity
       key={member.id}
@@ -418,6 +600,22 @@ export default function AdminScreen() {
       <Text style={styles.memberName}>{member.full_name || '—'}</Text>
       <View style={[styles.checkbox, selectedMembers.has(member.id) && styles.checkboxActive]}>
         {selectedMembers.has(member.id) && (
+          <Ionicons name="checkmark" size={14} color={WHITE} />
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderValidatorToggle = (member) => (
+    <TouchableOpacity
+      key={member.id}
+      style={styles.memberRow}
+      onPress={() => toggleValidator(member.id)}
+      activeOpacity={0.7}
+    >
+      <Text style={styles.memberName}>{member.full_name || '—'}</Text>
+      <View style={[styles.checkbox, validatorIds.has(member.id) && styles.checkboxActive]}>
+        {validatorIds.has(member.id) && (
           <Ionicons name="checkmark" size={14} color={WHITE} />
         )}
       </View>
@@ -438,7 +636,7 @@ export default function AdminScreen() {
       <FlatList
         style={styles.container}
         contentContainerStyle={styles.listContent}
-        data={habits}
+        data={flatListData}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} tintColor={BLUE} />
@@ -493,14 +691,63 @@ export default function AdminScreen() {
             </View>
           </>
         }
-        renderItem={renderHabit}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        renderItem={renderItem}
+        ItemSeparatorComponent={({ leadingItem, trailingItem }) =>
+          leadingItem?.type === 'habit' && trailingItem?.type === 'habit'
+            ? <View style={styles.separator} />
+            : null
+        }
         ListEmptyComponent={
           !error ? (
             <View style={styles.emptyRow}>
               <Text style={styles.emptyText}>{t('admin.empty_habits')}</Text>
             </View>
           ) : null
+        }
+        ListFooterComponent={
+          <View>
+            <View style={styles.sectionDivider} />
+            {/* Categories section */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{t('admin.categories_title')}</Text>
+              <TouchableOpacity style={styles.newHabitBtn} onPress={openCatModal} activeOpacity={0.8}>
+                <Ionicons name="add" size={18} color={WHITE} />
+                <Text style={styles.newHabitBtnText}>{t('admin.new_category')}</Text>
+              </TouchableOpacity>
+            </View>
+            {/* Predefined */}
+            {categories.some((c) => !c.company_id) && (
+              <View style={styles.catGroupHeader}>
+                <Text style={styles.catGroupLabel}>{t('admin.predefined')}</Text>
+              </View>
+            )}
+            {categories.filter((c) => !c.company_id).map((cat) => (
+              <View key={cat.id} style={styles.categoryRow}>
+                <View style={[styles.catIconBadge, { backgroundColor: cat.color + '26' }]}>
+                  <Ionicons name={cat.icon} size={16} color={cat.color} />
+                </View>
+                <Text style={styles.catName}>{cat.name}</Text>
+              </View>
+            ))}
+            {/* Custom */}
+            {categories.some((c) => !!c.company_id) && (
+              <View style={styles.catGroupHeader}>
+                <Text style={styles.catGroupLabel}>{t('admin.custom')}</Text>
+              </View>
+            )}
+            {categories.filter((c) => !!c.company_id).map((cat) => (
+              <View key={cat.id} style={styles.categoryRow}>
+                <View style={[styles.catIconBadge, { backgroundColor: cat.color + '26' }]}>
+                  <Ionicons name={cat.icon} size={16} color={cat.color} />
+                </View>
+                <Text style={[styles.catName, { flex: 1 }]}>{cat.name}</Text>
+                <TouchableOpacity onPress={() => handleDeleteCategory(cat)} style={styles.trashBtn} activeOpacity={0.7}>
+                  <Ionicons name="trash-outline" size={18} color="#CC0000" />
+                </TouchableOpacity>
+              </View>
+            ))}
+            <View style={{ height: 32 }} />
+          </View>
         }
       />
 
@@ -686,9 +933,40 @@ export default function AdminScreen() {
                 </>
               )}
 
+              {/* Categoría */}
+              {categories.length > 0 && (
+                <>
+                  <Text style={styles.fieldLabel}>{t('admin.categories_title')}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catPillRow}>
+                    <TouchableOpacity
+                      style={[styles.catPill, categoryId === null && styles.catPillNoneActive]}
+                      onPress={() => setCategoryId(null)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.catPillText, categoryId === null && styles.catPillTextActive]}>—</Text>
+                    </TouchableOpacity>
+                    {categories.map((cat) => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[styles.catPill, categoryId === cat.id && { borderColor: cat.color, backgroundColor: cat.color + '1A' }]}
+                        onPress={() => setCategoryId(cat.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name={cat.icon} size={14} color={categoryId === cat.id ? cat.color : GRAY} />
+                        <Text style={[styles.catPillText, categoryId === cat.id && { color: cat.color }]}>{cat.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
+
               {/* Asignación */}
               <Text style={styles.fieldLabel}>{t('admin.habit_assign_label')}</Text>
               {members.map(renderMemberToggle)}
+
+              {/* Validadores */}
+              <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{t('admin.validators_label')}</Text>
+              {members.filter((m) => !selectedMembers.has(m.id)).map(renderValidatorToggle)}
 
               {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
 
@@ -709,40 +987,167 @@ export default function AdminScreen() {
         </Pressable>
       </Modal>
 
-      {/* ── Modal: editar asignaciones ────────────────────────────────────── */}
+      {/* ── Modal: editar hábito ─────────────────────────────────────────── */}
       <Modal
-        visible={assignModalVisible}
+        visible={editModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setAssignModalVisible(false)}
+        onRequestClose={() => { setEditModalVisible(false); setEditingHabit(null); }}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setAssignModalVisible(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => { setEditModalVisible(false); setEditingHabit(null); }}>
           <Pressable style={styles.modalSheet} onPress={() => {}}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>{t('admin.habit_assignments_title')}</Text>
-            <Text style={styles.modalSubtitle} numberOfLines={2}>{assigningHabitTitle}</Text>
+            <Text style={styles.modalTitle}>{t('admin.edit_habit_title')}</Text>
             <View style={styles.modalDivider} />
 
-            <ScrollView
-              style={styles.modalScroll}
-              contentContainerStyle={styles.modalScrollContent}
-              bounces={false}
-            >
+            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
+              <TextInput style={styles.input} value={newTitle} onChangeText={setNewTitle} placeholder={t('admin.habit_title_placeholder')} placeholderTextColor={GRAY} maxLength={80} editable={!savingHabit} />
+              <TextInput style={[styles.input, styles.inputMultiline]} value={newDescription} onChangeText={setNewDescription} placeholder={t('admin.habit_description_placeholder')} placeholderTextColor={GRAY} multiline maxLength={200} editable={!savingHabit} />
+
+              <Text style={styles.fieldLabel}>{t('admin.habit_recurrence_label')}</Text>
+              <View style={styles.pillRow}>
+                {[
+                  { value: 'daily', label: t('admin.habit_recurrence_daily') },
+                  { value: 'once',  label: t('admin.habit_recurrence_once') },
+                ].map((opt) => (
+                  <TouchableOpacity key={opt.value} style={[styles.pill, newRecurrence === opt.value && styles.pillActive]} onPress={() => { setNewRecurrence(opt.value); setDueTime(null); setExpiresDate(null); setExpiresTime(null); }} activeOpacity={0.8}>
+                    <Text style={[styles.pillText, newRecurrence === opt.value && styles.pillTextActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {newRecurrence === 'daily' && (
+                <>
+                  <Text style={styles.fieldLabel}>{t('admin.due_time_label')}</Text>
+                  <View style={styles.timeRow}>
+                    <TouchableOpacity style={[styles.pickerBtn, { flex: 1 }]} onPress={() => setShowDuePicker(true)} activeOpacity={0.7} disabled={savingHabit}>
+                      <Text style={dueTime ? styles.pickerBtnText : styles.pickerBtnPlaceholder}>{dueTime ? formatDisplayTime(dueTime) : t('admin.due_time_placeholder')}</Text>
+                    </TouchableOpacity>
+                    {dueTime ? <TouchableOpacity onPress={() => { setDueTime(null); setShowDuePicker(false); }} style={styles.clearBtn} activeOpacity={0.7}><Text style={styles.clearBtnText}>{t('admin.expires_at_clear')}</Text></TouchableOpacity> : null}
+                  </View>
+                  {showDuePicker && (<><DateTimePicker value={dueTime || new Date()} mode="time" display="spinner" onChange={(_, s) => { if (Platform.OS === 'android') setShowDuePicker(false); if (s) setDueTime(s); }} />{Platform.OS === 'ios' && <TouchableOpacity onPress={() => setShowDuePicker(false)} style={styles.pickerDoneBtn} activeOpacity={0.8}><Text style={styles.pickerDoneBtnText}>{t('common.save')}</Text></TouchableOpacity>}</>)}
+                </>
+              )}
+
+              {newRecurrence === 'once' && (
+                <>
+                  <Text style={styles.fieldLabel}>{t('admin.expires_at_label')}</Text>
+                  <View style={styles.timeRow}>
+                    <TouchableOpacity style={[styles.pickerBtn, { flex: 2 }]} onPress={() => setShowExpDatePicker(true)} activeOpacity={0.7} disabled={savingHabit}>
+                      <Text style={expiresDate ? styles.pickerBtnText : styles.pickerBtnPlaceholder}>{expiresDate ? formatDisplayDate(expiresDate) : t('admin.expires_at_placeholder')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.pickerBtn, { flex: 1, marginLeft: 8 }]} onPress={() => setShowExpTimePicker(true)} activeOpacity={0.7} disabled={savingHabit || !expiresDate}>
+                      <Text style={expiresTime ? styles.pickerBtnText : styles.pickerBtnPlaceholder}>{expiresTime ? formatDisplayTime(expiresTime) : 'HH:MM'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {(expiresDate || expiresTime) ? <TouchableOpacity onPress={() => { setExpiresDate(null); setExpiresTime(null); setShowExpDatePicker(false); setShowExpTimePicker(false); }} style={[styles.clearBtn, { alignSelf: 'flex-start', marginBottom: 12 }]} activeOpacity={0.7}><Text style={styles.clearBtnText}>{t('admin.expires_at_clear')}</Text></TouchableOpacity> : null}
+                  {showExpDatePicker && (<><DateTimePicker value={expiresDate || new Date()} mode="date" display="spinner" minimumDate={new Date()} onChange={(_, s) => { if (Platform.OS === 'android') setShowExpDatePicker(false); if (s) setExpiresDate(s); }} />{Platform.OS === 'ios' && <TouchableOpacity onPress={() => setShowExpDatePicker(false)} style={styles.pickerDoneBtn} activeOpacity={0.8}><Text style={styles.pickerDoneBtnText}>{t('common.save')}</Text></TouchableOpacity>}</>)}
+                  {showExpTimePicker && (<><DateTimePicker value={expiresTime || new Date()} mode="time" display="spinner" onChange={(_, s) => { if (Platform.OS === 'android') setShowExpTimePicker(false); if (s) setExpiresTime(s); }} />{Platform.OS === 'ios' && <TouchableOpacity onPress={() => setShowExpTimePicker(false)} style={styles.pickerDoneBtn} activeOpacity={0.8}><Text style={styles.pickerDoneBtnText}>{t('common.save')}</Text></TouchableOpacity>}</>)}
+                </>
+              )}
+
+              {categories.length > 0 && (
+                <>
+                  <Text style={styles.fieldLabel}>{t('admin.categories_title')}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catPillRow}>
+                    <TouchableOpacity style={[styles.catPill, categoryId === null && styles.catPillNoneActive]} onPress={() => setCategoryId(null)} activeOpacity={0.7}>
+                      <Text style={[styles.catPillText, categoryId === null && styles.catPillTextActive]}>—</Text>
+                    </TouchableOpacity>
+                    {categories.map((cat) => (
+                      <TouchableOpacity key={cat.id} style={[styles.catPill, categoryId === cat.id && { borderColor: cat.color, backgroundColor: cat.color + '1A' }]} onPress={() => setCategoryId(cat.id)} activeOpacity={0.7}>
+                        <Ionicons name={cat.icon} size={14} color={categoryId === cat.id ? cat.color : GRAY} />
+                        <Text style={[styles.catPillText, categoryId === cat.id && { color: cat.color }]}>{cat.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
+
+              <Text style={styles.fieldLabel}>{t('admin.habit_assign_label')}</Text>
               {members.map(renderMemberToggle)}
+
+              {/* Validadores */}
+              <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{t('admin.validators_label')}</Text>
+              {members.filter((m) => !selectedMembers.has(m.id)).map(renderValidatorToggle)}
+
+              {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
+
+              <TouchableOpacity style={[styles.saveBtn, savingHabit && styles.btnDisabled]} onPress={handleSaveEdit} disabled={savingHabit} activeOpacity={0.85}>
+                {savingHabit ? <ActivityIndicator color={WHITE} /> : <Text style={styles.saveBtnText}>{t('admin.save_changes')}</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Modal: nueva categoría ───────────────────────────────────────── */}
+      <Modal
+        visible={catModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCatModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setCatModalVisible(false)}>
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>{t('admin.new_category')}</Text>
+            <View style={styles.modalDivider} />
+            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
+              <TextInput
+                style={styles.input}
+                value={newCatName}
+                onChangeText={setNewCatName}
+                placeholder={t('admin.category_name_placeholder')}
+                placeholderTextColor={GRAY}
+                maxLength={40}
+                editable={!savingCat}
+              />
+
+              <Text style={styles.fieldLabel}>{t('admin.category_icon')}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.iconPickerRow}>
+                {CATEGORY_ICONS.map((icon) => (
+                  <TouchableOpacity
+                    key={icon}
+                    style={[styles.iconOption, newCatIcon === icon && styles.iconOptionActive]}
+                    onPress={() => setNewCatIcon(icon)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={icon} size={22} color={newCatIcon === icon ? BLUE : GRAY} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.fieldLabel}>{t('admin.category_color')}</Text>
+              <View style={styles.colorPickerRow}>
+                {CATEGORY_COLORS.map((color) => (
+                  <TouchableOpacity
+                    key={color}
+                    style={[styles.colorOption, { backgroundColor: color }, newCatColor === color && styles.colorOptionActive]}
+                    onPress={() => setNewCatColor(color)}
+                    activeOpacity={0.7}
+                  >
+                    {newCatColor === color && <Ionicons name="checkmark" size={16} color={WHITE} />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Preview */}
+              <View style={styles.catPreviewRow}>
+                <View style={[styles.catIconBadge, { backgroundColor: newCatColor + '26' }]}>
+                  <Ionicons name={newCatIcon} size={16} color={newCatColor} />
+                </View>
+                <Text style={styles.catName}>{newCatName || '…'}</Text>
+              </View>
 
               {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
 
               <TouchableOpacity
-                style={[styles.saveBtn, savingHabit && styles.btnDisabled]}
-                onPress={handleSaveAssignments}
-                disabled={savingHabit}
+                style={[styles.saveBtn, savingCat && styles.btnDisabled]}
+                onPress={handleCreateCategory}
+                disabled={savingCat}
                 activeOpacity={0.85}
               >
-                {savingHabit ? (
-                  <ActivityIndicator color={WHITE} />
-                ) : (
-                  <Text style={styles.saveBtnText}>{t('admin.habit_save')}</Text>
-                )}
+                {savingCat ? <ActivityIndicator color={WHITE} /> : <Text style={styles.saveBtnText}>{t('admin.habit_save')}</Text>}
               </TouchableOpacity>
             </ScrollView>
           </Pressable>
@@ -790,6 +1195,8 @@ const styles = StyleSheet.create({
   btnSecondary: { flex: 1, backgroundColor: WHITE, borderRadius: 6, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: BLUE },
   btnDisabled: { opacity: 0.5 },
   btnSecondaryText: { color: BLUE, fontSize: 14, fontWeight: '600' },
+  categoryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16 },
+  categoryHeaderText: { fontSize: 13, fontWeight: '700' },
   habitRow: { backgroundColor: WHITE, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
   habitRowActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   trashBtn: { padding: 4 },
@@ -798,6 +1205,7 @@ const styles = StyleSheet.create({
   habitMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   habitExpires: { fontSize: 12, color: GRAY },
   habitAssigned: { fontSize: 12, color: BLUE, fontWeight: '600' },
+  habitValidators: { fontSize: 12, color: GRAY, fontWeight: '500' },
   separator: { height: 1, backgroundColor: '#E0E0E0', marginLeft: 16 },
   emptyRow: { backgroundColor: WHITE, padding: 20, alignItems: 'center' },
   emptyText: { color: GRAY, fontSize: 14, fontWeight: '600' },
@@ -856,4 +1264,22 @@ const styles = StyleSheet.create({
   saveBtn: { marginTop: 20, minHeight: 48, borderRadius: 6, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
   saveBtnText: { color: WHITE, fontSize: 15, fontWeight: '700' },
   modalErrorText: { marginTop: 12, color: '#b91c1c', fontSize: 13, fontWeight: '600' },
+  // Categories
+  catGroupHeader: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4, backgroundColor: WHITE },
+  catGroupLabel: { fontSize: 11, fontWeight: '700', color: GRAY, textTransform: 'uppercase', letterSpacing: 0.5 },
+  categoryRow: { backgroundColor: WHITE, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  catIconBadge: { width: 30, height: 30, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
+  catName: { fontSize: 14, fontWeight: '500', color: TEXT },
+  catPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, marginVertical: 4 },
+  catPillRow: { paddingVertical: 4, gap: 8, flexDirection: 'row', marginBottom: 12 },
+  catPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: '#E0E0E0', backgroundColor: WHITE },
+  catPillNoneActive: { borderColor: BLUE, backgroundColor: BLUE + '1A' },
+  catPillText: { fontSize: 13, fontWeight: '600', color: GRAY },
+  catPillTextActive: { color: BLUE },
+  iconPickerRow: { gap: 6, paddingVertical: 4, marginBottom: 12 },
+  iconOption: { width: 44, height: 44, borderRadius: 8, borderWidth: 1.5, borderColor: '#E0E0E0', alignItems: 'center', justifyContent: 'center' },
+  iconOptionActive: { borderColor: BLUE, backgroundColor: BLUE + '1A' },
+  colorPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  colorOption: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  colorOptionActive: { borderWidth: 3, borderColor: WHITE, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 },
 });

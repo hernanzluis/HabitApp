@@ -81,13 +81,13 @@ export default function ValidateHabitScreen() {
         return;
       }
 
-      const { data: companyHabits, error: companyHabitsError } = await supabase
-        .from('habits')
-        .select('id')
-        .eq('company_id', profile.company_id);
-      if (companyHabitsError) throw companyHabitsError;
-      const companyHabitIds = (companyHabits ?? []).map((h) => h.id);
-      if (!companyHabitIds.length) {
+      const { data: validatorHabits, error: validatorError } = await supabase
+        .from('habit_validators')
+        .select('habit_id')
+        .eq('user_id', user.id);
+      if (validatorError) throw validatorError;
+      const validatorHabitIds = (validatorHabits ?? []).map((v) => v.habit_id);
+      if (!validatorHabitIds.length) {
         setItems([]);
         return;
       }
@@ -97,7 +97,7 @@ export default function ValidateHabitScreen() {
         .select('id, habit_id, user_id, photo_url, status, notes, created_at')
         .eq('status', 'pending')
         .neq('user_id', user.id)
-        .in('habit_id', companyHabitIds)
+        .in('habit_id', validatorHabitIds)
         .order('created_at', { ascending: false });
 
       if (logsError) throw logsError;

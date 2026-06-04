@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
@@ -38,6 +39,7 @@ export default function SignUpScreen() {
   const navigation = useNavigation();
   const { t } = useTranslation();
 
+  const [step, setStep] = useState('choose');
   const [mode, setMode] = useState('create');
 
   const [fullName, setFullName] = useState('');
@@ -61,6 +63,19 @@ export default function SignUpScreen() {
   const switchMode = (next) => {
     if (next === mode) return;
     setMode(next);
+    setFormError('');
+    setErrors(EMPTY_ERRORS);
+  };
+
+  const chooseMode = (m) => {
+    setMode(m);
+    setFormError('');
+    setErrors(EMPTY_ERRORS);
+    setStep('form');
+  };
+
+  const goBack = () => {
+    setStep('choose');
     setFormError('');
     setErrors(EMPTY_ERRORS);
   };
@@ -168,36 +183,60 @@ export default function SignUpScreen() {
     }
   };
 
+  // ── Paso 1: elegir modo ───────────────────────────────────────────────────
+  if (step === 'choose') {
+    return (
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.chooseContent} keyboardShouldPersistTaps="handled">
+          <Text style={styles.welcomeTitle}>{t('signup.welcome_title')}</Text>
+          <Text style={styles.welcomeSubtitle}>{t('signup.welcome_subtitle')}</Text>
+
+          <TouchableOpacity
+            style={styles.modeCardCreate}
+            onPress={() => chooseMode('create')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="people-outline" size={32} color={WHITE} />
+            <View style={styles.modeCardText}>
+              <Text style={styles.modeCardTitleLight}>{t('signup.create_group')}</Text>
+              <Text style={styles.modeCardDescLight}>{t('signup.create_group_desc')}</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.modeCardJoin}
+            onPress={() => chooseMode('join')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="enter-outline" size={32} color={BLUE} />
+            <View style={styles.modeCardText}>
+              <Text style={styles.modeCardTitleBlue}>{t('signup.join_group')}</Text>
+              <Text style={styles.modeCardDescBlue}>{t('signup.join_group_desc')}</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => navigation.navigate('Login')} activeOpacity={0.8}>
+            <Text style={styles.link}>{t('signup.back_to_login')}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ── Paso 2: formulario ────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brand}>{t('common.app_name')}</Text>
-        <Text style={styles.subtitle}>{t('signup.subtitle')}</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={goBack} disabled={loading} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={22} color={TEXT} />
+          <Text style={styles.backBtnText}>{t('signup.back_to_login')}</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.formTitle}>
+          {mode === 'create' ? t('signup.create_group') : t('signup.join_group')}
+        </Text>
 
         <View style={styles.card}>
-          <View style={styles.modeSelector}>
-            <TouchableOpacity
-              style={[styles.modeBtn, mode === 'create' && styles.modeBtnActive]}
-              onPress={() => switchMode('create')}
-              activeOpacity={0.8}
-              disabled={loading}
-            >
-              <Text style={[styles.modeBtnText, mode === 'create' && styles.modeBtnTextActive]}>
-                {t('signup.mode_create')}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeBtn, mode === 'join' && styles.modeBtnActive]}
-              onPress={() => switchMode('join')}
-              activeOpacity={0.8}
-              disabled={loading}
-            >
-              <Text style={[styles.modeBtnText, mode === 'join' && styles.modeBtnTextActive]}>
-                {t('signup.mode_join')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           <Text style={styles.label}>{t('signup.full_name')}</Text>
           <TextInput
             value={fullName}
@@ -234,12 +273,7 @@ export default function SignUpScreen() {
               secureTextEntry={!showPassword}
               editable={!loading}
             />
-            <TouchableOpacity
-              style={styles.toggleBtn}
-              onPress={() => setShowPassword((v) => !v)}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
+            <TouchableOpacity style={styles.toggleBtn} onPress={() => setShowPassword((v) => !v)} disabled={loading} activeOpacity={0.8}>
               <Text style={styles.toggleBtnText}>{showPassword ? t('common.hide') : t('common.show')}</Text>
             </TouchableOpacity>
           </View>
@@ -256,12 +290,7 @@ export default function SignUpScreen() {
               secureTextEntry={!showConfirmPassword}
               editable={!loading}
             />
-            <TouchableOpacity
-              style={styles.toggleBtn}
-              onPress={() => setShowConfirmPassword((v) => !v)}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
+            <TouchableOpacity style={styles.toggleBtn} onPress={() => setShowConfirmPassword((v) => !v)} disabled={loading} activeOpacity={0.8}>
               <Text style={styles.toggleBtnText}>{showConfirmPassword ? t('common.hide') : t('common.show')}</Text>
             </TouchableOpacity>
           </View>
@@ -314,10 +343,6 @@ export default function SignUpScreen() {
               </Text>
             )}
           </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={loading} activeOpacity={0.8}>
-            <Text style={styles.link}>{t('signup.back_to_login')}</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -326,9 +351,43 @@ export default function SignUpScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
-  content: { paddingHorizontal: 18, paddingTop: 64, paddingBottom: 40, alignItems: 'center' },
-  brand: { color: TEXT, fontSize: 28, fontWeight: '700', marginBottom: 2 },
-  subtitle: { color: GRAY, fontSize: 14, marginBottom: 26 },
+  // ── Choose step
+  chooseContent: { paddingHorizontal: 24, paddingTop: 80, paddingBottom: 40 },
+  brand: { color: TEXT, fontSize: 28, fontWeight: '700', marginBottom: 12, textAlign: 'center' },
+  welcomeTitle: { color: TEXT, fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 6 },
+  welcomeSubtitle: { color: GRAY, fontSize: 15, textAlign: 'center', marginBottom: 40 },
+  modeCardCreate: {
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: BLUE,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    gap: 16,
+    marginBottom: 16,
+  },
+  modeCardJoin: {
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: WHITE,
+    borderWidth: 1.5,
+    borderColor: BLUE,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    gap: 16,
+    marginBottom: 32,
+  },
+  modeCardText: { flex: 1 },
+  modeCardTitleLight: { fontSize: 16, fontWeight: '700', color: WHITE },
+  modeCardDescLight: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  modeCardTitleBlue: { fontSize: 16, fontWeight: '700', color: BLUE },
+  modeCardDescBlue: { fontSize: 12, color: GRAY, marginTop: 2 },
+  // ── Form step
+  content: { paddingHorizontal: 18, paddingTop: 56, paddingBottom: 40 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 20 },
+  backBtnText: { color: TEXT, fontSize: 14, fontWeight: '600' },
+  formTitle: { fontSize: 22, fontWeight: '800', color: TEXT, marginBottom: 20 },
   card: {
     width: '100%',
     backgroundColor: WHITE,
@@ -340,23 +399,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  modeSelector: {
-    flexDirection: 'row',
-    backgroundColor: '#E8E8E8',
-    borderRadius: 8,
-    padding: 3,
-    marginBottom: 20,
-  },
-  modeBtn: {
-    flex: 1,
-    height: 36,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modeBtnActive: { backgroundColor: BLUE },
-  modeBtnText: { fontSize: 13, fontWeight: '700', color: GRAY },
-  modeBtnTextActive: { color: WHITE },
   label: { fontSize: 13, fontWeight: '600', color: TEXT },
   mt: { marginTop: 14 },
   input: {
@@ -387,12 +429,10 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 4,
     backgroundColor: BLUE,
-    alignSelf: 'center',
-    paddingHorizontal: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
   submitBtnDisabled: { opacity: 0.7 },
   submitBtnText: { color: WHITE, fontWeight: '600' },
-  link: { color: BLUE, marginTop: 18, fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  link: { color: BLUE, fontSize: 14, fontWeight: '600', textAlign: 'center' },
 });

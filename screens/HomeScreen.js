@@ -39,6 +39,24 @@ function isDuePast(dueTime) {
   return new Date() > limit;
 }
 
+function sortHabitsByUrgency(habits) {
+  function urgency(h) {
+    if (h.completedToday) return 4;
+    if (h.due_time) return isDuePast(h.due_time) ? 0 : 1;
+    if (h.expires_at) return 2;
+    return 3;
+  }
+
+  return [...habits].sort((a, b) => {
+    const ua = urgency(a);
+    const ub = urgency(b);
+    if (ua !== ub) return ua - ub;
+    if (ua === 1) return a.due_time.localeCompare(b.due_time);
+    if (ua === 2) return new Date(a.expires_at) - new Date(b.expires_at);
+    return 0;
+  });
+}
+
 
 function getFirstName(fullName, fallback) {
   if (!fullName?.trim()) return fallback;
@@ -48,6 +66,7 @@ function getFirstName(fullName, fallback) {
 
 export default function HomeScreen() {
   const navigation = useNavigation();
+  const [categoriesMap, setCategoriesMap] = useState({});
   const { t } = useTranslation();
 
   const [loading, setLoading] = useState(true);
@@ -106,7 +125,7 @@ export default function HomeScreen() {
 
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
-        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time')
+        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time, category_id')
         .eq('company_id', profileData.company_id)
         .eq('is_active', true)
         .in('id', assignedIds)
@@ -172,6 +191,15 @@ export default function HomeScreen() {
         });
 
       setHabits(processed);
+
+      // Cargar categorías para badges
+      const { data: catsData } = await supabase
+        .from('categories')
+        .select('id, name, icon, color')
+        .or(`company_id.is.null,company_id.eq.${profileData.company_id}`);
+      const cMap = {};
+      (catsData ?? []).forEach((c) => { cMap[c.id] = c; });
+      setCategoriesMap(cMap);
     } catch (e) {
       if (attempt === 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -212,14 +240,23 @@ export default function HomeScreen() {
         statusColor = '#DC2626';
       } else {
         completedCardStyle = styles.habitCardPending;
-        statusText = t('home.status_pending');
+        statusText = t('home.awaiting_validation');
         statusColor = '#F59E0B';
       }
     }
 
+    const cat = item.category_id ? categoriesMap[item.category_id] : null;
+
     return (
     <View style={[styles.habitCard, completedCardStyle]}>
-      <Text style={styles.habitTitle}>{item.title}</Text>
+      <View style={styles.habitTitleRow}>
+        <Text style={styles.habitTitle}>{item.title}</Text>
+        {cat ? (
+          <View style={[styles.catBadge, { backgroundColor: cat.color + '26' }]}>
+            <Ionicons name={cat.icon} size={16} color={cat.color} />
+          </View>
+        ) : null}
+      </View>
       {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
       {item.recurrence === 'daily' && item.due_time ? (
         <Text style={[styles.dueTimeText, !item.completedToday && isDuePast(item.due_time) && styles.dueTimeUrgent]}>
@@ -280,7 +317,7 @@ export default function HomeScreen() {
 
       <View style={styles.listCard}>
         <FlatList
-          data={habits}
+          data={sortHabitsByUrgency(habits)}
           keyExtractor={(item) => item.id}
           renderItem={renderHabit}
           contentContainerStyle={styles.listContent}
@@ -382,10 +419,23 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: '#F59E0B',
   },
+  habitTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   habitTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: TEXT,
+    flex: 1,
+  },
+  catBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   habitDescription: {
     marginTop: 6,
