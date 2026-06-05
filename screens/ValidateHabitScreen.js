@@ -5,6 +5,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   Image,
@@ -29,6 +30,90 @@ function formatDate(dateString, locale) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function ValidateCard({ item, onVote, t, locale }) {
+  const [comment, setComment] = useState('');
+  const { companion, habit } = item;
+  const name = companion?.full_name || t('common.colleague');
+  const title = habit?.title || t('validate.habit_fallback');
+  const { userValidated, userVote, validatedCount, rejectedCount } = item;
+
+  const handleVote = (status) => {
+    onVote(item.id, status, comment.trim() || null);
+    setComment('');
+  };
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.row}>
+        <View style={styles.avatarWrapper}>
+          {companion?.avatar_url ? (
+            <Image source={{ uri: companion.avatar_url }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarFallbackText}>{name.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.info}>
+          <Text style={styles.name}>{name}</Text>
+          <Text style={styles.habitTitle}>{title}</Text>
+          <Text style={styles.date}>{formatDate(item.created_at, locale)}</Text>
+        </View>
+      </View>
+
+      {item.photo_url ? (
+        <View style={styles.photoWrapper}>
+          <Image source={{ uri: item.photo_url }} style={styles.photo} resizeMode="contain" />
+        </View>
+      ) : null}
+
+      {item.notes ? (
+        <View style={styles.notesBox}>
+          <Text style={styles.notesText}>{item.notes}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.countsRow}>
+        <Text style={styles.countApprove}>✓ {validatedCount}</Text>
+        <Text style={styles.countReject}>✗ {rejectedCount}</Text>
+        {userValidated ? (
+          <Text style={styles.votedLabel}>
+            {userVote === 'validated' ? t('validate.approved') : t('validate.rejected_label')}
+          </Text>
+        ) : null}
+      </View>
+
+      <Text style={styles.commentLabel}>{t('validate.comment_label')}</Text>
+      <TextInput
+        style={styles.commentInput}
+        value={comment}
+        onChangeText={setComment}
+        placeholder={t('validate.comment_placeholder')}
+        placeholderTextColor={GRAY}
+        multiline
+        maxLength={150}
+      />
+
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.rejectBtn, userValidated && styles.actionBtnDisabled]}
+          onPress={() => !userValidated && handleVote('rejected')}
+          activeOpacity={userValidated ? 1 : 0.9}
+        >
+          <Text style={[styles.rejectText, userValidated && styles.actionTextDisabled]}>{t('validate.reject')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.approveBtn, userValidated && styles.actionBtnDisabled]}
+          onPress={() => !userValidated && handleVote('validated')}
+          activeOpacity={userValidated ? 1 : 0.9}
+        >
+          <Text style={[styles.approveText, userValidated && styles.actionTextDisabled]}>{t('validate.approve')}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
 export default function ValidateHabitScreen() {
@@ -172,7 +257,7 @@ export default function ValidateHabitScreen() {
     }, [loadData])
   );
 
-  const submitValidation = async (logId, voteStatus) => {
+  const submitValidation = async (logId, voteStatus, comment) => {
     try {
       const {
         data: { user },
@@ -186,7 +271,7 @@ export default function ValidateHabitScreen() {
 
       const { error: insertError } = await supabase
         .from('habit_validations')
-        .insert({ habit_log_id: logId, validator_id: user.id, status: voteStatus });
+        .insert({ habit_log_id: logId, validator_id: user.id, status: voteStatus, comment });
 
       if (insertError) throw insertError;
 
@@ -203,73 +288,9 @@ export default function ValidateHabitScreen() {
     }
   };
 
-  const renderItem = ({ item }) => {
-    const { companion, habit } = item;
-    const name = companion?.full_name || t('common.colleague');
-    const title = habit?.title || t('validate.habit_fallback');
-    const { userValidated, userVote, validatedCount, rejectedCount } = item;
-
-    return (
-      <View style={styles.card}>
-        <View style={styles.row}>
-          <View style={styles.avatarWrapper}>
-            {companion?.avatar_url ? (
-              <Image source={{ uri: companion.avatar_url }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarFallbackText}>{name.charAt(0).toUpperCase()}</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.info}>
-            <Text style={styles.name}>{name}</Text>
-            <Text style={styles.habitTitle}>{title}</Text>
-            <Text style={styles.date}>{formatDate(item.created_at, locale)}</Text>
-          </View>
-        </View>
-
-        {item.photo_url ? (
-          <View style={styles.photoWrapper}>
-            <Image source={{ uri: item.photo_url }} style={styles.photo} resizeMode="contain" />
-          </View>
-        ) : null}
-
-        {item.notes ? (
-          <View style={styles.notesBox}>
-            <Text style={styles.notesText}>{item.notes}</Text>
-          </View>
-        ) : null}
-
-        <View style={styles.countsRow}>
-          <Text style={styles.countApprove}>✓ {validatedCount}</Text>
-          <Text style={styles.countReject}>✗ {rejectedCount}</Text>
-          {userValidated ? (
-            <Text style={styles.votedLabel}>
-              {userVote === 'validated' ? t('validate.approved') : t('validate.rejected_label')}
-            </Text>
-          ) : null}
-        </View>
-
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.rejectBtn, userValidated && styles.actionBtnDisabled]}
-            onPress={() => !userValidated && submitValidation(item.id, 'rejected')}
-            activeOpacity={userValidated ? 1 : 0.9}
-          >
-            <Text style={[styles.rejectText, userValidated && styles.actionTextDisabled]}>{t('validate.reject')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.approveBtn, userValidated && styles.actionBtnDisabled]}
-            onPress={() => !userValidated && submitValidation(item.id, 'validated')}
-            activeOpacity={userValidated ? 1 : 0.9}
-          >
-            <Text style={[styles.approveText, userValidated && styles.actionTextDisabled]}>{t('validate.approve')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
+  const renderItem = ({ item }) => (
+    <ValidateCard item={item} onVote={submitValidation} t={t} locale={locale} />
+  );
 
   if (loading) {
     return (
@@ -485,6 +506,23 @@ const styles = StyleSheet.create({
   notesText: {
     color: GRAY,
     fontSize: 13,
+  },
+  commentLabel: {
+    marginTop: 10,
+    fontSize: 12,
+    color: GRAY,
+    marginBottom: 4,
+  },
+  commentInput: {
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 4,
+    padding: 12,
+    minHeight: 80,
+    fontSize: 14,
+    color: TEXT,
+    textAlignVertical: 'top',
   },
 });
 

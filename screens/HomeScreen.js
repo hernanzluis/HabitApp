@@ -82,7 +82,7 @@ function ValidatorAvatar({ profile, status, size = 28 }) {
   );
 }
 
-function ValidatorRow({ profile, status }) {
+function ValidatorRow({ profile, status, comment }) {
   const name = profile?.full_name || '?';
   const isPending = status === 'pending';
   return (
@@ -96,7 +96,10 @@ function ValidatorRow({ profile, status }) {
           </Text>
         </View>
       )}
-      <Text style={[styles.validatorRowName, isPending && { color: '#666666' }]} numberOfLines={1}>{name}</Text>
+      <View style={styles.validatorRowInfo}>
+        <Text style={[styles.validatorRowName, isPending && { color: '#666666' }]} numberOfLines={1}>{name}</Text>
+        {comment ? <Text style={styles.validatorComment}>{comment}</Text> : null}
+      </View>
       {status === 'validated' ? <Ionicons name="checkmark-circle" size={18} color="#2E7D32" /> : null}
       {status === 'rejected'  ? <Ionicons name="close-circle"     size={18} color="#DC2626" /> : null}
     </View>
@@ -183,7 +186,7 @@ export default function HomeScreen() {
 
       const [logsResult, catsResult, validatorsResult] = await Promise.all([
         habitIds.length > 0
-          ? supabase.from('habit_logs').select('id, habit_id, created_at, habit_validations(habit_log_id, status, validator_id)').eq('user_id', user.id).in('habit_id', habitIds)
+          ? supabase.from('habit_logs').select('id, habit_id, created_at, habit_validations(habit_log_id, status, validator_id, comment)').eq('user_id', user.id).in('habit_id', habitIds)
           : Promise.resolve({ data: [], error: null }),
         supabase.from('categories').select('id, name, icon, color').or(`company_id.is.null,company_id.eq.${profileData.company_id}`),
         habitIds.length > 0
@@ -246,6 +249,7 @@ export default function HomeScreen() {
           todayValidationsPerLog[l.id] = l.habit_validations.map((v) => ({
             validatorId: v.validator_id,
             status: v.status,
+            comment: v.comment ?? null,
           }));
         }
       });
@@ -257,7 +261,7 @@ export default function HomeScreen() {
         if (!l.habit_validations?.length) return;
         if (!weekValidationsPerHabit[l.habit_id]) weekValidationsPerHabit[l.habit_id] = {};
         l.habit_validations.forEach((v) => {
-          weekValidationsPerHabit[l.habit_id][v.validator_id] = { validatorId: v.validator_id, status: v.status };
+          weekValidationsPerHabit[l.habit_id][v.validator_id] = { validatorId: v.validator_id, status: v.status, comment: v.comment ?? null };
         });
       });
       Object.keys(weekValidationsPerHabit).forEach((k) => {
@@ -513,7 +517,7 @@ export default function HomeScreen() {
                 <View style={styles.modalSection}>
                   <Text style={styles.modalSectionTitle}>{t('home.validators_approved')}</Text>
                   {modalSections.approved.map((v) => (
-                    <ValidatorRow key={v.validatorId} profile={v.profile} status="validated" />
+                    <ValidatorRow key={v.validatorId} profile={v.profile} status="validated" comment={v.comment} />
                   ))}
                 </View>
               ) : null}
@@ -522,7 +526,7 @@ export default function HomeScreen() {
                 <View style={styles.modalSection}>
                   <Text style={styles.modalSectionTitle}>{t('home.validators_rejected')}</Text>
                   {modalSections.rejected.map((v) => (
-                    <ValidatorRow key={v.validatorId} profile={v.profile} status="rejected" />
+                    <ValidatorRow key={v.validatorId} profile={v.profile} status="rejected" comment={v.comment} />
                   ))}
                 </View>
               ) : null}
@@ -805,11 +809,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  validatorRowName: {
+  validatorRowInfo: {
     flex: 1,
+  },
+  validatorRowName: {
     fontSize: 15,
     fontWeight: '600',
     color: TEXT,
+  },
+  validatorComment: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: GRAY,
+    marginTop: 1,
   },
   emptyState: {
     padding: 24,

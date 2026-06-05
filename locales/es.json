@@ -114,7 +114,9 @@
     "habit_fallback": "Hábito",
     "error_no_session": "Debes iniciar sesión para validar hábitos.",
     "error_load": "No se pudieron cargar los hábitos pendientes.",
-    "error_submit": "No se pudo registrar la validación."
+    "error_submit": "No se pudo registrar la validación.",
+    "comment_label": "Añade un comentario (opcional)",
+    "comment_placeholder": "Ej: ¡Muy bien, sigue así!"
   },
   "admin": {
     "header_title": "Administración",

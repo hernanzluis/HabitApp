@@ -114,7 +114,9 @@
     "habit_fallback": "Habit",
     "error_no_session": "You must be signed in to validate habits.",
     "error_load": "Could not load pending habits.",
-    "error_submit": "Could not register the validation."
+    "error_submit": "Could not register the validation.",
+    "comment_label": "Add a comment (optional)",
+    "comment_placeholder": "E.g: Great job, keep it up!"
   },
   "history": {
     "header_title": "History",

@@ -598,3 +598,9 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 ## 17. Forma de trabajo con Claude
 
 Cuando generes instrucciones para ejecutar en Claude Code, inclúyelas siempre dentro de un bloque de código con triple backtick para que aparezca el botón de copiar. Nunca las escribas como texto plano o lista.
+
+Cuando una tarea requiera tanto cambios en Supabase como cambios en el código, separar siempre las instrucciones en dos bloques claramente diferenciados:
+- "Para ti — ejecutar en Supabase SQL Editor:" con el SQL en un bloque de código
+- "Para Code:" con las instrucciones en otro bloque de código
+
+Nunca mezclar instrucciones manuales e instrucciones para Code en el mismo bloque.
