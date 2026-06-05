@@ -80,7 +80,13 @@
     "status_pending": "Pending",
     "awaiting_validation": "✓ Sent, awaiting validation",
     "due_before": "Before {{time}}",
-    "error_load": "Could not load data. Check your connection."
+    "error_load": "Could not load data. Check your connection.",
+    "weekly_progress": "{{done}} of {{target}} times this week",
+    "weekly_goal_met": "✓ Weekly goal met",
+    "validators_approved": "Approved by",
+    "validators_rejected": "Rejected by",
+    "validators_pending": "Pending validation",
+    "validators_count": "{{done}} of {{total}} validators"
   },
   "habit_detail": {
     "header_title": "Complete habit",
@@ -133,7 +139,16 @@
     "error_name": "Could not save name.",
     "error_logout": "Could not sign out.",
     "language": "Language",
-    "settings_title": "Settings"
+    "settings_title": "Settings",
+    "history_title": "My history",
+    "filter_all": "All",
+    "filter_validated": "Validated",
+    "filter_pending": "Pending",
+    "filter_rejected": "Rejected",
+    "filter_week": "This week",
+    "filter_month": "This month",
+    "filter_all_time": "All time",
+    "history_empty": "No records match these filters"
   },
   "admin": {
     "header_title": "Administration",
@@ -161,6 +176,8 @@
     "habit_recurrence_label": "Frequency",
     "habit_recurrence_daily": "Daily",
     "habit_recurrence_once": "Once",
+    "recurrence_weekly": "X times/week",
+    "weekly_target_label": "How many times per week?",
     "habit_assign_label": "Assign to",
     "habit_save": "Save",
     "habit_assigned_count": "{{count}} assigned",
@@ -193,11 +210,22 @@
   "activity": {
     "header_title": "Group activity",
     "loading": "Loading activity...",
-    "empty": "No activity this week yet",
+    "empty": "No habits assigned to you",
     "error_load": "Could not load activity. Check your connection.",
     "period": "Week of {{from}} to {{to}}",
     "completed": "completed",
     "validated": "validated",
-    "you": "You"
+    "you": "You",
+    "your_activity": "Your activity",
+    "your_family": "Your family",
+    "events": "Events",
+    "completed_once": "Completed",
+    "pending_once": "Pending",
+    "streak": "{{count}} days",
+    "days": "days",
+    "weeks": "{{count}} weeks",
+    "no_streak": "No streak",
+    "week_completed": "{{completed}} completed this week",
+    "member_progress": "{{completed}} of {{total}} days this week"
   }
 }

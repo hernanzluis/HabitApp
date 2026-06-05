@@ -13,7 +13,6 @@ import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import HomeScreen from '../screens/HomeScreen';
 import HabitDetailScreen from '../screens/HabitDetailScreen';
-import HistoryScreen from '../screens/HistoryScreen';
 import ValidateHabitScreen from '../screens/ValidateHabitScreen';
 import RankingScreen from '../screens/RankingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -151,14 +150,7 @@ function TabNavigator() {
                   <Ionicons name="shield-outline" size={24} color={TEXT} />
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity
-                onPress={() => nav.navigate('History')}
-                style={styles.headerBtn}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="time-outline" size={24} color={TEXT} />
-              </TouchableOpacity>
-              <TouchableOpacity
+<TouchableOpacity
                 onPress={() => Alert.alert(t('common.coming_soon'))}
                 style={styles.headerBtn}
                 activeOpacity={0.7}
@@ -216,7 +208,6 @@ function AppStack() {
     <Stack.Navigator screenOptions={{ headerShown: false, headerBackTitle: '' }}>
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerBackTitle: '' }} />
       <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
-      <Stack.Screen name="History" component={HistoryScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="Admin" component={AdminScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
     </Stack.Navigator>
   );

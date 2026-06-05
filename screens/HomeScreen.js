@@ -2,7 +2,11 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
+  Modal,
+  Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -63,6 +67,42 @@ function getFirstName(fullName, fallback) {
   return fullName.trim().split(/\s+/)[0];
 }
 
+function ValidatorAvatar({ profile, status, size = 28 }) {
+  const initial = (profile?.full_name || '?').charAt(0).toUpperCase();
+  const borderColor = status === 'validated' ? '#4CAF50' : '#F44336';
+  const innerSize = size - 4;
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 2, borderColor, backgroundColor: '#E8E8E8', alignItems: 'center', justifyContent: 'center' }}>
+      {profile?.avatar_url ? (
+        <Image source={{ uri: profile.avatar_url }} style={{ width: innerSize, height: innerSize, borderRadius: innerSize / 2 }} />
+      ) : (
+        <Text style={{ fontSize: Math.floor(size * 0.38), fontWeight: '700', color: '#0A66C2' }}>{initial}</Text>
+      )}
+    </View>
+  );
+}
+
+function ValidatorRow({ profile, status }) {
+  const name = profile?.full_name || '?';
+  const isPending = status === 'pending';
+  return (
+    <View style={styles.validatorRow}>
+      {profile?.avatar_url ? (
+        <Image source={{ uri: profile.avatar_url }} style={styles.validatorRowAvatar} />
+      ) : (
+        <View style={[styles.validatorRowAvatarFallback, { backgroundColor: isPending ? '#E8E8E8' : '#0A66C2' }]}>
+          <Text style={[styles.validatorRowInitial, { color: isPending ? '#666666' : '#ffffff' }]}>
+            {name.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+      )}
+      <Text style={[styles.validatorRowName, isPending && { color: '#666666' }]} numberOfLines={1}>{name}</Text>
+      {status === 'validated' ? <Ionicons name="checkmark-circle" size={18} color="#2E7D32" /> : null}
+      {status === 'rejected'  ? <Ionicons name="close-circle"     size={18} color="#DC2626" /> : null}
+    </View>
+  );
+}
+
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -74,6 +114,7 @@ export default function HomeScreen() {
   const [error, setError] = useState('');
   const [profile, setProfile] = useState(null);
   const [habits, setHabits] = useState([]);
+  const [detailHabit, setDetailHabit] = useState(null);
 
   const loadHomeData = useCallback(async (isRefresh = false, attempt = 1) => {
     if (isRefresh) {
@@ -125,7 +166,7 @@ export default function HomeScreen() {
 
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
-        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time, category_id')
+        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time, category_id, weekly_target')
         .eq('company_id', profileData.company_id)
         .eq('is_active', true)
         .in('id', assignedIds)
@@ -140,13 +181,17 @@ export default function HomeScreen() {
 
       const habitIds = active.map((h) => h.id);
 
-      const [logsResult, catsResult] = await Promise.all([
+      const [logsResult, catsResult, validatorsResult] = await Promise.all([
         habitIds.length > 0
-          ? supabase.from('habit_logs').select('id, habit_id, created_at, habit_validations(habit_log_id, status)').eq('user_id', user.id).in('habit_id', habitIds)
+          ? supabase.from('habit_logs').select('id, habit_id, created_at, habit_validations(habit_log_id, status, validator_id)').eq('user_id', user.id).in('habit_id', habitIds)
           : Promise.resolve({ data: [], error: null }),
         supabase.from('categories').select('id, name, icon, color').or(`company_id.is.null,company_id.eq.${profileData.company_id}`),
+        habitIds.length > 0
+          ? supabase.from('habit_validators').select('habit_id, user_id, profiles(id, full_name, avatar_url)').in('habit_id', habitIds)
+          : Promise.resolve({ data: [], error: null }),
       ]);
       if (logsResult.error) throw logsResult.error;
+      if (validatorsResult.error) throw validatorsResult.error;
 
       const logsData = logsResult.data ?? [];
       const cMap = {};
@@ -155,6 +200,16 @@ export default function HomeScreen() {
 
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
+
+      // Week start (Monday) for weekly_x habits
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - (weekStart.getDay() === 0 ? 6 : weekStart.getDay() - 1));
+      weekStart.setHours(0, 0, 0, 0);
+      const weekLogs = logsData.filter((l) => new Date(l.created_at) >= weekStart);
+      const weeklyCountMap = {};
+      weekLogs.forEach((l) => {
+        weeklyCountMap[l.habit_id] = (weeklyCountMap[l.habit_id] || 0) + 1;
+      });
 
       const doneEver = new Set(logsData.map((l) => l.habit_id));
       const todayLogs = logsData.filter((l) => new Date(l.created_at) >= todayStart);
@@ -174,17 +229,71 @@ export default function HomeScreen() {
         }
       });
 
+      // habitId → [{userId, profile}]
+      const validatorsPerHabit = {};
+      (validatorsResult.data ?? []).forEach((v) => {
+        if (!validatorsPerHabit[v.habit_id]) validatorsPerHabit[v.habit_id] = [];
+        validatorsPerHabit[v.habit_id].push({
+          userId: v.user_id,
+          profile: v.profiles ?? { id: v.user_id, full_name: null, avatar_url: null },
+        });
+      });
+
+      // logId → [{validatorId, status}]
+      const todayValidationsPerLog = {};
+      todayLogs.forEach((l) => {
+        if (l.habit_validations?.length) {
+          todayValidationsPerLog[l.id] = l.habit_validations.map((v) => ({
+            validatorId: v.validator_id,
+            status: v.status,
+          }));
+        }
+      });
+
+      // habitId → [{validatorId, status}] week-level, deduped per validator (for weekly_x)
+      // A validator who voted on multiple logs of the same habit this week counts once (latest wins)
+      const weekValidationsPerHabit = {};
+      weekLogs.forEach((l) => {
+        if (!l.habit_validations?.length) return;
+        if (!weekValidationsPerHabit[l.habit_id]) weekValidationsPerHabit[l.habit_id] = {};
+        l.habit_validations.forEach((v) => {
+          weekValidationsPerHabit[l.habit_id][v.validator_id] = { validatorId: v.validator_id, status: v.status };
+        });
+      });
+      Object.keys(weekValidationsPerHabit).forEach((k) => {
+        weekValidationsPerHabit[k] = Object.values(weekValidationsPerHabit[k]);
+      });
+
       const processed = active
         .filter((h) => h.recurrence !== 'once' || !doneEver.has(h.id))
         .map((h) => {
-          const completedToday = h.recurrence === 'daily' && doneToday.has(h.id);
+          const weeklyCount = h.recurrence === 'weekly_x' ? (weeklyCountMap[h.id] || 0) : 0;
+          const weeklyGoalMet = h.recurrence === 'weekly_x' && weeklyCount >= (h.weekly_target || 1);
+          const completedToday = (h.recurrence === 'daily' && doneToday.has(h.id)) || weeklyGoalMet;
           const logId = todayLogIdByHabit[h.id];
-          const vCounts = (completedToday && logId && validationsMap[logId]) || null;
+          // weekly_x uses week-level aggregated validations; daily uses today's log only
+          const weeklyValidations = (h.recurrence === 'weekly_x' && weeklyCount > 0)
+            ? (weekValidationsPerHabit[h.id] ?? [])
+            : [];
+          const vCounts = h.recurrence === 'weekly_x'
+            ? (weeklyValidations.length > 0
+                ? {
+                    validatedCount: weeklyValidations.filter((v) => v.status === 'validated').length,
+                    rejectedCount:  weeklyValidations.filter((v) => v.status === 'rejected').length,
+                  }
+                : null)
+            : ((completedToday && logId && validationsMap[logId]) || null);
           return {
             ...h,
             completedToday,
+            weeklyCount,
+            weeklyGoalMet,
             todayValidatedCount: vCounts?.validatedCount ?? 0,
-            todayRejectedCount: vCounts?.rejectedCount ?? 0,
+            todayRejectedCount:  vCounts?.rejectedCount  ?? 0,
+            todayValidations: h.recurrence === 'weekly_x'
+              ? weeklyValidations
+              : ((completedToday && logId) ? (todayValidationsPerLog[logId] ?? []) : []),
+            validators: validatorsPerHabit[h.id] ?? [],
           };
         });
 
@@ -213,13 +322,16 @@ export default function HomeScreen() {
   };
 
   const renderHabit = ({ item }) => {
-
     let completedCardStyle = null;
     let statusText = '';
     let statusColor = GRAY;
 
     if (item.completedToday) {
-      if (item.todayValidatedCount > 0) {
+      if (item.weeklyGoalMet) {
+        completedCardStyle = styles.habitCardValidated;
+        statusText = t('home.weekly_goal_met');
+        statusColor = '#2E7D32';
+      } else if (item.todayValidatedCount > 0) {
         completedCardStyle = styles.habitCardValidated;
         statusText = t('home.status_validated');
         statusColor = '#2E7D32';
@@ -236,50 +348,89 @@ export default function HomeScreen() {
 
     const cat = item.category_id ? categoriesMap[item.category_id] : null;
 
+    // Avatar stack data (only voted validators)
+    const validatorById = {};
+    (item.validators ?? []).forEach((v) => { validatorById[v.userId] = v.profile; });
+    const voted = item.todayValidations ?? [];
+    const visibleVoters = voted.slice(0, 4);
+    const overflowCount = voted.length - visibleVoters.length;
+    const totalValidators = (item.validators ?? []).filter((v) => v.userId !== profile?.id).length;
+
+    const showValidators = (item.validators?.length ?? 0) > 0 && (
+      item.completedToday ||
+      (item.recurrence === 'weekly_x' && item.weeklyCount > 0)
+    );
+    const isCardTappable = item.completedToday ||
+      (item.recurrence === 'weekly_x' && item.weeklyCount > 0 && (item.validators?.length ?? 0) > 0);
+    const Card = isCardTappable ? TouchableOpacity : View;
+    const cardPressProps = isCardTappable
+      ? { onPress: () => setDetailHabit(item), activeOpacity: 0.92 }
+      : {};
+
     return (
-    <View style={[styles.habitCard, completedCardStyle]}>
-      <View style={styles.habitTitleRow}>
-        <Text style={styles.habitTitle}>{item.title}</Text>
-        {cat ? (
-          <View style={[styles.catBadge, { backgroundColor: cat.color + '26' }]}>
-            <Ionicons name={cat.icon} size={16} color={cat.color} />
-          </View>
-        ) : null}
-      </View>
-      {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
-      {item.recurrence === 'daily' && item.due_time ? (
-        <Text style={[styles.dueTimeText, !item.completedToday && isDuePast(item.due_time) && styles.dueTimeUrgent]}>
-          {t('home.due_before', { time: item.due_time.slice(0, 5) })}
-        </Text>
-      ) : null}
-      {item.expires_at ? (
-        <Text style={styles.expiryText}>
-          {t('home.expires', { date: formatExpiry(item.expires_at) })}
-        </Text>
-      ) : null}
-      {item.completedToday ? (
-        <View style={styles.completedRow}>
-          <View style={styles.completedLeft}>
-            <Ionicons name="checkmark-circle" size={16} color={statusColor} />
-            <Text style={[styles.completedText, { color: statusColor }]}>{statusText}</Text>
-          </View>
-          {(item.todayValidatedCount > 0 || item.todayRejectedCount > 0) ? (
-            <View style={styles.validationRow}>
-              <Text style={styles.validationCount}>✓ {item.todayValidatedCount}</Text>
-              <Text style={styles.rejectionCount}>✗ {item.todayRejectedCount}</Text>
+      <Card style={[styles.habitCard, completedCardStyle]} {...cardPressProps}>
+        <View style={styles.habitTitleRow}>
+          <Text style={styles.habitTitle}>{item.title}</Text>
+          {cat ? (
+            <View style={[styles.catBadge, { backgroundColor: cat.color + '26' }]}>
+              <Ionicons name={cat.icon} size={16} color={cat.color} />
             </View>
           ) : null}
         </View>
-      ) : (
-        <TouchableOpacity
-          style={styles.completeBtn}
-          onPress={() => onCompleteHabit(item)}
-          activeOpacity={0.9}
-        >
-          <Text style={styles.completeBtnText}>{t('home.complete')}</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+        {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
+        {item.recurrence === 'daily' && item.due_time ? (
+          <Text style={[styles.dueTimeText, !item.completedToday && isDuePast(item.due_time) && styles.dueTimeUrgent]}>
+            {t('home.due_before', { time: item.due_time.slice(0, 5) })}
+          </Text>
+        ) : null}
+        {item.expires_at ? (
+          <Text style={styles.expiryText}>
+            {t('home.expires', { date: formatExpiry(item.expires_at) })}
+          </Text>
+        ) : null}
+        {item.completedToday ? (
+          <View style={styles.completedRow}>
+            <View style={styles.completedLeft}>
+              <Ionicons name="checkmark-circle" size={16} color={statusColor} />
+              <Text style={[styles.completedText, { color: statusColor }]}>{statusText}</Text>
+            </View>
+          </View>
+        ) : (
+          <>
+            {item.recurrence === 'weekly_x' ? (
+              <Text style={styles.weeklyProgressText}>
+                {t('home.weekly_progress', { done: item.weeklyCount, target: item.weekly_target })}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              style={styles.completeBtn}
+              onPress={() => onCompleteHabit(item)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.completeBtnText}>{t('home.complete')}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+        {showValidators ? (
+          <View style={styles.validatorSection}>
+            <View style={styles.avatarStack}>
+              {visibleVoters.map((vote, idx) => (
+                <View key={vote.validatorId} style={[styles.avatarItem, { marginLeft: idx > 0 ? -8 : 0, zIndex: 4 - idx }]}>
+                  <ValidatorAvatar profile={validatorById[vote.validatorId]} status={vote.status} />
+                </View>
+              ))}
+              {overflowCount > 0 ? (
+                <View style={[styles.avatarItem, styles.avatarOverflow, { marginLeft: -8, zIndex: 0 }]}>
+                  <Text style={styles.avatarOverflowText}>+{overflowCount}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.validatorCountText}>
+              {t('home.validators_count', { done: voted.length, total: totalValidators })}
+            </Text>
+          </View>
+        ) : null}
+      </Card>
     );
   };
 
@@ -290,6 +441,22 @@ export default function HomeScreen() {
         <Text style={styles.loadingText}>{t('home.loading')}</Text>
       </View>
     );
+  }
+
+  // Precompute modal sections when a completed card is tapped
+  let modalSections = null;
+  if (detailHabit) {
+    const vById = {};
+    detailHabit.validators.forEach((v) => { vById[v.userId] = v.profile; });
+    const approved = detailHabit.todayValidations
+      .filter((v) => v.status === 'validated')
+      .map((v) => ({ ...v, profile: vById[v.validatorId] }));
+    const rejected = detailHabit.todayValidations
+      .filter((v) => v.status === 'rejected')
+      .map((v) => ({ ...v, profile: vById[v.validatorId] }));
+    const votedIds = new Set(detailHabit.todayValidations.map((v) => v.validatorId));
+    const pending = detailHabit.validators.filter((v) => !votedIds.has(v.userId) && v.userId !== profile?.id);
+    modalSections = { approved, rejected, pending };
   }
 
   return (
@@ -324,6 +491,54 @@ export default function HomeScreen() {
           }
         />
       </View>
+
+      {/* Modal de detalle de validadores */}
+      <Modal
+        visible={!!detailHabit}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDetailHabit(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setDetailHabit(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} numberOfLines={2}>{detailHabit?.title}</Text>
+              <TouchableOpacity onPress={() => setDetailHabit(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
+                <Ionicons name="close" size={22} color={TEXT} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalScrollContent}>
+              {modalSections?.approved.length > 0 ? (
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>{t('home.validators_approved')}</Text>
+                  {modalSections.approved.map((v) => (
+                    <ValidatorRow key={v.validatorId} profile={v.profile} status="validated" />
+                  ))}
+                </View>
+              ) : null}
+
+              {modalSections?.rejected.length > 0 ? (
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>{t('home.validators_rejected')}</Text>
+                  {modalSections.rejected.map((v) => (
+                    <ValidatorRow key={v.validatorId} profile={v.profile} status="rejected" />
+                  ))}
+                </View>
+              ) : null}
+
+              {modalSections?.pending.length > 0 ? (
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>{t('home.validators_pending')}</Text>
+                  {modalSections.pending.map((v) => (
+                    <ValidatorRow key={v.userId} profile={v.profile} status="pending" />
+                  ))}
+                </View>
+              ) : null}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
     </View>
   );
@@ -447,6 +662,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: GRAY,
   },
+  weeklyProgressText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: GRAY,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   completeBtn: {
     marginTop: 14,
     borderRadius: 4,
@@ -477,20 +699,117 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: GRAY,
   },
-  validationRow: {
+  // Validator avatar stack (completed card)
+  validatorSection: {
+    marginTop: 10,
+  },
+  avatarStack: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    marginBottom: 5,
   },
-  validationCount: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#166534',
+  avatarItem: {
+    // zIndex and marginLeft applied inline
   },
-  rejectionCount: {
-    fontSize: 12,
+  avatarOverflow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarOverflowText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: '#b91c1c',
+    color: GRAY,
+  },
+  validatorCountText: {
+    fontSize: 11,
+    color: GRAY,
+    fontWeight: '500',
+  },
+  // Detail modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    backgroundColor: WHITE,
+    borderRadius: 12,
+    width: '100%',
+    maxHeight: '75%',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: TEXT,
+  },
+  modalCloseBtn: {
+    padding: 2,
+    marginLeft: 8,
+  },
+  modalScrollContent: {
+    paddingBottom: 16,
+  },
+  modalSection: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  modalSectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: GRAY,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 8,
+  },
+  validatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  validatorRowAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  validatorRowAvatarFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  validatorRowInitial: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  validatorRowName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: TEXT,
   },
   emptyState: {
     padding: 24,

@@ -1,14 +1,15 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
@@ -17,233 +18,306 @@ const WHITE = '#ffffff';
 const BLUE = '#0A66C2';
 const TEXT = '#1D2226';
 const GRAY = '#666666';
-const HIGHLIGHT = '#EEF3FB';
+const GREEN = '#4CAF50';
+const FLAME = '#FF6B00';
 
-function getWeekBounds() {
+const DAY_LABELS_ES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const DAY_LABELS_EN = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+// "YYYY-M-D" key in local time — used for day-level comparisons
+function toDateKey(date) {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+// Monday 00:00:00 of the current week (local time)
+function getWeekStart() {
   const now = new Date();
   const day = now.getDay();
   const diff = day === 0 ? -6 : 1 - day;
-
   const monday = new Date(now);
   monday.setDate(now.getDate() + diff);
   monday.setHours(0, 0, 0, 0);
-
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-
-  const todayEnd = new Date(now);
-  todayEnd.setHours(23, 59, 59, 999);
-
-  return { monday, sunday, todayEnd };
+  return monday;
 }
 
-function formatShortDate(date, locale) {
-  return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+function get30DaysAgo() {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Consecutive-day streak for a specific habit.
+// If today has no log yet, the streak is not broken — counting starts from yesterday.
+function calculateStreak(logs, habitId) {
+  const logDays = new Set(
+    logs.filter((l) => l.habit_id === habitId).map((l) => toDateKey(new Date(l.created_at)))
+  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let cursor = new Date(today);
+  if (!logDays.has(toDateKey(today))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (logDays.has(toDateKey(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+// General streak for a member: days where they completed at least one assigned habit.
+function calculateGeneralStreak(logs, assignedHabitIds, memberId) {
+  const logDays = new Set(
+    logs
+      .filter((l) => l.user_id === memberId && assignedHabitIds.has(l.habit_id))
+      .map((l) => toDateKey(new Date(l.created_at)))
+  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let cursor = new Date(today);
+  if (!logDays.has(toDateKey(today))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (logDays.has(toDateKey(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+// 7 booleans (Mon→Sun) — true if the habit has at least one log that day this week
+function getWeekDots(logs, habitId) {
+  const monday = getWeekStart();
+  const logDays = new Set(
+    logs.filter((l) => l.habit_id === habitId).map((l) => toDateKey(new Date(l.created_at)))
+  );
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + i);
+    return logDays.has(toDateKey(day));
+  });
+}
+
+// 7 booleans — true if the member completed at least one assigned habit that day
+function getGeneralWeekDots(logs, assignedHabitIds, memberId) {
+  const monday = getWeekStart();
+  const logDays = new Set(
+    logs
+      .filter((l) => l.user_id === memberId && assignedHabitIds.has(l.habit_id))
+      .map((l) => toDateKey(new Date(l.created_at)))
+  );
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + i);
+    return logDays.has(toDateKey(day));
+  });
+}
+
+// Count how many times a habit was logged this week (Mon→today)
+function getWeeklyTargetCount(logs, habitId) {
+  const monday = getWeekStart();
+  return logs.filter((l) => l.habit_id === habitId && new Date(l.created_at) >= monday).length;
+}
+
+// Consecutive weeks where weeklyCount >= weeklyTarget.
+// If current week not yet met, start counting from last week.
+function calculateWeeklyStreak(logs, habitId, weeklyTarget) {
+  const habitLogs = logs.filter((l) => l.habit_id === habitId);
+  if (!habitLogs.length) return 0;
+  let weekStart = getWeekStart();
+  const currentWeekEnd = new Date(weekStart);
+  currentWeekEnd.setDate(weekStart.getDate() + 7);
+  const currentCount = habitLogs.filter((l) => {
+    const d = new Date(l.created_at);
+    return d >= weekStart && d < currentWeekEnd;
+  }).length;
+  if (currentCount < weeklyTarget) weekStart = new Date(weekStart.setDate(weekStart.getDate() - 7));
+  let streak = 0;
+  while (true) {
+    const wEnd = new Date(weekStart);
+    wEnd.setDate(weekStart.getDate() + 7);
+    const count = habitLogs.filter((l) => { const d = new Date(l.created_at); return d >= weekStart && d < wEnd; }).length;
+    if (count < weeklyTarget) break;
+    streak++;
+    weekStart = new Date(weekStart.setDate(weekStart.getDate() - 7));
+  }
+  return streak;
+}
+
+function WeeklyTargetDots({ count, target }) {
+  return (
+    <View style={styles.targetDotsRow}>
+      {Array.from({ length: target }, (_, i) => (
+        <View key={i} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: i < count ? GREEN : '#E0E0E0' }} />
+      ))}
+    </View>
+  );
+}
+
+function formatExpiryDate(dateStr, locale) {
+  if (!dateStr) return null;
+  return new Date(dateStr).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function OnceHabitCard({ habit, logs, t, locale }) {
+  const done = logs.some((l) => l.habit_id === habit.id);
+  return (
+    <View style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+      <View style={styles.habitTitleRow}>
+        {habit.category ? (
+          <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
+            <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
+          </View>
+        ) : null}
+        <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+      </View>
+      {habit.expires_at ? (
+        <Text style={styles.weekSummary}>{formatExpiryDate(habit.expires_at, locale)}</Text>
+      ) : null}
+      <View style={styles.onceStatusRow}>
+        <Ionicons
+          name={done ? 'checkmark-circle' : 'ellipse-outline'}
+          size={15}
+          color={done ? GREEN : GRAY}
+        />
+        <Text style={[styles.onceStatusText, { color: done ? GREEN : GRAY }]}>
+          {done ? t('activity.completed_once') : t('activity.pending_once')}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function WeekDots({ dots, dayLabels, size = 28, compact = false }) {
+  return (
+    <View style={compact ? styles.weekRowCompact : styles.weekRow}>
+      {dots.map((done, i) => (
+        <View key={i} style={compact ? styles.dotColCompact : styles.dotCol}>
+          <Text style={styles.dotLabel}>{dayLabels[i]}</Text>
+          <View style={{
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: done ? GREEN : '#E0E0E0',
+          }} />
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export default function RankingScreen() {
   const { t, i18n } = useTranslation();
+  const dayLabels = i18n.language === 'es' ? DAY_LABELS_ES : DAY_LABELS_EN;
   const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [members, setMembers] = useState([]);
-  const [currentUserId, setCurrentUserId] = useState(null);
-  const [periodLabel, setPeriodLabel] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [myHabits, setMyHabits] = useState([]);
+  const [myLogs, setMyLogs] = useState([]);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [allLogs, setAllLogs] = useState([]);
+  const [memberAssignmentsMap, setMemberAssignmentsMap] = useState({});
+  const [activeHabitsWithCat, setActiveHabitsWithCat] = useState([]);
 
   const loadActivity = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError('');
 
-    const { monday, sunday, todayEnd } = getWeekBounds();
-
-    setPeriodLabel(
-      t('activity.period', {
-        from: formatShortDate(monday, locale),
-        to: formatShortDate(sunday, locale),
-      })
-    );
-
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) return;
 
-      setCurrentUserId(user.id);
-
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('company_id')
+        .select('company_id, role')
         .eq('id', user.id)
         .single();
       if (profileError) throw profileError;
       if (!profile?.company_id) throw new Error(t('errors.no_company'));
 
-      const [
-        { data: companyProfiles, error: profilesError },
-        { data: activeHabits, error: habitsError },
-      ] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .eq('company_id', profile.company_id),
-        supabase
-          .from('habits')
-          .select('id')
-          .eq('company_id', profile.company_id)
-          .eq('is_active', true),
+      const { company_id: companyId } = profile;
+
+      // Round trip 1: members, categories, active habits — all independent
+      const [profilesResult, catsResult, habitsResult] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, avatar_url').eq('company_id', companyId),
+        supabase.from('categories').select('id, name, icon, color').or(`company_id.is.null,company_id.eq.${companyId}`),
+        supabase.from('habits').select('id, title, category_id, recurrence, expires_at, weekly_target').eq('company_id', companyId).eq('is_active', true),
       ]);
-      if (profilesError) throw profilesError;
-      if (habitsError) throw habitsError;
+      if (profilesResult.error) throw profilesResult.error;
+      if (habitsResult.error) throw habitsResult.error;
 
-      const userIds = (companyProfiles ?? []).map((p) => p.id);
-      const activeHabitIds = (activeHabits ?? []).map((h) => h.id);
+      const allMembers = profilesResult.data ?? [];
+      const allMemberIds = allMembers.map((p) => p.id);
+      const activeHabits = habitsResult.data ?? [];
+      const activeHabitIds = activeHabits.map((h) => h.id);
 
-      // Assignments: cuántos hábitos tiene asignados cada miembro
-      let assignments = [];
-      if (activeHabitIds.length > 0 && userIds.length > 0) {
-        const { data: assignData, error: assignError } = await supabase
-          .from('habit_assignments')
-          .select('habit_id, user_id')
-          .in('habit_id', activeHabitIds)
-          .in('user_id', userIds);
-        if (assignError) throw assignError;
-        assignments = assignData ?? [];
-      }
+      const catsMap = {};
+      (catsResult.data ?? []).forEach((c) => { catsMap[c.id] = c; });
 
-      const assignedMap = {};
-      assignments.forEach((a) => {
-        assignedMap[a.user_id] = (assignedMap[a.user_id] || 0) + 1;
-      });
+      // Split habits by recurrence for separate log queries
+      const dailyHabitIds = activeHabits.filter((h) => h.recurrence === 'daily' || h.recurrence === 'weekly_x').map((h) => h.id);
+      const onceHabitIds  = activeHabits.filter((h) => h.recurrence === 'once').map((h) => h.id);
 
-      // No active habits — show all members with zero counts
-      if (!activeHabitIds.length) {
-        setMembers(
-          (companyProfiles ?? []).map((p) => ({
-            id: p.id,
-            full_name: p.full_name,
-            avatar_url: p.avatar_url,
-            assigned: 0,
-            completed: 0,
-            validated: 0,
-          }))
-        );
-        return;
-      }
+      // Round trip 2: assignments + daily logs (30d) + once logs (all-time) — all parallel
+      const thirtyDaysAgo = get30DaysAgo();
+      const hasData = activeHabitIds.length > 0 && allMemberIds.length > 0;
 
-      const { data: logs, error: logsError } = await supabase
-        .from('habit_logs')
-        .select('id, user_id')
-        .in('habit_id', activeHabitIds)
-        .in('user_id', userIds)
-        .gte('created_at', monday.toISOString())
-        .lte('created_at', todayEnd.toISOString());
-      if (logsError) throw logsError;
+      const [assignmentsResult, dailyLogsResult, onceLogsResult] = await Promise.all([
+        hasData
+          ? supabase.from('habit_assignments').select('habit_id, user_id').in('habit_id', activeHabitIds).in('user_id', allMemberIds)
+          : Promise.resolve({ data: [], error: null }),
+        dailyHabitIds.length > 0 && allMemberIds.length > 0
+          ? supabase.from('habit_logs').select('id, habit_id, user_id, created_at').in('user_id', allMemberIds).in('habit_id', dailyHabitIds).gte('created_at', thirtyDaysAgo.toISOString())
+          : Promise.resolve({ data: [], error: null }),
+        onceHabitIds.length > 0 && allMemberIds.length > 0
+          ? supabase.from('habit_logs').select('id, habit_id, user_id, created_at').in('user_id', allMemberIds).in('habit_id', onceHabitIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (assignmentsResult.error) throw assignmentsResult.error;
+      if (dailyLogsResult.error) throw dailyLogsResult.error;
+      if (onceLogsResult.error) throw onceLogsResult.error;
 
-      const logIds = (logs ?? []).map((l) => l.id);
-      const logUserMap = {};
-      (logs ?? []).forEach((l) => { logUserMap[l.id] = l.user_id; });
+      const assignments = assignmentsResult.data ?? [];
+      const logs = [...(dailyLogsResult.data ?? []), ...(onceLogsResult.data ?? [])];
 
-      let validations = [];
-      if (logIds.length > 0) {
-        const { data: validationsData, error: validationsError } = await supabase
-          .from('habit_validations')
-          .select('habit_log_id')
-          .eq('status', 'validated')
-          .in('habit_log_id', logIds);
-        if (validationsError) throw validationsError;
-        validations = validationsData ?? [];
-      }
+      // Build userId → Set<habitId> map
+      const memberAssignMap = {};
+      allMemberIds.forEach((id) => { memberAssignMap[id] = new Set(); });
+      assignments.forEach((a) => { memberAssignMap[a.user_id]?.add(a.habit_id); });
 
-      // Aggregate per user
-      const completedMap = {};
-      (logs ?? []).forEach((l) => {
-        completedMap[l.user_id] = (completedMap[l.user_id] || 0) + 1;
-      });
+      // Resolve categories for all active habits once — reused for my cards and member cards
+      const allHabitsWithCat = activeHabits.map((h) => ({
+        ...h,
+        category: h.category_id ? (catsMap[h.category_id] ?? null) : null,
+      }));
 
-      const validatedMap = {};
-      validations.forEach((v) => {
-        const userId = logUserMap[v.habit_log_id];
-        if (userId) validatedMap[userId] = (validatedMap[userId] || 0) + 1;
-      });
+      const myHabitIds = memberAssignMap[user.id] || new Set();
 
-      const result = (companyProfiles ?? [])
-        .map((p) => ({
-          id: p.id,
-          full_name: p.full_name,
-          avatar_url: p.avatar_url,
-          assigned: assignedMap[p.id] || 0,
-          completed: completedMap[p.id] || 0,
-          validated: validatedMap[p.id] || 0,
-        }))
-        .sort((a, b) => b.completed - a.completed || (a.full_name ?? '').localeCompare(b.full_name ?? ''));
-
-      setMembers(result);
+      setIsAdmin(profile.role === 'admin');
+      setActiveHabitsWithCat(allHabitsWithCat);
+      setMyHabits(allHabitsWithCat.filter((h) => myHabitIds.has(h.id)));
+      setMyLogs(logs.filter((l) => l.user_id === user.id));
+      setAllLogs(logs);
+      setGroupMembers(allMembers.filter((m) => m.id !== user.id));
+      setMemberAssignmentsMap(memberAssignMap);
     } catch (e) {
       setError(e?.message || t('activity.error_load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [t, locale]);
+  }, [t]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadActivity();
-    }, [loadActivity])
+  useFocusEffect(useCallback(() => { loadActivity(); }, [loadActivity]));
+
+  // Derived at render time — cheap, avoids storing in state
+  const dailyHabitIdsSet = new Set(
+    activeHabitsWithCat.filter((h) => h.recurrence === 'daily').map((h) => h.id)
   );
-
-  const renderItem = ({ item }) => {
-    const isCurrentUser = item.id === currentUserId;
-    const name = item.full_name || '—';
-    const initial = name.charAt(0).toUpperCase();
-
-    return (
-      <View style={[styles.row, isCurrentUser && styles.rowHighlight]}>
-        {/* Avatar */}
-        <View style={styles.avatarWrapper}>
-          {item.avatar_url ? (
-            <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.avatarInitial}>{initial}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Nombre */}
-        <View style={styles.nameBox}>
-          <Text style={[styles.name, isCurrentUser && styles.nameHighlight]} numberOfLines={1}>
-            {name}
-          </Text>
-          {isCurrentUser && <Text style={styles.youTag}>{t('activity.you')}</Text>}
-        </View>
-
-        {/* Contadores */}
-        <View style={styles.countersBox}>
-          <View style={styles.counter}>
-            <Text style={[styles.counterValue, isCurrentUser && styles.counterValueHighlight]}>
-              {item.completed}
-              <Text style={styles.counterDenom}>/{item.assigned}</Text>
-            </Text>
-            <Text style={[styles.counterLabel, isCurrentUser && styles.counterLabelHighlight]}>
-              {t('activity.completed')}
-            </Text>
-          </View>
-          <View style={[styles.counter, styles.counterRight]}>
-            <Text style={[styles.counterValue, isCurrentUser && styles.counterValueHighlight]}>
-              {item.validated}
-            </Text>
-            <Text style={[styles.counterLabel, isCurrentUser && styles.counterLabelHighlight]}>
-              {t('activity.validated')}
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
 
   if (loading) {
     return (
@@ -255,43 +329,251 @@ export default function RankingScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      {/* Cabecera de período */}
-      {periodLabel ? (
-        <View style={styles.periodBanner}>
-          <Text style={styles.periodText}>{periodLabel}</Text>
-        </View>
-      ) : null}
-
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => loadActivity(true)} tintColor={BLUE} />
+      }
+    >
       {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
 
-      <FlatList
-        data={members}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListFooterComponent={() => members.length > 0 ? <View style={styles.separator} /> : null}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadActivity(true)}
-            tintColor={BLUE}
-          />
-        }
-        ListEmptyComponent={
-          !error ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>{t('activity.empty')}</Text>
-            </View>
-          ) : null
-        }
-      />
-    </View>
+      {/* ── Section 1: Tu actividad ─────────────────────────────────────────── */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>{t('activity.your_activity')}</Text>
+      </View>
+
+      {myHabits.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>{t('activity.empty')}</Text>
+        </View>
+      ) : (
+        <>
+          {myHabits.filter((h) => h.recurrence === 'daily').map((habit) => {
+            const dots = getWeekDots(myLogs, habit.id);
+            const streak = calculateStreak(myLogs, habit.id);
+            const weekCompleted = dots.filter(Boolean).length;
+            return (
+              <View key={habit.id} style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+                <View style={styles.habitTitleRow}>
+                  {habit.category ? (
+                    <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
+                      <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
+                    </View>
+                  ) : null}
+                  <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+                </View>
+                <View style={styles.streakRow}>
+                  <Ionicons name="flame-outline" size={22} color={streak > 0 ? FLAME : '#E0E0E0'} />
+                  {streak > 0 ? (
+                    <View style={styles.streakNums}>
+                      <Text style={styles.streakNumber}>{streak}</Text>
+                      <Text style={styles.streakUnit}>{t('activity.days')}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <WeekDots dots={dots} dayLabels={dayLabels} size={28} />
+                <Text style={styles.weekSummary}>
+                  {t('activity.week_completed', { completed: weekCompleted })}
+                </Text>
+              </View>
+            );
+          })}
+          {myHabits.filter((h) => h.recurrence === 'weekly_x').map((habit) => {
+            const wCount = getWeeklyTargetCount(myLogs, habit.id);
+            const wStreak = calculateWeeklyStreak(myLogs, habit.id, habit.weekly_target || 1);
+            return (
+              <View key={habit.id} style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+                <View style={styles.habitTitleRow}>
+                  {habit.category ? (
+                    <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
+                      <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
+                    </View>
+                  ) : null}
+                  <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+                </View>
+                <View style={styles.streakRow}>
+                  <Ionicons name="flame-outline" size={22} color={wStreak > 0 ? FLAME : '#E0E0E0'} />
+                  {wStreak > 0 ? (
+                    <Text style={[styles.streakUnit, { color: FLAME }]}>
+                      {t('activity.weeks', { count: wStreak })}
+                    </Text>
+                  ) : null}
+                </View>
+                <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} />
+                <Text style={styles.weekSummary}>
+                  {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
+                </Text>
+              </View>
+            );
+          })}
+          {myHabits.some((h) => h.recurrence === 'once') ? (
+            <>
+              <View style={styles.eventsLabel}>
+                <Text style={styles.eventsLabelText}>{t('activity.events')}</Text>
+              </View>
+              {myHabits.filter((h) => h.recurrence === 'once').map((habit) => (
+                <OnceHabitCard key={habit.id} habit={habit} logs={myLogs} t={t} locale={locale} />
+              ))}
+            </>
+          ) : null}
+        </>
+      )}
+
+      {/* ── Section 2: Tu familia ────────────────────────────────────────────── */}
+      {groupMembers.length > 0 ? (
+        <>
+          <View style={[styles.sectionHeader, styles.sectionHeaderSpaced]}>
+            <Text style={styles.sectionTitle}>{t('activity.your_family')}</Text>
+          </View>
+
+          {groupMembers.map((member, index) => {
+            const name = member.full_name || '—';
+            const assignedSet = memberAssignmentsMap[member.id] || new Set();
+
+            // ── Admin: expanded per-habit detail ────────────────────────────
+            if (isAdmin) {
+              const memberHabits = activeHabitsWithCat.filter((h) => assignedSet.has(h.id));
+              const memberLogs = allLogs.filter((l) => l.user_id === member.id);
+              const dailyMemberHabits   = memberHabits.filter((h) => h.recurrence === 'daily');
+              const weeklyMemberHabits  = memberHabits.filter((h) => h.recurrence === 'weekly_x');
+              const onceMemberHabits    = memberHabits.filter((h) => h.recurrence === 'once');
+
+              return (
+                <View key={member.id} style={index > 0 ? styles.memberGroup : undefined}>
+                  <View style={styles.memberSubheader}>
+                    {member.avatar_url ? (
+                      <Image source={{ uri: member.avatar_url }} style={styles.avatar} />
+                    ) : (
+                      <View style={styles.avatarFallback}>
+                        <Text style={styles.avatarInitial}>{name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                    )}
+                    <Text style={styles.memberSubheaderName}>{name}</Text>
+                  </View>
+
+                  {memberHabits.length === 0 ? (
+                    <View style={styles.memberNoHabits}>
+                      <Text style={styles.weekSummary}>{t('activity.empty')}</Text>
+                    </View>
+                  ) : (
+                    <>
+                      {dailyMemberHabits.map((habit) => {
+                        const dots = getWeekDots(memberLogs, habit.id);
+                        const streak = calculateStreak(memberLogs, habit.id);
+                        const weekCompleted = dots.filter(Boolean).length;
+                        return (
+                          <View key={habit.id} style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+                            <View style={styles.habitTitleRow}>
+                              {habit.category ? (
+                                <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
+                                  <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
+                                </View>
+                              ) : null}
+                              <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+                            </View>
+                            <View style={styles.streakRow}>
+                              <Ionicons name="flame-outline" size={22} color={streak > 0 ? FLAME : '#E0E0E0'} />
+                              {streak > 0 ? (
+                                <View style={styles.streakNums}>
+                                  <Text style={styles.streakNumber}>{streak}</Text>
+                                  <Text style={styles.streakUnit}>{t('activity.days')}</Text>
+                                </View>
+                              ) : null}
+                            </View>
+                            <WeekDots dots={dots} dayLabels={dayLabels} size={28} />
+                            <Text style={styles.weekSummary}>
+                              {t('activity.week_completed', { completed: weekCompleted })}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                      {weeklyMemberHabits.map((habit) => {
+                        const wCount = getWeeklyTargetCount(memberLogs, habit.id);
+                        const wStreak = calculateWeeklyStreak(memberLogs, habit.id, habit.weekly_target || 1);
+                        return (
+                          <View key={habit.id} style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+                            <View style={styles.habitTitleRow}>
+                              {habit.category ? (
+                                <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
+                                  <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
+                                </View>
+                              ) : null}
+                              <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+                            </View>
+                            <View style={styles.streakRow}>
+                              <Ionicons name="flame-outline" size={22} color={wStreak > 0 ? FLAME : '#E0E0E0'} />
+                              {wStreak > 0 ? (
+                                <Text style={[styles.streakUnit, { color: FLAME }]}>
+                                  {t('activity.weeks', { count: wStreak })}
+                                </Text>
+                              ) : null}
+                            </View>
+                            <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} />
+                            <Text style={styles.weekSummary}>
+                              {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                      {onceMemberHabits.length > 0 ? (
+                        <>
+                          <View style={styles.eventsLabel}>
+                            <Text style={styles.eventsLabelText}>{t('activity.events')}</Text>
+                          </View>
+                          {onceMemberHabits.map((habit) => (
+                            <OnceHabitCard key={habit.id} habit={habit} logs={memberLogs} t={t} locale={locale} />
+                          ))}
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              );
+            }
+
+            // ── Non-admin: compact summary card (daily habits only for streak/dots) ──
+            const dailyAssignedSet = new Set([...assignedSet].filter((id) => dailyHabitIdsSet.has(id)));
+            const dots = getGeneralWeekDots(allLogs, dailyAssignedSet, member.id);
+            const streak = calculateGeneralStreak(allLogs, dailyAssignedSet, member.id);
+            const weekCompleted = dots.filter(Boolean).length;
+
+            return (
+              <View key={member.id} style={styles.memberCard}>
+                <View style={styles.memberHeader}>
+                  {member.avatar_url ? (
+                    <Image source={{ uri: member.avatar_url }} style={styles.avatar} />
+                  ) : (
+                    <View style={styles.avatarFallback}>
+                      <Text style={styles.avatarInitial}>{name.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.memberName} numberOfLines={1}>{name}</Text>
+                  <View style={styles.memberStreakBadge}>
+                    <Ionicons name="flame-outline" size={14} color={streak > 0 ? FLAME : '#E0E0E0'} />
+                    {streak > 0 ? (
+                      <Text style={styles.memberStreakNum}>{streak}</Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                <WeekDots dots={dots} dayLabels={dayLabels} size={24} compact />
+
+                <Text style={styles.weekSummary}>
+                  {t('activity.member_progress', { completed: weekCompleted, total: 7 })}
+                </Text>
+              </View>
+            );
+          })}
+        </>
+      ) : null}
+
+      <View style={styles.bottomPad} />
+    </ScrollView>
   );
 }
 
@@ -299,6 +581,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BG,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   centered: {
     flex: 1,
@@ -312,17 +597,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
     fontSize: 14,
   },
-  periodBanner: {
-    backgroundColor: WHITE,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 8,
-  },
-  periodText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: GRAY,
-  },
   errorBanner: {
     backgroundColor: '#fee2e2',
     paddingHorizontal: 16,
@@ -334,114 +608,209 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  listContent: {
-    flexGrow: 1,
-    paddingBottom: 28,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-  },
-  row: {
+  sectionHeader: {
     backgroundColor: WHITE,
-    paddingVertical: 14,
     paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  sectionHeaderSpaced: {
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: TEXT,
+  },
+  // Habit cards (Section 1)
+  habitCard: {
+    backgroundColor: WHITE,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 1,
+    borderLeftWidth: 4,
+  },
+  habitTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
   },
-  rowHighlight: {
-    backgroundColor: HIGHLIGHT,
-    borderLeftWidth: 3,
-    borderLeftColor: BLUE,
+  catBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  avatarWrapper: {
-    marginRight: 12,
+  habitTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: TEXT,
+  },
+  streakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  streakNums: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  streakNumber: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: FLAME,
+    lineHeight: 32,
+  },
+  streakUnit: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: FLAME,
+    paddingBottom: 3,
+  },
+  // Week dots
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  weekRowCompact: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  dotCol: {
+    alignItems: 'center',
+    gap: 3,
+    flex: 1,
+  },
+  dotColCompact: {
+    alignItems: 'center',
+    gap: 3,
+  },
+  dotLabel: {
+    fontSize: 10,
+    color: GRAY,
+    fontWeight: '600',
+  },
+  weekSummary: {
+    fontSize: 12,
+    color: GRAY,
+    marginTop: 2,
+  },
+  // Member cards (Section 2)
+  memberCard: {
+    backgroundColor: WHITE,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginTop: 1,
+  },
+  memberHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   avatarFallback: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#E8E8E8',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitial: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
     color: BLUE,
   },
-  nameBox: {
+  memberName: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingRight: 8,
-  },
-  name: {
     fontSize: 15,
     fontWeight: '700',
     color: TEXT,
-    flexShrink: 1,
   },
-  nameHighlight: {
-    color: BLUE,
-  },
-  youTag: {
-    backgroundColor: BLUE,
-    color: WHITE,
-    fontSize: 11,
-    fontWeight: '700',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    overflow: 'hidden',
-  },
-  countersBox: {
+  memberStreakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 3,
   },
-  counter: {
+  memberStreakNum: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: FLAME,
+  },
+  // Admin expanded member view
+  memberGroup: {
+    marginTop: 8,
+  },
+  memberSubheader: {
+    backgroundColor: BG,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    minWidth: 52,
+    gap: 10,
   },
-  counterRight: {
-    borderLeftWidth: 1,
-    borderLeftColor: '#E0E0E0',
-    paddingLeft: 16,
-  },
-  counterValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: TEXT,
-  },
-  counterValueHighlight: {
-    color: BLUE,
-  },
-  counterDenom: {
+  memberSubheaderName: {
+    flex: 1,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: GRAY,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
-  counterLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: GRAY,
-    textAlign: 'center',
+  memberNoHabits: {
+    backgroundColor: WHITE,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     marginTop: 1,
   },
-  counterLabelHighlight: {
-    color: BLUE,
+  targetDotsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+    flexWrap: 'wrap',
   },
+  // Once habits
+  eventsLabel: {
+    backgroundColor: BG,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    marginTop: 4,
+  },
+  eventsLabelText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: GRAY,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  onceStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 8,
+  },
+  onceStatusText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // Empty state
   emptyCard: {
     backgroundColor: WHITE,
     padding: 24,
     alignItems: 'center',
+    marginTop: 1,
   },
   emptyText: {
     color: GRAY,
@@ -449,5 +818,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     lineHeight: 22,
+  },
+  bottomPad: {
+    height: 24,
   },
 });

@@ -80,7 +80,13 @@
     "status_pending": "Pendiente",
     "awaiting_validation": "✓ Enviado, esperando validación",
     "due_before": "Antes de las {{time}}",
-    "error_load": "No se pudieron cargar los datos. Revisa tu conexión."
+    "error_load": "No se pudieron cargar los datos. Revisa tu conexión.",
+    "weekly_progress": "{{done}} de {{target}} veces esta semana",
+    "weekly_goal_met": "✓ Objetivo cumplido esta semana",
+    "validators_approved": "Aprobado por",
+    "validators_rejected": "Rechazado por",
+    "validators_pending": "Pendiente de validar",
+    "validators_count": "{{done}} de {{total}} validadores"
   },
   "habit_detail": {
     "header_title": "Completar hábito",
@@ -136,6 +142,8 @@
     "habit_recurrence_label": "Frecuencia",
     "habit_recurrence_daily": "Diario",
     "habit_recurrence_once": "Una vez",
+    "recurrence_weekly": "X veces/semana",
+    "weekly_target_label": "¿Cuántas veces por semana?",
     "habit_assign_label": "Asignar a",
     "habit_save": "Guardar",
     "habit_assigned_count": "{{count}} asignado(s)",
@@ -182,7 +190,16 @@
     "error_name": "No se pudo guardar el nombre.",
     "error_logout": "No se pudo cerrar sesión.",
     "language": "Idioma",
-    "settings_title": "Ajustes"
+    "settings_title": "Ajustes",
+    "history_title": "Mi historial",
+    "filter_all": "Todos",
+    "filter_validated": "Validados",
+    "filter_pending": "Pendientes",
+    "filter_rejected": "Rechazados",
+    "filter_week": "Esta semana",
+    "filter_month": "Este mes",
+    "filter_all_time": "Todo",
+    "history_empty": "No hay registros con estos filtros"
   },
   "nav": {
     "home": "Inicio",
@@ -193,11 +210,22 @@
   "activity": {
     "header_title": "Actividad del grupo",
     "loading": "Cargando actividad...",
-    "empty": "Aún no hay actividad esta semana",
+    "empty": "No tienes hábitos asignados",
     "error_load": "No se pudo cargar la actividad. Revisa tu conexión.",
     "period": "Semana del {{from}} al {{to}}",
     "completed": "completados",
     "validated": "validados",
-    "you": "Tú"
+    "you": "Tú",
+    "your_activity": "Tu actividad",
+    "your_family": "Tu familia",
+    "events": "Eventos",
+    "completed_once": "Completado",
+    "pending_once": "Pendiente",
+    "streak": "{{count}} días",
+    "days": "días",
+    "weeks": "{{count}} semanas",
+    "no_streak": "Sin racha",
+    "week_completed": "{{completed}} completados esta semana",
+    "member_progress": "{{completed}} de {{total}} días esta semana"
   }
 }

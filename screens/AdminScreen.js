@@ -122,6 +122,7 @@ export default function AdminScreen() {
   const [showExpTimePicker, setShowExpTimePicker] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState(new Set());
   const [validatorIds, setValidatorIds] = useState(new Set());
+  const [weeklyTarget, setWeeklyTarget] = useState(3);
   const [savingHabit, setSavingHabit] = useState(false);
   const [modalError, setModalError] = useState('');
 
@@ -187,7 +188,7 @@ export default function AdminScreen() {
           .limit(1),
         supabase
           .from('habits')
-          .select('id, title, description, recurrence, is_active, expires_at, due_time, category_id')
+          .select('id, title, description, recurrence, is_active, expires_at, due_time, category_id, weekly_target')
           .eq('company_id', profile.company_id)
           .order('created_at', { ascending: false }),
         supabase
@@ -369,6 +370,7 @@ export default function AdminScreen() {
     setShowExpTimePicker(false);
     setSelectedMembers(new Set());
     setValidatorIds(new Set());
+    setWeeklyTarget(3);
     setModalError('');
     setCreateModalVisible(true);
   };
@@ -410,6 +412,7 @@ export default function AdminScreen() {
           category_id: categoryId || null,
           due_time: newRecurrence === 'daily' && dueTime ? `${formatDisplayTime(dueTime)}:00` : null,
           expires_at: newRecurrence === 'once' ? buildExpiresAt(expiresDate, expiresTime) : null,
+          weekly_target: newRecurrence === 'weekly_x' ? weeklyTarget : null,
         })
         .select('id')
         .single();
@@ -463,6 +466,7 @@ export default function AdminScreen() {
       setExpiresTime(d.getHours() !== 0 || d.getMinutes() !== 0 ? d : null);
     } else { setExpiresDate(null); setExpiresTime(null); }
 
+    setWeeklyTarget(habit.weekly_target ?? 3);
     setShowDuePicker(false);
     setShowExpDatePicker(false);
     setShowExpTimePicker(false);
@@ -485,6 +489,7 @@ export default function AdminScreen() {
         category_id: categoryId || null,
         due_time: newRecurrence === 'daily' && dueTime ? `${formatDisplayTime(dueTime)}:00` : null,
         expires_at: newRecurrence === 'once' ? buildExpiresAt(expiresDate, expiresTime) : null,
+        weekly_target: newRecurrence === 'weekly_x' ? weeklyTarget : null,
       };
       const { error: updateError } = await supabase
         .from('habits').update(updatedFields).eq('id', editingHabit.id);
@@ -796,8 +801,9 @@ export default function AdminScreen() {
               <Text style={styles.fieldLabel}>{t('admin.habit_recurrence_label')}</Text>
               <View style={styles.pillRow}>
                 {[
-                  { value: 'daily', label: t('admin.habit_recurrence_daily') },
-                  { value: 'once',  label: t('admin.habit_recurrence_once') },
+                  { value: 'daily',    label: t('admin.habit_recurrence_daily') },
+                  { value: 'once',     label: t('admin.habit_recurrence_once') },
+                  { value: 'weekly_x', label: t('admin.recurrence_weekly') },
                 ].map((opt) => (
                   <TouchableOpacity
                     key={opt.value}
@@ -811,6 +817,32 @@ export default function AdminScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {/* Veces por semana — solo para weekly_x */}
+              {newRecurrence === 'weekly_x' && (
+                <>
+                  <Text style={styles.fieldLabel}>{t('admin.weekly_target_label')}</Text>
+                  <View style={styles.weeklyTargetSelector}>
+                    <TouchableOpacity
+                      onPress={() => setWeeklyTarget((p) => Math.max(1, p - 1))}
+                      style={[styles.weeklyTargetBtn, weeklyTarget <= 1 && styles.btnDisabled]}
+                      activeOpacity={0.7}
+                      disabled={weeklyTarget <= 1}
+                    >
+                      <Text style={styles.weeklyTargetBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.weeklyTargetValue}>{weeklyTarget}</Text>
+                    <TouchableOpacity
+                      onPress={() => setWeeklyTarget((p) => Math.min(6, p + 1))}
+                      style={[styles.weeklyTargetBtn, weeklyTarget >= 6 && styles.btnDisabled]}
+                      activeOpacity={0.7}
+                      disabled={weeklyTarget >= 6}
+                    >
+                      <Text style={styles.weeklyTargetBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
 
               {/* Hora límite — solo para daily */}
               {newRecurrence === 'daily' && (
@@ -966,7 +998,7 @@ export default function AdminScreen() {
 
               {/* Validadores */}
               <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{t('admin.validators_label')}</Text>
-              {members.filter((m) => !selectedMembers.has(m.id)).map(renderValidatorToggle)}
+              {members.map(renderValidatorToggle)}
 
               {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
 
@@ -1007,14 +1039,30 @@ export default function AdminScreen() {
               <Text style={styles.fieldLabel}>{t('admin.habit_recurrence_label')}</Text>
               <View style={styles.pillRow}>
                 {[
-                  { value: 'daily', label: t('admin.habit_recurrence_daily') },
-                  { value: 'once',  label: t('admin.habit_recurrence_once') },
+                  { value: 'daily',    label: t('admin.habit_recurrence_daily') },
+                  { value: 'once',     label: t('admin.habit_recurrence_once') },
+                  { value: 'weekly_x', label: t('admin.recurrence_weekly') },
                 ].map((opt) => (
                   <TouchableOpacity key={opt.value} style={[styles.pill, newRecurrence === opt.value && styles.pillActive]} onPress={() => { setNewRecurrence(opt.value); setDueTime(null); setExpiresDate(null); setExpiresTime(null); }} activeOpacity={0.8}>
                     <Text style={[styles.pillText, newRecurrence === opt.value && styles.pillTextActive]}>{opt.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {newRecurrence === 'weekly_x' && (
+                <>
+                  <Text style={styles.fieldLabel}>{t('admin.weekly_target_label')}</Text>
+                  <View style={styles.weeklyTargetSelector}>
+                    <TouchableOpacity onPress={() => setWeeklyTarget((p) => Math.max(1, p - 1))} style={[styles.weeklyTargetBtn, weeklyTarget <= 1 && styles.btnDisabled]} activeOpacity={0.7} disabled={weeklyTarget <= 1}>
+                      <Text style={styles.weeklyTargetBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.weeklyTargetValue}>{weeklyTarget}</Text>
+                    <TouchableOpacity onPress={() => setWeeklyTarget((p) => Math.min(6, p + 1))} style={[styles.weeklyTargetBtn, weeklyTarget >= 6 && styles.btnDisabled]} activeOpacity={0.7} disabled={weeklyTarget >= 6}>
+                      <Text style={styles.weeklyTargetBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
 
               {newRecurrence === 'daily' && (
                 <>
@@ -1068,7 +1116,7 @@ export default function AdminScreen() {
 
               {/* Validadores */}
               <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{t('admin.validators_label')}</Text>
-              {members.filter((m) => !selectedMembers.has(m.id)).map(renderValidatorToggle)}
+              {members.map(renderValidatorToggle)}
 
               {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
 
@@ -1252,7 +1300,11 @@ const styles = StyleSheet.create({
   clearBtn: { paddingVertical: 6, paddingHorizontal: 4 },
   clearBtnText: { fontSize: 12, color: GRAY, fontWeight: '600' },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: GRAY, marginBottom: 8, marginTop: 4 },
-  pillRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  pillRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  weeklyTargetSelector: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 16 },
+  weeklyTargetBtn: { width: 40, height: 40, borderRadius: 8, borderWidth: 1.5, borderColor: BLUE, alignItems: 'center', justifyContent: 'center' },
+  weeklyTargetBtnText: { fontSize: 22, color: BLUE, fontWeight: '600', lineHeight: 26 },
+  weeklyTargetValue: { fontSize: 28, fontWeight: '700', color: TEXT, minWidth: 32, textAlign: 'center' },
   pill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: BG },
   pillActive: { backgroundColor: BLUE },
   pillText: { fontSize: 13, fontWeight: '600', color: TEXT },

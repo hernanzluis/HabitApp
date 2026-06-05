@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +27,48 @@ const BLUE = '#0A66C2';
 const TEXT = '#1D2226';
 const GRAY = '#666666';
 
+const STATUS_CONFIG = {
+  validated: { textKey: 'home.status_validated', color: '#2E7D32', bg: '#F0FAF0' },
+  rejected:  { textKey: 'home.status_rejected',  color: '#DC2626', bg: '#FEF2F2' },
+  pending:   { textKey: 'home.status_pending',   color: '#F59E0B', bg: '#FFFBEB' },
+};
+
+function deriveStatus(validated, rejected) {
+  if (validated > 0) return 'validated';
+  if (rejected > 0) return 'rejected';
+  return 'pending';
+}
+
+function getWeekStart() {
+  const now = new Date();
+  const day = now.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diff);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function formatDateTime(dateString, locale) {
+  if (!dateString) return '';
+  return new Date(dateString).toLocaleString(locale, {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function FilterPill({ label, active, onPress }) {
+  return (
+    <TouchableOpacity
+      style={[styles.filterPill, active && styles.filterPillActive]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
 function StatCard({ label, value }) {
   return (
     <View style={styles.statCard}>
@@ -48,6 +90,8 @@ function InfoRow({ label, value }) {
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const { t, i18n } = useTranslation();
+  const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
@@ -59,6 +103,11 @@ export default function ProfileScreen() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [nameSaving, setNameSaving] = useState(false);
+
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPeriod, setFilterPeriod] = useState('all');
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
 
   useEffect(() => {
     navigation.setOptions({
@@ -106,29 +155,53 @@ export default function ProfileScreen() {
 
       const { data: allLogs, error: allLogsError } = await supabase
         .from('habit_logs')
-        .select('id')
-        .eq('user_id', user.id);
+        .select('id, habit_id, photo_url, notes, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
       if (allLogsError) throw allLogsError;
 
       const totalCompleted = (allLogs ?? []).length;
       const myLogIds = (allLogs ?? []).map((l) => l.id);
+      const habitIds = [...new Set((allLogs ?? []).map((l) => l.habit_id).filter(Boolean))];
 
-      let totalValidated = 0;
-      if (myLogIds.length > 0) {
-        const { count, error: validatedError } = await supabase
-          .from('habit_validations')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'validated')
-          .in('habit_log_id', myLogIds);
-        if (validatedError) throw validatedError;
-        totalValidated = count ?? 0;
-      }
-
-      const { count: totalValidatedForOthers, error: validatedForOthersError } = await supabase
-        .from('habit_validations')
-        .select('id', { count: 'exact', head: true })
-        .eq('validator_id', user.id);
+      const [
+        { count: totalValidatedForOthers, error: validatedForOthersError },
+        { data: habitsData, error: habitsError },
+        { data: validationsData, error: validationsError },
+      ] = await Promise.all([
+        supabase.from('habit_validations').select('id', { count: 'exact', head: true }).eq('validator_id', user.id),
+        habitIds.length > 0
+          ? supabase.from('habits').select('id, title').in('id', habitIds)
+          : Promise.resolve({ data: [], error: null }),
+        myLogIds.length > 0
+          ? supabase.from('habit_validations').select('habit_log_id, status').in('habit_log_id', myLogIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
       if (validatedForOthersError) throw validatedForOthersError;
+      if (habitsError) throw habitsError;
+      if (validationsError) throw validationsError;
+
+      const totalValidated = (validationsData ?? []).filter((v) => v.status === 'validated').length;
+
+      const habitsMap = new Map((habitsData ?? []).map((h) => [h.id, h.title]));
+      const valCounts = {};
+      (validationsData ?? []).forEach((v) => {
+        if (!valCounts[v.habit_log_id]) valCounts[v.habit_log_id] = { validated: 0, rejected: 0 };
+        if (v.status === 'validated') valCounts[v.habit_log_id].validated++;
+        if (v.status === 'rejected') valCounts[v.habit_log_id].rejected++;
+      });
+
+      setHistoryLogs((allLogs ?? []).map((log) => {
+        const counts = valCounts[log.id] ?? { validated: 0, rejected: 0 };
+        return {
+          id: log.id,
+          habitTitle: habitsMap.get(log.habit_id) ?? '—',
+          photoUrl: log.photo_url,
+          notes: log.notes ?? null,
+          createdAt: log.created_at,
+          status: deriveStatus(counts.validated, counts.rejected),
+        };
+      }));
 
       setData({
         userId: user.id,
@@ -147,13 +220,25 @@ export default function ProfileScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(
     useCallback(() => {
       loadProfile();
     }, [loadProfile])
   );
+
+  const filteredLogs = useMemo(() => {
+    return historyLogs.filter((log) => {
+      if (filterStatus !== 'all' && log.status !== filterStatus) return false;
+      if (filterPeriod === 'week' && new Date(log.createdAt) < getWeekStart()) return false;
+      if (filterPeriod === 'month') {
+        const now = new Date();
+        if (new Date(log.createdAt) < new Date(now.getFullYear(), now.getMonth(), 1)) return false;
+      }
+      return true;
+    });
+  }, [historyLogs, filterStatus, filterPeriod]);
 
   const uploadAvatar = async (asset) => {
     setAvatarUploading(true);
@@ -385,6 +470,71 @@ export default function ProfileScreen() {
                 <StatCard label={t('profile.validated_others')} value={data.totalValidatedForOthers} />
               </View>
             </View>
+
+            {/* Sección historial */}
+            {historyLogs.length > 0 ? (
+              <View style={styles.historySection}>
+                <Text style={styles.sectionTitle}>{t('profile.history_title')}</Text>
+
+                {/* Filtro estado */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  {[
+                    { key: 'all',       label: t('profile.filter_all') },
+                    { key: 'validated', label: t('profile.filter_validated') },
+                    { key: 'pending',   label: t('profile.filter_pending') },
+                    { key: 'rejected',  label: t('profile.filter_rejected') },
+                  ].map(({ key, label }) => (
+                    <FilterPill key={key} label={label} active={filterStatus === key} onPress={() => setFilterStatus(key)} />
+                  ))}
+                </ScrollView>
+
+                {/* Filtro período */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  {[
+                    { key: 'all',   label: t('profile.filter_all_time') },
+                    { key: 'week',  label: t('profile.filter_week') },
+                    { key: 'month', label: t('profile.filter_month') },
+                  ].map(({ key, label }) => (
+                    <FilterPill key={key} label={label} active={filterPeriod === key} onPress={() => setFilterPeriod(key)} />
+                  ))}
+                </ScrollView>
+
+                {/* Items */}
+                {filteredLogs.length > 0 ? filteredLogs.map((log) => {
+                  const cfg = STATUS_CONFIG[log.status];
+                  return (
+                    <TouchableOpacity
+                      key={log.id}
+                      style={styles.logCard}
+                      onPress={() => log.photoUrl && setSelectedPhoto(log.photoUrl)}
+                      activeOpacity={log.photoUrl ? 0.7 : 1}
+                    >
+                      {log.photoUrl ? (
+                        <Image source={{ uri: log.photoUrl }} style={styles.logThumbnail} resizeMode="cover" />
+                      ) : (
+                        <View style={styles.logThumbnailFallback} />
+                      )}
+                      <View style={styles.logInfo}>
+                        <Text style={styles.logHabitTitle} numberOfLines={2}>{log.habitTitle}</Text>
+                        <Text style={styles.logDate}>{formatDateTime(log.createdAt, locale)}</Text>
+                        <View style={[styles.logStatusBadge, { backgroundColor: cfg.bg }]}>
+                          <Text style={[styles.logStatusText, { color: cfg.color }]}>{t(cfg.textKey)}</Text>
+                        </View>
+                        {log.notes ? (
+                          <View style={styles.logNotesBox}>
+                            <Text style={styles.logNotesText}>{log.notes}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }) : (
+                  <View style={styles.historyEmpty}>
+                    <Text style={styles.historyEmptyText}>{t('profile.history_empty')}</Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
           </>
         ) : null}
 
@@ -437,6 +587,18 @@ export default function ProfileScreen() {
               <Text style={styles.modalOptionCancel}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Modal foto completa */}
+      <Modal
+        visible={!!selectedPhoto}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedPhoto(null)}
+      >
+        <Pressable style={styles.photoModalBackdrop} onPress={() => setSelectedPhoto(null)}>
+          <Image source={{ uri: selectedPhoto ?? '' }} style={styles.photoModalImage} resizeMode="contain" />
         </Pressable>
       </Modal>
     </View>
@@ -697,5 +859,113 @@ const styles = StyleSheet.create({
   modalSectionGap: {
     height: 8,
     backgroundColor: BG,
+  },
+  // Historial
+  historySection: {
+    backgroundColor: WHITE,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    marginBottom: 8,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 12,
+  },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: WHITE,
+  },
+  filterPillActive: {
+    backgroundColor: BLUE,
+    borderColor: BLUE,
+  },
+  filterPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: GRAY,
+  },
+  filterPillTextActive: {
+    color: WHITE,
+  },
+  logCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  logThumbnail: {
+    width: 64,
+    height: 64,
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  logThumbnailFallback: {
+    width: 64,
+    height: 64,
+    borderRadius: 4,
+    backgroundColor: '#E8E8E8',
+    flexShrink: 0,
+  },
+  logInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  logHabitTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: TEXT,
+  },
+  logDate: {
+    fontSize: 12,
+    color: GRAY,
+  },
+  logStatusBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 2,
+  },
+  logStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  logNotesBox: {
+    marginTop: 6,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 4,
+    padding: 8,
+  },
+  logNotesText: {
+    color: GRAY,
+    fontSize: 13,
+  },
+  historyEmpty: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  historyEmptyText: {
+    color: GRAY,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // Modal foto
+  photoModalBackdrop: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoModalImage: {
+    width: '100%',
+    height: '100%',
   },
 });
