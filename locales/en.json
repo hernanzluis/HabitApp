@@ -244,7 +244,11 @@
     "activation_code_label": "Activation code",
     "share_activation": "Join {{group}} on HabitTeam. Your activation code is: {{code}}. Download the app and enter it to activate your account.",
     "member_role_admin": "Admin",
-    "member_role_user": "Member"
+    "member_role_user": "Member",
+    "edit_member": "Edit member",
+    "pending_code_title": "Pending code",
+    "cancel_invitation": "Cancel invitation",
+    "cancel_invitation_confirm": "Delete this activation code?"
   },
   "nav": {
     "home": "Home",

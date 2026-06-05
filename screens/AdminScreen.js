@@ -23,6 +23,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -90,6 +91,29 @@ function buildExpiresAt(dateObj, timeObj) {
   return d.toISOString();
 }
 
+const memberAvatarStyle = { width: 40, height: 40, borderRadius: 20 };
+const memberAvatarFallbackStyle = { width: 40, height: 40, borderRadius: 20, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' };
+const memberAvatarInitialStyle = { color: WHITE, fontWeight: '700', fontSize: 16 };
+
+// Componente auxiliar: muestra el avatar del miembro o la inicial si la imagen falla / no existe
+function MemberAvatar({ avatarUrl, initial }) {
+  const [imgError, setImgError] = useState(false);
+  if (avatarUrl && !imgError) {
+    return (
+      <Image
+        source={{ uri: avatarUrl }}
+        style={memberAvatarStyle}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+  return (
+    <View style={memberAvatarFallbackStyle}>
+      <Text style={memberAvatarInitialStyle}>{initial}</Text>
+    </View>
+  );
+}
+
 export default function AdminScreen() {
   const navigation = useNavigation();
   const { t, i18n } = useTranslation();
@@ -143,6 +167,23 @@ export default function AdminScreen() {
   const [memberEmail, setMemberEmail] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   const [generatingCode, setGeneratingCode] = useState(false);
+
+  // ── Edit active member modal ─────────────────────────────────────────────
+  const [editMemberVisible, setEditMemberVisible] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [editMemberName, setEditMemberName] = useState('');
+  const [editMemberEmail, setEditMemberEmail] = useState('');
+  const [editMemberAvatarUrl, setEditMemberAvatarUrl] = useState(null);
+  const [savingMember, setSavingMember] = useState(false);
+  const [memberModalError, setMemberModalError] = useState('');
+
+  // ── Edit pending member modal ────────────────────────────────────────────
+  const [editPendingVisible, setEditPendingVisible] = useState(false);
+  const [editingPending, setEditingPending] = useState(null);
+  const [editPendingName, setEditPendingName] = useState('');
+  const [editPendingEmail, setEditPendingEmail] = useState('');
+  const [savingPending, setSavingPending] = useState(false);
+  const [pendingModalError, setPendingModalError] = useState('');
 
   useEffect(() => {
     navigation.setOptions({
@@ -584,6 +625,152 @@ export default function AdminScreen() {
     }
   };
 
+  // ── Edit active member ────────────────────────────────────────────────────
+  const handleOpenEditMember = (member) => {
+    setEditingMember(member);
+    setEditMemberName(member.full_name || '');
+    setEditMemberEmail(member.email || '');
+    setEditMemberAvatarUrl(member.avatar_url || null);
+    setMemberModalError('');
+    setEditMemberVisible(true);
+  };
+
+  const pickMemberImage = async (source) => {
+    if (!editingMember) return;
+    try {
+      const options = { mediaTypes: 'Images', allowsEditing: true, aspect: [1, 1], quality: 0.7 };
+      let result;
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') { Alert.alert(t('common.error_camera_permission')); return; }
+        result = await ImagePicker.launchCameraAsync(options);
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') { Alert.alert(t('common.error_gallery_permission')); return; }
+        result = await ImagePicker.launchImageLibraryAsync(options);
+      }
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      const uri = result.assets[0].uri;
+      const path = `${editingMember.id}/avatar.jpg`;
+      const response = await fetch(uri);
+      const arrayBuffer = await response.arrayBuffer();
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, arrayBuffer, { upsert: true, contentType: 'image/jpeg' });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+      const avatarWithBust = `${publicUrl}?t=${Date.now()}`;
+
+      const { error: profileError } = await supabase.rpc('update_member_avatar', {
+        member_id: editingMember.id,
+        new_avatar_url: publicUrl,
+      });
+      if (profileError) throw profileError;
+
+      setEditMemberAvatarUrl(avatarWithBust);
+      setMembers((prev) => prev.map((m) => m.id === editingMember.id ? { ...m, avatar_url: avatarWithBust } : m));
+    } catch (e) {
+      Alert.alert('Error', e?.message || t('profile.error_avatar'));
+    }
+  };
+
+  const handleMemberAvatarPress = () => {
+    Alert.alert(t('profile.avatar_title'), t('profile.avatar_prompt'), [
+      { text: t('common.camera'), onPress: () => pickMemberImage('camera') },
+      { text: t('common.gallery'), onPress: () => pickMemberImage('gallery') },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  };
+
+  const handleSaveMember = async () => {
+    if (!editingMember) return;
+    setSavingMember(true);
+    setMemberModalError('');
+    try {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          full_name: editMemberName.trim(),
+          email: editMemberEmail.trim(),
+          // TODO: actualizar también en auth.users cuando se implemente backend admin
+        })
+        .eq('id', editingMember.id);
+      if (updateError) throw updateError;
+      setMembers((prev) => prev.map((m) =>
+        m.id === editingMember.id
+          ? { ...m, full_name: editMemberName.trim(), email: editMemberEmail.trim(), avatar_url: editMemberAvatarUrl }
+          : m
+      ));
+      setEditMemberVisible(false);
+      setEditingMember(null);
+    } catch (e) {
+      setMemberModalError(e?.message || t('admin.error_load'));
+    } finally {
+      setSavingMember(false);
+    }
+  };
+
+  // ── Edit pending member ───────────────────────────────────────────────────
+  const handleOpenEditPending = (pending) => {
+    setEditingPending(pending);
+    setEditPendingName(pending.full_name || '');
+    setEditPendingEmail(pending.email || '');
+    setPendingModalError('');
+    setEditPendingVisible(true);
+  };
+
+  const handleSavePending = async () => {
+    if (!editingPending) return;
+    setSavingPending(true);
+    setPendingModalError('');
+    try {
+      const { error: updateError } = await supabase
+        .from('activation_codes')
+        .update({ full_name: editPendingName.trim(), email: editPendingEmail.trim() })
+        .eq('id', editingPending.id);
+      if (updateError) throw updateError;
+      setPendingMembers((prev) => prev.map((p) =>
+        p.id === editingPending.id
+          ? { ...p, full_name: editPendingName.trim(), email: editPendingEmail.trim() }
+          : p
+      ));
+      setEditPendingVisible(false);
+      setEditingPending(null);
+    } catch (e) {
+      setPendingModalError(e?.message || t('admin.error_load'));
+    } finally {
+      setSavingPending(false);
+    }
+  };
+
+  const handleCancelInvitation = () => {
+    Alert.alert(
+      t('admin.cancel_invitation'),
+      t('admin.cancel_invitation_confirm'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('admin.delete_habit_confirm'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error: deleteError } = await supabase
+                .from('activation_codes')
+                .delete()
+                .eq('id', editingPending.id);
+              if (deleteError) throw deleteError;
+              setPendingMembers((prev) => prev.filter((p) => p.id !== editingPending.id));
+              setEditPendingVisible(false);
+              setEditingPending(null);
+            } catch (e) {
+              setPendingModalError(e?.message || t('admin.error_load'));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderItem = ({ item }) => {
     if (item.type === 'section_header') {
       const { category } = item.section;
@@ -731,14 +918,12 @@ export default function AdminScreen() {
                     const initial = (m.full_name || '?').charAt(0).toUpperCase();
                     return (
                       <View key={m.id}>
-                        <View style={styles.familyMemberRow}>
-                          {m.avatar_url ? (
-                            <Image source={{ uri: m.avatar_url }} style={styles.familyAvatar} />
-                          ) : (
-                            <View style={styles.familyAvatarFallback}>
-                              <Text style={styles.familyAvatarInitial}>{initial}</Text>
-                            </View>
-                          )}
+                        <TouchableOpacity
+                          style={styles.familyMemberRow}
+                          onPress={() => handleOpenEditMember(m)}
+                          activeOpacity={0.7}
+                        >
+                          <MemberAvatar key={m.avatar_url ?? 'fallback'} avatarUrl={m.avatar_url} initial={initial} />
                           <View style={styles.familyInfo}>
                             <Text style={styles.familyMemberName} numberOfLines={1}>{m.full_name || '—'}</Text>
                             <Text style={styles.familyMemberEmail} numberOfLines={1}>{m.email || '—'}</Text>
@@ -746,7 +931,8 @@ export default function AdminScreen() {
                           <View style={styles.familyStatusActive}>
                             <Text style={styles.familyStatusActiveText}>Activo</Text>
                           </View>
-                        </View>
+                          <Ionicons name="chevron-forward" size={16} color={GRAY} style={{ marginLeft: 4 }} />
+                        </TouchableOpacity>
                         <View style={styles.separator} />
                       </View>
                     );
@@ -757,7 +943,11 @@ export default function AdminScreen() {
                   const initial = (p.full_name || '?').charAt(0).toUpperCase();
                   return (
                     <View key={p.id}>
-                      <View style={styles.familyMemberRow}>
+                      <TouchableOpacity
+                        style={styles.familyMemberRow}
+                        onPress={() => handleOpenEditPending(p)}
+                        activeOpacity={0.7}
+                      >
                         <View style={[styles.familyAvatarFallback, { backgroundColor: '#E0E0E0' }]}>
                           <Text style={[styles.familyAvatarInitial, { color: GRAY }]}>{initial}</Text>
                         </View>
@@ -768,7 +958,8 @@ export default function AdminScreen() {
                         <View style={styles.familyStatusPending}>
                           <Text style={styles.familyStatusPendingText}>Pendiente</Text>
                         </View>
-                      </View>
+                        <Ionicons name="chevron-forward" size={16} color={GRAY} style={{ marginLeft: 4 }} />
+                      </TouchableOpacity>
                       <View style={styles.separator} />
                     </View>
                   );
@@ -1296,6 +1487,151 @@ export default function AdminScreen() {
         </Pressable>
       </Modal>
 
+      {/* ── Modal: editar miembro activo ────────────────────────────────── */}
+      <Modal
+        visible={editMemberVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setEditMemberVisible(false); setEditingMember(null); }}
+      >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.modalBackdrop} onPress={() => { setEditMemberVisible(false); setEditingMember(null); }}>
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>{t('admin.edit_member')}</Text>
+              <View style={styles.modalDivider} />
+              <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
+                {/* Avatar editable */}
+                <TouchableOpacity style={styles.memberAvatarContainer} onPress={handleMemberAvatarPress} activeOpacity={0.8}>
+                  {editMemberAvatarUrl ? (
+                    <Image source={{ uri: editMemberAvatarUrl }} style={styles.memberAvatarLarge} />
+                  ) : (
+                    <View style={[styles.memberAvatarLarge, styles.memberAvatarFallback]}>
+                      <Text style={styles.memberAvatarInitialLarge}>
+                        {(editMemberName || '?').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.memberAvatarCameraOverlay}>
+                    <Ionicons name="camera" size={16} color={WHITE} />
+                  </View>
+                </TouchableOpacity>
+
+                <Text style={styles.inputLabel}>{t('admin.member_name')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editMemberName}
+                  onChangeText={setEditMemberName}
+                  placeholder={t('admin.member_name')}
+                  placeholderTextColor={GRAY}
+                  autoCapitalize="words"
+                  editable={!savingMember}
+                />
+                <Text style={styles.inputLabel}>{t('admin.member_email')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editMemberEmail}
+                  onChangeText={setEditMemberEmail}
+                  placeholder={t('admin.member_email')}
+                  placeholderTextColor={GRAY}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  editable={!savingMember}
+                />
+
+                {memberModalError ? <Text style={styles.modalErrorText}>{memberModalError}</Text> : null}
+
+                <TouchableOpacity
+                  style={[styles.saveBtn, savingMember && styles.btnDisabled]}
+                  onPress={handleSaveMember}
+                  disabled={savingMember}
+                  activeOpacity={0.85}
+                >
+                  {savingMember ? <ActivityIndicator color={WHITE} /> : <Text style={styles.saveBtnText}>{t('common.save')}</Text>}
+                </TouchableOpacity>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Modal: editar miembro pendiente ─────────────────────────────── */}
+      <Modal
+        visible={editPendingVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setEditPendingVisible(false); setEditingPending(null); }}
+      >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.modalBackdrop} onPress={() => { setEditPendingVisible(false); setEditingPending(null); }}>
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>{t('admin.pending_code_title')}</Text>
+              <View style={styles.modalDivider} />
+              <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
+                {/* Código en grande */}
+                <View style={[styles.codeBox, { marginBottom: 20 }]}>
+                  <Text style={styles.codeText}>{editingPending?.code}</Text>
+                </View>
+
+                <Text style={styles.inputLabel}>{t('admin.member_name')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editPendingName}
+                  onChangeText={setEditPendingName}
+                  placeholder={t('admin.member_name')}
+                  placeholderTextColor={GRAY}
+                  autoCapitalize="words"
+                  editable={!savingPending}
+                />
+                <Text style={styles.inputLabel}>{t('admin.member_email')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editPendingEmail}
+                  onChangeText={setEditPendingEmail}
+                  placeholder={t('admin.member_email')}
+                  placeholderTextColor={GRAY}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  editable={!savingPending}
+                />
+
+                {pendingModalError ? <Text style={styles.modalErrorText}>{pendingModalError}</Text> : null}
+
+                <TouchableOpacity
+                  style={[styles.saveBtn, savingPending && styles.btnDisabled]}
+                  onPress={handleSavePending}
+                  disabled={savingPending}
+                  activeOpacity={0.85}
+                >
+                  {savingPending ? <ActivityIndicator color={WHITE} /> : <Text style={styles.saveBtnText}>{t('admin.save_changes')}</Text>}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.btnSecondary, { marginTop: 10 }]}
+                  onPress={async () => {
+                    try {
+                      await Share.share({ message: t('admin.share_activation', { group: companyName, code: editingPending?.code }) });
+                    } catch {}
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.btnSecondaryText}>{t('admin.invite_share')}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.cancelInvitationBtn}
+                  onPress={handleCancelInvitation}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.cancelInvitationText}>{t('admin.cancel_invitation')}</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* ── Modal: nueva categoría ───────────────────────────────────────── */}
       <Modal
         visible={catModalVisible}
@@ -1504,6 +1840,27 @@ const styles = StyleSheet.create({
   colorOptionActive: { borderWidth: 3, borderColor: WHITE, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 },
   devResetBtn: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16, marginTop: 8 },
   devResetText: { fontSize: 12, color: GRAY, fontWeight: '500' },
+  // Member edit modal
+  inputLabel: { fontSize: 13, fontWeight: '600', color: TEXT, marginBottom: 6 },
+  memberAvatarContainer: { alignSelf: 'center', marginBottom: 20, position: 'relative' },
+  memberAvatarLarge: { width: 80, height: 80, borderRadius: 40 },
+  memberAvatarFallback: { backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
+  memberAvatarInitialLarge: { color: WHITE, fontWeight: '700', fontSize: 32 },
+  memberAvatarCameraOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: BLUE,
+    borderWidth: 2,
+    borderColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelInvitationBtn: { alignSelf: 'center', paddingVertical: 12, marginTop: 8 },
+  cancelInvitationText: { color: '#CC0000', fontSize: 14, fontWeight: '600' },
   // Tab selector — estilo LinkedIn
   tabUnderlineRow: { flexDirection: 'row', backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
   tabUnderlineItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
