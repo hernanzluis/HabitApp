@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
+import { authFlags, activateSession } from '../lib/authFlags';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -32,16 +33,18 @@ const EMPTY_ERRORS = {
   password: '',
   confirmPassword: '',
   companyName: '',
-  inviteCode: '',
+  activationCode: '',
 };
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
   const { t } = useTranslation();
 
+  // step: 'choose' | 'form' | 'activate_code' | 'activate_password'
   const [step, setStep] = useState('choose');
-  const [mode, setMode] = useState('create');
+  const [mode, setMode] = useState('create'); // 'create' | 'activate'
 
+  // Campos modo create
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -49,7 +52,10 @@ export default function SignUpScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [companyName, setCompanyName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
+
+  // Campos modo activate
+  const [activationCode, setActivationCode] = useState('');
+  const [activationData, setActivationData] = useState(null); // { email, full_name, company_id }
 
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
@@ -58,26 +64,23 @@ export default function SignUpScreen() {
   const fullNameTrimmed = useMemo(() => fullName.trim(), [fullName]);
   const emailTrimmed = useMemo(() => email.trim(), [email]);
   const companyNameTrimmed = useMemo(() => companyName.trim(), [companyName]);
-  const inviteCodeTrimmed = useMemo(() => inviteCode.trim(), [inviteCode]);
-
-  const switchMode = (next) => {
-    if (next === mode) return;
-    setMode(next);
-    setFormError('');
-    setErrors(EMPTY_ERRORS);
-  };
+  const activationCodeTrimmed = useMemo(() => activationCode.trim(), [activationCode]);
 
   const chooseMode = (m) => {
     setMode(m);
     setFormError('');
     setErrors(EMPTY_ERRORS);
-    setStep('form');
+    setStep(m === 'create' ? 'form' : 'activate_code');
   };
 
   const goBack = () => {
-    setStep('choose');
     setFormError('');
     setErrors(EMPTY_ERRORS);
+    if (step === 'activate_password') {
+      setStep('activate_code');
+    } else {
+      setStep('choose');
+    }
   };
 
   const normalizeAuthError = (message) => {
@@ -89,7 +92,8 @@ export default function SignUpScreen() {
     return msg;
   };
 
-  const validate = () => {
+  // ── Validación formulario create ──────────────────────────────────────────
+  const validateCreate = () => {
     const next = { ...EMPTY_ERRORS };
 
     if (!fullNameTrimmed) next.fullName = t('errors.name_required');
@@ -99,43 +103,21 @@ export default function SignUpScreen() {
     else if (password.length < 8) next.password = t('errors.password_min', { count: 8 });
     if (!confirmPassword) next.confirmPassword = t('errors.confirm_password_required');
     else if (confirmPassword !== password) next.confirmPassword = t('errors.password_mismatch');
-
-    if (mode === 'create') {
-      if (!companyNameTrimmed) next.companyName = t('errors.company_required');
-    } else {
-      if (!inviteCodeTrimmed) next.inviteCode = t('errors.invite_required');
-    }
+    if (!companyNameTrimmed) next.companyName = t('errors.company_required');
 
     setErrors(next);
     return Object.values(next).every((v) => !v);
   };
 
+  // ── Submit: modo create ───────────────────────────────────────────────────
   const onSignUp = async () => {
     if (loading) return;
     setFormError('');
-    if (!validate()) return;
+    if (!validateCreate()) return;
 
     setLoading(true);
     let registered = false;
     try {
-      if (mode === 'join') {
-        const { data: invitation, error: inviteError } = await supabase
-          .from('invitations')
-          .select('id, expires_at')
-          .eq('code', inviteCodeTrimmed)
-          .maybeSingle();
-
-        if (inviteError) throw inviteError;
-        if (!invitation) {
-          setErrors((prev) => ({ ...prev, inviteCode: t('signup.error_invite_invalid') }));
-          return;
-        }
-        if (invitation.expires_at && new Date(invitation.expires_at) < new Date()) {
-          setErrors((prev) => ({ ...prev, inviteCode: t('signup.error_invite_expired') }));
-          return;
-        }
-      }
-
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: emailTrimmed,
         password,
@@ -157,26 +139,119 @@ export default function SignUpScreen() {
         return;
       }
 
-      if (mode === 'create') {
-        const { error: rpcError } = await supabase.rpc('handle_new_user_registration', {
-          user_id: user.id,
-          user_email: emailTrimmed,
-          user_full_name: fullNameTrimmed,
-          company_name: companyNameTrimmed,
-        });
-        if (rpcError) throw rpcError;
-      } else {
-        const { error: rpcError } = await supabase.rpc('handle_invited_user_registration', {
-          user_id: user.id,
-          user_email: emailTrimmed,
-          user_full_name: fullNameTrimmed,
-          invitation_code: inviteCodeTrimmed,
-        });
-        if (rpcError) throw rpcError;
-      }
+      const { error: rpcError } = await supabase.rpc('handle_new_user_registration', {
+        user_id: user.id,
+        user_email: emailTrimmed,
+        user_full_name: fullNameTrimmed,
+        company_name: companyNameTrimmed,
+      });
+      if (rpcError) throw rpcError;
 
       registered = true;
     } catch (e) {
+      setFormError(e?.message || t('signup.error_generic'));
+    } finally {
+      if (!registered) setLoading(false);
+    }
+  };
+
+  // ── Activate paso 1: validar código ───────────────────────────────────────
+  const onCheckCode = async () => {
+    if (loading) return;
+    setFormError('');
+    setErrors(EMPTY_ERRORS);
+
+    if (!activationCodeTrimmed || activationCodeTrimmed.length !== 6) {
+      setErrors((prev) => ({ ...prev, activationCode: t('signup.code_invalid') }));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const now = new Date().toISOString();
+      const { data: record, error } = await supabase
+        .from('activation_codes')
+        .select('email, full_name, company_id')
+        .eq('code', activationCodeTrimmed)
+        .eq('used', false)
+        .or(`expires_at.is.null,expires_at.gt.${now}`)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!record) {
+        setErrors((prev) => ({ ...prev, activationCode: t('signup.code_invalid') }));
+        return;
+      }
+
+      setActivationData(record);
+      setStep('activate_password');
+    } catch (e) {
+      setFormError(e?.message || t('signup.error_generic'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Activate paso 2: crear contraseña y registrar ─────────────────────────
+  const onActivate = async () => {
+    if (loading) return;
+    setFormError('');
+    const next = { ...EMPTY_ERRORS };
+
+    if (!password) next.password = t('errors.password_required');
+    else if (password.length < 8) next.password = t('errors.password_min', { count: 8 });
+    if (!confirmPassword) next.confirmPassword = t('errors.confirm_password_required');
+    else if (confirmPassword !== password) next.confirmPassword = t('errors.password_mismatch');
+
+    setErrors(next);
+    if (Object.values(next).some((v) => v)) return;
+
+    setLoading(true);
+    let registered = false;
+
+    // Bloqueamos el redirect automático de onAuthStateChange para que
+    // handle_invited_user_registration termine antes de mostrar el AppStack.
+    authFlags.skipNextRedirect = true;
+
+    try {
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email: activationData.email,
+        password,
+      });
+
+      if (signUpError) {
+        authFlags.skipNextRedirect = false;
+        setFormError(normalizeAuthError(signUpError.message));
+        return;
+      }
+
+      const user = authData?.user;
+      if (!user?.id) {
+        authFlags.skipNextRedirect = false;
+        setFormError(t('signup.error_no_user'));
+        return;
+      }
+
+      const { error: rpcError } = await supabase.rpc('handle_activation_registration', {
+        user_id: user.id,
+        user_email: activationData.email,
+        user_full_name: activationData.full_name,
+        activation_code: activationCodeTrimmed,
+      });
+      if (rpcError) throw rpcError;
+
+      await supabase
+        .from('activation_codes')
+        .update({ used: true })
+        .eq('code', activationCodeTrimmed);
+
+      // Todo OK: obtenemos la sesión activa y navegamos al AppStack manualmente.
+      const { data: { session } } = await supabase.auth.getSession();
+      activateSession(session);
+      registered = true;
+    } catch (e) {
+      authFlags.skipNextRedirect = false; // reset en cualquier error
       setFormError(e?.message || t('signup.error_generic'));
     } finally {
       if (!registered) setLoading(false);
@@ -205,13 +280,13 @@ export default function SignUpScreen() {
 
           <TouchableOpacity
             style={styles.modeCardJoin}
-            onPress={() => chooseMode('join')}
+            onPress={() => chooseMode('activate')}
             activeOpacity={0.85}
           >
-            <Ionicons name="enter-outline" size={32} color={BLUE} />
+            <Ionicons name="key-outline" size={32} color={BLUE} />
             <View style={styles.modeCardText}>
-              <Text style={styles.modeCardTitleBlue}>{t('signup.join_group')}</Text>
-              <Text style={styles.modeCardDescBlue}>{t('signup.join_group_desc')}</Text>
+              <Text style={styles.modeCardTitleBlue}>{t('signup.activate_account')}</Text>
+              <Text style={styles.modeCardDescBlue}>{t('signup.activate_desc')}</Text>
             </View>
           </TouchableOpacity>
 
@@ -223,7 +298,127 @@ export default function SignUpScreen() {
     );
   }
 
-  // ── Paso 2: formulario ────────────────────────────────────────────────────
+  // ── Activate paso 1: introducir código ────────────────────────────────────
+  if (step === 'activate_code') {
+    return (
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <TouchableOpacity style={styles.backBtn} onPress={goBack} disabled={loading} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={22} color={TEXT} />
+            <Text style={styles.backBtnText}>{t('signup.back_to_login')}</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.formTitle}>{t('signup.activate_account')}</Text>
+
+          <View style={styles.card}>
+            <Text style={styles.label}>{t('signup.enter_code')}</Text>
+            <TextInput
+              value={activationCode}
+              onChangeText={(v) => setActivationCode(v.replace(/\D/g, '').slice(0, 6))}
+              style={styles.input}
+              placeholder={t('signup.code_placeholder')}
+              placeholderTextColor={GRAY}
+              keyboardType="numeric"
+              maxLength={6}
+              editable={!loading}
+            />
+            {errors.activationCode ? <Text style={styles.errorText}>{errors.activationCode}</Text> : null}
+
+            {formError ? <Text style={styles.formErrorText}>{formError}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
+              onPress={onCheckCode}
+              disabled={loading}
+              activeOpacity={0.9}
+            >
+              {loading ? (
+                <ActivityIndicator color={WHITE} />
+              ) : (
+                <Text style={styles.submitBtnText}>{t('signup.submit_continue')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ── Activate paso 2: crear contraseña ────────────────────────────────────
+  if (step === 'activate_password') {
+    return (
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <TouchableOpacity style={styles.backBtn} onPress={goBack} disabled={loading} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={22} color={TEXT} />
+            <Text style={styles.backBtnText}>{t('signup.back_to_login')}</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.formTitle}>{t('signup.create_password')}</Text>
+
+          <View style={styles.card}>
+            <Text style={styles.label}>{t('signup.your_email')}</Text>
+            <TextInput
+              value={activationData?.email ?? ''}
+              style={[styles.input, styles.inputDisabled]}
+              editable={false}
+            />
+
+            <Text style={[styles.label, styles.mt]}>{t('common.password')}</Text>
+            <View style={styles.passwordRow}>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                style={[styles.input, styles.passwordInput]}
+                placeholder="••••••••"
+                placeholderTextColor={GRAY}
+                secureTextEntry={!showPassword}
+                editable={!loading}
+              />
+              <TouchableOpacity style={styles.toggleBtn} onPress={() => setShowPassword((v) => !v)} disabled={loading} activeOpacity={0.8}>
+                <Text style={styles.toggleBtnText}>{showPassword ? t('common.hide') : t('common.show')}</Text>
+              </TouchableOpacity>
+            </View>
+            {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
+
+            <Text style={[styles.label, styles.mt]}>{t('signup.confirm_password')}</Text>
+            <View style={styles.passwordRow}>
+              <TextInput
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                style={[styles.input, styles.passwordInput]}
+                placeholder="••••••••"
+                placeholderTextColor={GRAY}
+                secureTextEntry={!showConfirmPassword}
+                editable={!loading}
+              />
+              <TouchableOpacity style={styles.toggleBtn} onPress={() => setShowConfirmPassword((v) => !v)} disabled={loading} activeOpacity={0.8}>
+                <Text style={styles.toggleBtnText}>{showConfirmPassword ? t('common.hide') : t('common.show')}</Text>
+              </TouchableOpacity>
+            </View>
+            {errors.confirmPassword ? <Text style={styles.errorText}>{errors.confirmPassword}</Text> : null}
+
+            {formError ? <Text style={styles.formErrorText}>{formError}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
+              onPress={onActivate}
+              disabled={loading}
+              activeOpacity={0.9}
+            >
+              {loading ? (
+                <ActivityIndicator color={WHITE} />
+              ) : (
+                <Text style={styles.submitBtnText}>{t('signup.submit_activate')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ── Paso 2: formulario modo create ────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -232,9 +427,7 @@ export default function SignUpScreen() {
           <Text style={styles.backBtnText}>{t('signup.back_to_login')}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.formTitle}>
-          {mode === 'create' ? t('signup.create_group') : t('signup.join_group')}
-        </Text>
+        <Text style={styles.formTitle}>{t('signup.create_group')}</Text>
 
         <View style={styles.card}>
           <Text style={styles.label}>{t('signup.full_name')}</Text>
@@ -296,36 +489,17 @@ export default function SignUpScreen() {
           </View>
           {errors.confirmPassword ? <Text style={styles.errorText}>{errors.confirmPassword}</Text> : null}
 
-          {mode === 'create' ? (
-            <>
-              <Text style={[styles.label, styles.mt]}>{t('signup.company_name')}</Text>
-              <TextInput
-                value={companyName}
-                onChangeText={setCompanyName}
-                style={styles.input}
-                placeholder={t('signup.company_placeholder')}
-                placeholderTextColor={GRAY}
-                autoCapitalize="words"
-                editable={!loading}
-              />
-              {errors.companyName ? <Text style={styles.errorText}>{errors.companyName}</Text> : null}
-            </>
-          ) : (
-            <>
-              <Text style={[styles.label, styles.mt]}>{t('signup.invite_code')}</Text>
-              <TextInput
-                value={inviteCode}
-                onChangeText={setInviteCode}
-                style={styles.input}
-                placeholder={t('signup.invite_placeholder')}
-                placeholderTextColor={GRAY}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                editable={!loading}
-              />
-              {errors.inviteCode ? <Text style={styles.errorText}>{errors.inviteCode}</Text> : null}
-            </>
-          )}
+          <Text style={[styles.label, styles.mt]}>{t('signup.company_name')}</Text>
+          <TextInput
+            value={companyName}
+            onChangeText={setCompanyName}
+            style={styles.input}
+            placeholder={t('signup.company_placeholder')}
+            placeholderTextColor={GRAY}
+            autoCapitalize="words"
+            editable={!loading}
+          />
+          {errors.companyName ? <Text style={styles.errorText}>{errors.companyName}</Text> : null}
 
           {formError ? <Text style={styles.formErrorText}>{formError}</Text> : null}
 
@@ -338,9 +512,7 @@ export default function SignUpScreen() {
             {loading ? (
               <ActivityIndicator color={WHITE} />
             ) : (
-              <Text style={styles.submitBtnText}>
-                {mode === 'create' ? t('signup.submit_create') : t('signup.submit_join')}
-              </Text>
+              <Text style={styles.submitBtnText}>{t('signup.submit_create')}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -410,6 +582,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E0E0E0',
     color: TEXT,
+  },
+  inputDisabled: {
+    backgroundColor: '#F0F0F0',
+    color: GRAY,
   },
   passwordRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
   passwordInput: { flex: 1, marginTop: 0 },

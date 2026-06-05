@@ -19,7 +19,7 @@ const BLUE = '#0A66C2';
 const TEXT = '#1D2226';
 const GRAY = '#666666';
 const GREEN = '#4CAF50';
-const FLAME = '#FF6B00';
+const FLAME = '#4CAF50';
 
 const DAY_LABELS_ES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const DAY_LABELS_EN = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];

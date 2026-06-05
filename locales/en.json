@@ -14,7 +14,8 @@
     "colleague": "Family member",
     "error_camera_permission": "We need permission to use the camera.",
     "error_gallery_permission": "We need permission to access your gallery.",
-    "coming_soon": "Coming soon"
+    "coming_soon": "Coming soon",
+    "close": "Close"
   },
   "errors": {
     "generic": "An error occurred. Please try again.",
@@ -66,7 +67,16 @@
     "error_invite_invalid": "Invalid invitation code.",
     "error_invite_expired": "This invitation code has expired.",
     "error_no_user": "Could not get the user after registration. If you need to confirm your email, do so and then sign in.",
-    "error_generic": "Could not complete registration. Check your connection and try again."
+    "error_generic": "Could not complete registration. Check your connection and try again.",
+    "activate_account": "Activate my account",
+    "activate_desc": "You have a personal activation code",
+    "enter_code": "Enter your activation code",
+    "code_placeholder": "6-digit code",
+    "code_invalid": "Invalid or expired code",
+    "create_password": "Create your password",
+    "your_email": "Your email",
+    "submit_activate": "Activate account",
+    "submit_continue": "Continue"
   },
   "home": {
     "greeting": "Hello, {{name}}",
@@ -86,7 +96,30 @@
     "validators_approved": "Approved by",
     "validators_rejected": "Rejected by",
     "validators_pending": "Pending validation",
-    "validators_count": "{{done}} of {{total}} validators"
+    "validators_count": "{{done}} of {{total}} validators",
+    "empty_admin": "No habits in your group yet",
+    "empty_user": "You don't have any habits assigned yet",
+    "empty_user_sub": "Your group administrator needs to assign you habits",
+    "create_habit": "Create habit"
+  },
+  "onboarding": {
+    "welcome_title": "Welcome to HabitTeam!",
+    "welcome_subtitle": "Create habits for your family and celebrate every achievement together",
+    "start": "Get started",
+    "habit_title": "Create your first habit",
+    "habit_subtitle": "Choose one of these or create your own",
+    "habit_custom": "Create a custom habit",
+    "habit_continue": "Continue",
+    "habit_water": "Drink water",
+    "habit_walk": "Go for a walk",
+    "habit_meds": "Take medication",
+    "habit_read": "Read 15 minutes",
+    "habit_sleep": "Sleep 8 hours",
+    "habit_chores": "Household chores",
+    "invite_title": "Invite your family",
+    "invite_subtitle": "Share this code with your family to join the group",
+    "invite_share": "Share code",
+    "invite_done": "Finish"
   },
   "habit_detail": {
     "header_title": "Complete habit",
@@ -201,7 +234,17 @@
     "custom": "Custom",
     "delete_habit_title": "Delete habit",
     "delete_habit_message": "All associated photos and validations will also be deleted. This action cannot be undone.",
-    "delete_habit_confirm": "Delete"
+    "delete_habit_confirm": "Delete",
+    "tab_habits": "Habits",
+    "tab_family": "Family",
+    "add_member": "+ Add member",
+    "member_name": "Full name",
+    "member_email": "Email",
+    "generate_code": "Generate activation code",
+    "activation_code_label": "Activation code",
+    "share_activation": "Join {{group}} on HabitTeam. Your activation code is: {{code}}. Download the app and enter it to activate your account.",
+    "member_role_admin": "Admin",
+    "member_role_user": "Member"
   },
   "nav": {
     "home": "Home",

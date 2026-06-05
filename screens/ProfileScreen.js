@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -119,7 +119,7 @@ function InfoRow({ label, value }) {
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value || '—'}</Text>
+      <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">{value || '—'}</Text>
     </View>
   );
 }
@@ -135,7 +135,6 @@ export default function ProfileScreen() {
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
-  const [settingsVisible, setSettingsVisible] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -143,24 +142,14 @@ export default function ProfileScreen() {
   const [nameInput, setNameInput] = useState('');
   const [nameSaving, setNameSaving] = useState(false);
 
+  const [editingGroupName, setEditingGroupName] = useState(false);
+  const [groupNameInput, setGroupNameInput] = useState('');
+  const [groupNameSaving, setGroupNameSaving] = useState(false);
+
   const [historyLogs, setHistoryLogs] = useState([]);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPeriod, setFilterPeriod] = useState('all');
   const [selectedPhoto, setSelectedPhoto] = useState(null);
-
-  useEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <TouchableOpacity
-          onPress={() => setSettingsVisible(true)}
-          style={styles.headerBtn}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="settings-outline" size={24} color={TEXT} />
-        </TouchableOpacity>
-      ),
-    });
-  }, [navigation]);
 
   const loadProfile = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -246,6 +235,7 @@ export default function ProfileScreen() {
 
       setData({
         userId: user.id,
+        companyId: profile.company_id ?? null,
         fullName: profile.full_name,
         email: profile.email ?? user.email,
         companyName,
@@ -262,6 +252,26 @@ export default function ProfileScreen() {
       setRefreshing(false);
     }
   }, [t]);
+
+  const saveGroupName = async () => {
+    const trimmed = groupNameInput.trim();
+    if (!trimmed) return;
+    setGroupNameSaving(true);
+    setError('');
+    try {
+      const { error: updateError } = await supabase
+        .from('companies')
+        .update({ name: trimmed })
+        .eq('id', data.companyId);
+      if (updateError) throw updateError;
+      setData((prev) => ({ ...prev, companyName: trimmed }));
+      setEditingGroupName(false);
+    } catch (e) {
+      setError(e?.message || t('profile.error_name'));
+    } finally {
+      setGroupNameSaving(false);
+    }
+  };
 
   const fetchPendingCount = useCallback(async () => {
     try {
@@ -523,7 +533,63 @@ export default function ProfileScreen() {
             <View style={styles.infoSection}>
               <InfoRow label={t('common.email')} value={data.email} />
               <View style={styles.divider} />
-              <InfoRow label={t('profile.company_label')} value={data.companyName} />
+
+              {/* Nombre del grupo — editable para admin */}
+              {editingGroupName ? (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>{t('profile.company_label')}</Text>
+                  <View style={styles.inlineEditRight}>
+                    <TextInput
+                      value={groupNameInput}
+                      onChangeText={setGroupNameInput}
+                      style={styles.inlineInput}
+                      autoFocus
+                      editable={!groupNameSaving}
+                      returnKeyType="done"
+                      onSubmitEditing={saveGroupName}
+                    />
+                    <View style={styles.nameEditActions}>
+                      <TouchableOpacity onPress={saveGroupName} disabled={groupNameSaving} activeOpacity={0.8}>
+                        {groupNameSaving ? (
+                          <ActivityIndicator size="small" color={BLUE} />
+                        ) : (
+                          <Text style={styles.nameSaveText}>{t('common.save')}</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setEditingGroupName(false)} disabled={groupNameSaving} activeOpacity={0.8}>
+                        <Text style={styles.nameCancelText}>{t('common.cancel')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>{t('profile.company_label')}</Text>
+                  <View style={styles.infoValueRow}>
+                    <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">{data.companyName || '—'}</Text>
+                    {data.role === 'admin' ? (
+                      <TouchableOpacity
+                        onPress={() => { setGroupNameInput(data.companyName || ''); setEditingGroupName(true); }}
+                        activeOpacity={0.7}
+                        style={styles.editNameBtn}
+                      >
+                        <Ionicons name="create-outline" size={16} color={BLUE} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.divider} />
+
+              {/* Idioma */}
+              <TouchableOpacity style={styles.infoRow} onPress={showLanguagePicker} activeOpacity={0.7}>
+                <Text style={styles.infoLabel}>{t('profile.language')}</Text>
+                <View style={styles.infoValueRow}>
+                  <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">{i18n.language === 'es' ? 'Español' : 'English'}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={GRAY} />
+                </View>
+              </TouchableOpacity>
             </View>
 
             {/* Sección actividad */}
@@ -603,59 +669,22 @@ export default function ProfileScreen() {
           </>
         ) : null}
 
+        <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={onLogout}
+          disabled={logoutLoading}
+          activeOpacity={0.7}
+        >
+          {logoutLoading ? (
+            <ActivityIndicator color="#CC0000" />
+          ) : (
+            <Text style={styles.logoutText}>{t('profile.logout')}</Text>
+          )}
+        </TouchableOpacity>
+
       </ScrollView>
 
       <ManualTabBar navigation={navigation} t={t} pendingCount={pendingCount} />
-
-      {/* Modal de ajustes */}
-      <Modal
-        visible={settingsVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSettingsVisible(false)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setSettingsVisible(false)}>
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>{t('profile.settings_title')}</Text>
-            <View style={styles.modalDivider} />
-
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => { setSettingsVisible(false); setTimeout(showLanguagePicker, 300); }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.modalOptionText}>{t('profile.language')}</Text>
-              <Ionicons name="chevron-forward" size={16} color={GRAY} />
-            </TouchableOpacity>
-
-            <View style={styles.modalDivider} />
-
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => { setSettingsVisible(false); onLogout(); }}
-              activeOpacity={0.7}
-              disabled={logoutLoading}
-            >
-              {logoutLoading ? (
-                <ActivityIndicator color="#CC0000" />
-              ) : (
-                <Text style={[styles.modalOptionText, styles.modalOptionLogout]}>{t('profile.logout')}</Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.modalSectionGap} />
-
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => setSettingsVisible(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.modalOptionCancel}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       {/* Modal foto completa */}
       <Modal
@@ -818,7 +847,6 @@ const styles = StyleSheet.create({
   },
   infoRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 14,
   },
@@ -826,12 +854,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: GRAY,
     fontWeight: '600',
+    flexShrink: 0,
+    marginRight: 12,
   },
   infoValue: {
     fontSize: 14,
     color: TEXT,
     fontWeight: '700',
-    maxWidth: '60%',
+    flex: 1,
     textAlign: 'right',
   },
   divider: {
@@ -867,65 +897,37 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  headerBtn: {
-    paddingHorizontal: 16,
-  },
-  // Modal de ajustes
-  modalBackdrop: {
+  infoValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
-  modalSheet: {
-    backgroundColor: WHITE,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 32,
+  inlineEditRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+    gap: 6,
   },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E0E0E0',
-    alignSelf: 'center',
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+  inlineInput: {
+    fontSize: 14,
+    fontWeight: '700',
     color: TEXT,
-    textAlign: 'center',
-    paddingVertical: 16,
+    borderBottomWidth: 1.5,
+    borderColor: BLUE,
+    paddingVertical: 2,
+    minWidth: 100,
+    textAlign: 'right',
   },
-  modalOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  logoutBtn: {
+    alignSelf: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 16,
   },
-  modalOptionText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: TEXT,
-  },
-  modalOptionLogout: {
+  logoutText: {
     color: '#CC0000',
-  },
-  modalOptionCancel: {
     fontSize: 15,
     fontWeight: '600',
-    color: GRAY,
-  },
-  modalDivider: {
-    height: 1,
-    backgroundColor: '#F0F0F0',
-    marginHorizontal: 16,
-  },
-  modalSectionGap: {
-    height: 8,
-    backgroundColor: BG,
   },
   // Historial
   historySection: {

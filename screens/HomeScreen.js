@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,7 +15,9 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import OnboardingModal, { ONBOARDING_KEY } from './OnboardingModal';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -118,6 +120,53 @@ export default function HomeScreen() {
   const [profile, setProfile] = useState(null);
   const [habits, setHabits] = useState([]);
   const [detailHabit, setDetailHabit] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // Comprobación de onboarding al montar, independiente de loadHomeData
+  useEffect(() => {
+    let cancelled = false;
+    const checkOnboarding = async () => {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        console.log('ONBOARDING CHECK — user:', user?.id, 'error:', userError?.message);
+        if (!user || cancelled) return;
+
+        let { data: profile, error: profileError } = await supabase
+          .from('profiles').select('role, company_id').eq('id', user.id).maybeSingle();
+        console.log('ONBOARDING CHECK — profile:', profile, 'error:', JSON.stringify(profileError));
+
+        if (!profile && !cancelled) {
+          console.log('ONBOARDING CHECK — profile null, retrying in 800ms');
+          await new Promise((r) => setTimeout(r, 800));
+          if (cancelled) return;
+          ({ data: profile, error: profileError } = await supabase
+            .from('profiles').select('role, company_id').eq('id', user.id).maybeSingle());
+          console.log('ONBOARDING CHECK — profile retry:', profile, 'error:', JSON.stringify(profileError));
+        }
+
+        if (!profile || profile.role !== 'admin' || !profile.company_id || cancelled) return;
+
+        const completed = await AsyncStorage.getItem(ONBOARDING_KEY);
+        console.log('ONBOARDING CHECK — onboarding_completed:', completed);
+        if (completed || cancelled) return;
+
+        const { count, error: countError } = await supabase
+          .from('habits').select('id', { count: 'exact', head: true })
+          .eq('company_id', profile.company_id).eq('is_active', true);
+        console.log('ONBOARDING CHECK — habit count:', count, 'error:', countError?.message);
+
+        if ((count ?? 0) === 0 && !cancelled) {
+          console.log('ONBOARDING CHECK — showing modal');
+          setShowOnboarding(true);
+        }
+      } catch (e) {
+        console.log('ONBOARDING CHECK — caught error:', e?.message);
+      }
+    };
+    checkOnboarding();
+    return () => { cancelled = true; };
+  }, []);
 
   const loadHomeData = useCallback(async (isRefresh = false, attempt = 1) => {
     if (isRefresh) {
@@ -140,7 +189,7 @@ export default function HomeScreen() {
 
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select('id, full_name, company_id')
+        .select('id, full_name, company_id, role')
         .eq('id', user.id)
         .single();
 
@@ -153,6 +202,7 @@ export default function HomeScreen() {
       }
 
       setProfile(profileData);
+      setIsAdmin(profileData.role === 'admin');
 
       // Solo hábitos asignados explícitamente al usuario
       const { data: assignments, error: assignmentsError } = await supabase
@@ -488,13 +538,37 @@ export default function HomeScreen() {
           }
           ListEmptyComponent={
             !error ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>{t('home.empty')}</Text>
-              </View>
+              isAdmin ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="add-circle-outline" size={52} color={BLUE} />
+                  <Text style={styles.emptyText}>{t('home.empty_admin')}</Text>
+                  <TouchableOpacity
+                    style={styles.emptyBtn}
+                    onPress={() => navigation.navigate('Admin')}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={styles.emptyBtnText}>{t('home.create_habit')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="time-outline" size={52} color={GRAY} />
+                  <Text style={styles.emptyText}>{t('home.empty_user')}</Text>
+                  <Text style={styles.emptySubText}>{t('home.empty_user_sub')}</Text>
+                </View>
+              )
             ) : null
           }
         />
       </View>
+
+      <OnboardingModal
+        visible={showOnboarding}
+        companyId={profile?.company_id}
+        userId={profile?.id}
+        onComplete={() => { setShowOnboarding(false); loadHomeData(); }}
+        onGoToAdmin={() => { setShowOnboarding(false); navigation.navigate('Admin'); }}
+      />
 
       {/* Modal de detalle de validadores */}
       <Modal
@@ -826,11 +900,34 @@ const styles = StyleSheet.create({
   emptyState: {
     padding: 24,
     alignItems: 'center',
+    gap: 12,
   },
   emptyText: {
     color: GRAY,
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  emptySubText: {
+    fontSize: 13,
+    color: GRAY,
+    textAlign: 'center',
+    paddingHorizontal: 8,
+    lineHeight: 18,
+  },
+  emptyBtn: {
+    height: 44,
+    borderRadius: 4,
+    backgroundColor: BLUE,
+    alignSelf: 'center',
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  emptyBtnText: {
+    color: WHITE,
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

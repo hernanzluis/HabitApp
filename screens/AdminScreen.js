@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -20,6 +22,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 
 const BG = '#F3F2EF';
@@ -39,11 +42,6 @@ const CATEGORY_COLORS = [
   '#9C27B0', '#00BCD4', '#009688', '#9E9E9E',
 ];
 
-function generateInviteCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const seg = () => Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return `${seg()}-${seg()}`;
-}
 
 function formatDate(dateString, locale) {
   if (!dateString) return '';
@@ -101,12 +99,11 @@ export default function AdminScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
   const [habits, setHabits] = useState([]);
   const [members, setMembers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [companyId, setCompanyId] = useState(null);
-  const [generating, setGenerating] = useState(false);
+  const [pendingMembers, setPendingMembers] = useState([]);
 
   // ── Create-habit modal state ─────────────────────────────────────────────
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -136,6 +133,16 @@ export default function AdminScreen() {
   // ── Edit-habit modal state ───────────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingHabit, setEditingHabit] = useState(null);
+
+  // ── Tab + family state ───────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('habits');
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [companyName, setCompanyName] = useState('');
+  const [addMemberVisible, setAddMemberVisible] = useState(false);
+  const [memberName, setMemberName] = useState('');
+  const [memberEmail, setMemberEmail] = useState('');
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [generatingCode, setGeneratingCode] = useState(false);
 
   useEffect(() => {
     navigation.setOptions({
@@ -173,19 +180,18 @@ export default function AdminScreen() {
       if (!profile?.company_id) return;
 
       setCompanyId(profile.company_id);
+      setCurrentUserId(user.id);
+
+      const { data: companyData } = await supabase
+        .from('companies').select('name').eq('id', profile.company_id).single();
+      if (companyData?.name) setCompanyName(companyData.name);
 
       const [
-        { data: invitations, error: invError },
         { data: habitsData, error: habitsError },
         { data: membersData, error: membersError },
         { data: categoriesData, error: categoriesError },
+        { data: pendingData, error: pendingError },
       ] = await Promise.all([
-        supabase
-          .from('invitations')
-          .select('code, expires_at')
-          .eq('company_id', profile.company_id)
-          .order('created_at', { ascending: false })
-          .limit(1),
         supabase
           .from('habits')
           .select('id, title, description, recurrence, is_active, expires_at, due_time, category_id, weekly_target')
@@ -193,21 +199,26 @@ export default function AdminScreen() {
           .order('created_at', { ascending: false }),
         supabase
           .from('profiles')
-          .select('id, full_name')
+          .select('id, full_name, email, role, avatar_url')
           .eq('company_id', profile.company_id),
         supabase
           .from('categories')
           .select('id, name, icon, color, company_id')
           .or(`company_id.is.null,company_id.eq.${profile.company_id}`)
           .order('name'),
+        supabase
+          .from('activation_codes')
+          .select('id, full_name, email, code, created_at')
+          .eq('company_id', profile.company_id)
+          .eq('used', false)
+          .order('created_at', { ascending: false }),
       ]);
-      if (invError) throw invError;
       if (habitsError) throw habitsError;
       if (membersError) throw membersError;
       if (categoriesError) throw categoriesError;
 
-      setInviteCode(invitations?.[0]?.code ?? '');
       setMembers(membersData ?? []);
+      setPendingMembers(pendingData ?? []);
       setCategories(categoriesData ?? []);
 
       // Enrich habits with assignment and validator counts
@@ -235,32 +246,6 @@ export default function AdminScreen() {
   }, [t]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
-
-  // ── Invite handlers ──────────────────────────────────────────────────────
-  const handleShare = async () => {
-    if (!inviteCode) return;
-    try {
-      await Share.share({ message: t('admin.invite_share_message', { code: inviteCode }) });
-    } catch {}
-  };
-
-  const handleGenerate = async () => {
-    if (!companyId || generating) return;
-    setGenerating(true);
-    try {
-      const code = generateInviteCode();
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { error: insertError } = await supabase
-        .from('invitations')
-        .insert({ company_id: companyId, code, expires_at: expiresAt });
-      if (insertError) throw insertError;
-      setInviteCode(code);
-    } catch {
-      setError(t('admin.error_generate'));
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   // ── Habit toggle ─────────────────────────────────────────────────────────
   const handleToggle = async (habitId, currentValue) => {
@@ -575,6 +560,30 @@ export default function AdminScreen() {
     </View>
   );
 
+  const handleGenerateCode = async () => {
+    if (!memberName.trim() || !memberEmail.trim() || !companyId) return;
+    setGeneratingCode(true);
+    try {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const { error: insertError } = await supabase.from('activation_codes').insert({
+        code,
+        full_name: memberName.trim(),
+        email: memberEmail.trim(),
+        company_id: companyId,
+      });
+      if (insertError) throw insertError;
+      setGeneratedCode(code);
+      setPendingMembers((prev) => [
+        { id: code, full_name: memberName.trim(), email: memberEmail.trim(), code, created_at: new Date().toISOString() },
+        ...prev,
+      ]);
+    } catch (e) {
+      setError(e?.message || t('admin.error_generate'));
+    } finally {
+      setGeneratingCode(false);
+    }
+  };
+
   const renderItem = ({ item }) => {
     if (item.type === 'section_header') {
       const { category } = item.section;
@@ -641,7 +650,7 @@ export default function AdminScreen() {
       <FlatList
         style={styles.container}
         contentContainerStyle={styles.listContent}
-        data={flatListData}
+        data={activeTab === 'habits' ? flatListData : []}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} tintColor={BLUE} />
@@ -654,46 +663,47 @@ export default function AdminScreen() {
               </View>
             ) : null}
 
-            {/* Invite section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>{t('admin.invite_section')}</Text>
-              <Text style={styles.sectionHint}>{t('admin.invite_code_hint')}</Text>
-              <View style={styles.codeBox}>
-                <Text style={styles.codeText} selectable>{inviteCode || '—'}</Text>
-              </View>
-              <View style={styles.inviteActions}>
-                {inviteCode ? (
-                  <TouchableOpacity style={styles.btnPrimary} onPress={handleShare} activeOpacity={0.75}>
-                    <Text style={styles.btnPrimaryText}>{t('admin.invite_share')}</Text>
-                  </TouchableOpacity>
-                ) : null}
+            {/* Tab selector — estilo LinkedIn */}
+            <View style={styles.tabUnderlineRow}>
+              {(['habits', 'family']).map((tab) => (
                 <TouchableOpacity
-                  style={[styles.btnSecondary, generating && styles.btnDisabled]}
-                  onPress={handleGenerate}
-                  activeOpacity={0.75}
-                  disabled={generating}
+                  key={tab}
+                  style={styles.tabUnderlineItem}
+                  onPress={() => setActiveTab(tab)}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.btnSecondaryText}>
-                    {generating ? t('admin.invite_generating') : t('admin.invite_generate')}
+                  <Text style={[styles.tabUnderlineText, activeTab === tab && styles.tabUnderlineTextActive]}>
+                    {tab === 'habits' ? t('admin.tab_habits') : t('admin.tab_family')}
                   </Text>
+                  {activeTab === tab ? <View style={styles.tabUnderlineIndicator} /> : null}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {activeTab === 'habits' ? (
+              <>
+                {/* Habits section header */}
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>{t('admin.habits_section')}</Text>
+                  <TouchableOpacity style={styles.newHabitBtn} onPress={openCreateModal} activeOpacity={0.8}>
+                    <Ionicons name="add" size={18} color={WHITE} />
+                    <Text style={styles.newHabitBtnText}>{t('admin.habit_new')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              /* Family section header */
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{t('admin.tab_family')}</Text>
+                <TouchableOpacity
+                  style={styles.newHabitBtn}
+                  onPress={() => { setMemberName(''); setMemberEmail(''); setGeneratedCode(''); setAddMemberVisible(true); }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.newHabitBtnText}>{t('admin.add_member')}</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-
-            <View style={styles.sectionDivider} />
-
-            {/* Habits section header */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t('admin.habits_section')}</Text>
-              <TouchableOpacity
-                style={styles.newHabitBtn}
-                onPress={openCreateModal}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="add" size={18} color={WHITE} />
-                <Text style={styles.newHabitBtnText}>{t('admin.habit_new')}</Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </>
         }
         renderItem={renderItem}
@@ -703,7 +713,7 @@ export default function AdminScreen() {
             : null
         }
         ListEmptyComponent={
-          !error ? (
+          !error && activeTab === 'habits' ? (
             <View style={styles.emptyRow}>
               <Text style={styles.emptyText}>{t('admin.empty_habits')}</Text>
             </View>
@@ -711,6 +721,69 @@ export default function AdminScreen() {
         }
         ListFooterComponent={
           <View>
+            {/* ── Pestaña Familia ──────────────────────────────────────────── */}
+            {activeTab === 'family' ? (
+              <>
+                {/* Miembros activos */}
+                {members
+                  .filter((m) => m.id !== currentUserId)
+                  .map((m) => {
+                    const initial = (m.full_name || '?').charAt(0).toUpperCase();
+                    return (
+                      <View key={m.id}>
+                        <View style={styles.familyMemberRow}>
+                          {m.avatar_url ? (
+                            <Image source={{ uri: m.avatar_url }} style={styles.familyAvatar} />
+                          ) : (
+                            <View style={styles.familyAvatarFallback}>
+                              <Text style={styles.familyAvatarInitial}>{initial}</Text>
+                            </View>
+                          )}
+                          <View style={styles.familyInfo}>
+                            <Text style={styles.familyMemberName} numberOfLines={1}>{m.full_name || '—'}</Text>
+                            <Text style={styles.familyMemberEmail} numberOfLines={1}>{m.email || '—'}</Text>
+                          </View>
+                          <View style={styles.familyStatusActive}>
+                            <Text style={styles.familyStatusActiveText}>Activo</Text>
+                          </View>
+                        </View>
+                        <View style={styles.separator} />
+                      </View>
+                    );
+                  })
+                }
+                {/* Miembros pendientes (activation_codes sin usar) */}
+                {pendingMembers.map((p) => {
+                  const initial = (p.full_name || '?').charAt(0).toUpperCase();
+                  return (
+                    <View key={p.id}>
+                      <View style={styles.familyMemberRow}>
+                        <View style={[styles.familyAvatarFallback, { backgroundColor: '#E0E0E0' }]}>
+                          <Text style={[styles.familyAvatarInitial, { color: GRAY }]}>{initial}</Text>
+                        </View>
+                        <View style={styles.familyInfo}>
+                          <Text style={styles.familyMemberName} numberOfLines={1}>{p.full_name || '—'}</Text>
+                          <Text style={styles.familyMemberEmail} numberOfLines={1}>{p.email || '—'}</Text>
+                        </View>
+                        <View style={styles.familyStatusPending}>
+                          <Text style={styles.familyStatusPendingText}>Pendiente</Text>
+                        </View>
+                      </View>
+                      <View style={styles.separator} />
+                    </View>
+                  );
+                })}
+                {members.filter((m) => m.id !== currentUserId).length === 0 && pendingMembers.length === 0 ? (
+                  <View style={styles.emptyRow}>
+                    <Text style={styles.emptyText}>{t('admin.tab_family')}: sin miembros todavía</Text>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+
+            {/* ── Pestaña Hábitos: categorías ──────────────────────────────── */}
+            {activeTab === 'habits' ? (
+              <>
             <View style={styles.sectionDivider} />
             {/* Categories section */}
             <View style={styles.sectionHeader}>
@@ -751,10 +824,105 @@ export default function AdminScreen() {
                 </TouchableOpacity>
               </View>
             ))}
+            {__DEV__ ? (
+              <TouchableOpacity
+                style={styles.devResetBtn}
+                onPress={() => AsyncStorage.removeItem('onboarding_completed')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.devResetText}>Reset onboarding (dev)</Text>
+              </TouchableOpacity>
+            ) : null}
+              </>
+            ) : null}
             <View style={{ height: 32 }} />
           </View>
         }
       />
+
+      {/* ── Modal: añadir miembro ────────────────────────────────────────── */}
+      <Modal
+        visible={addMemberVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddMemberVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setAddMemberVisible(false)}>
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>{t('admin.add_member')}</Text>
+              <View style={styles.modalDivider} />
+              <ScrollView
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+                keyboardShouldPersistTaps="handled"
+              >
+                {generatedCode ? (
+                  <>
+                    <Text style={styles.sectionHint}>{t('admin.activation_code_label')}</Text>
+                    <View style={[styles.codeBox, { marginTop: 8 }]}>
+                      <Text style={styles.codeText}>{generatedCode}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.saveBtn, { marginTop: 16 }]}
+                      onPress={async () => {
+                        try {
+                          await Share.share({ message: t('admin.share_activation', { group: companyName, code: generatedCode }) });
+                        } catch {}
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.btnPrimaryText}>{t('admin.invite_share')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.btnSecondary, { marginTop: 10 }]}
+                      onPress={() => setAddMemberVisible(false)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.btnSecondaryText}>{t('common.close')}</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.inputLabel}>{t('admin.member_name')}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={memberName}
+                      onChangeText={setMemberName}
+                      placeholder={t('admin.member_name')}
+                      placeholderTextColor={GRAY}
+                    />
+                    <Text style={[styles.inputLabel, { marginTop: 12 }]}>{t('admin.member_email')}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={memberEmail}
+                      onChangeText={setMemberEmail}
+                      placeholder={t('admin.member_email')}
+                      placeholderTextColor={GRAY}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                    <TouchableOpacity
+                      style={[styles.saveBtn, (!memberName.trim() || !memberEmail.trim()) && styles.btnDisabled]}
+                      onPress={handleGenerateCode}
+                      disabled={generatingCode || !memberName.trim() || !memberEmail.trim()}
+                      activeOpacity={0.85}
+                    >
+                      {generatingCode
+                        ? <ActivityIndicator color={WHITE} />
+                        : <Text style={styles.btnPrimaryText}>{t('admin.generate_code')}</Text>}
+                    </TouchableOpacity>
+                  </>
+                )}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* ── Modal: crear hábito ───────────────────────────────────────────── */}
       <Modal
@@ -1334,4 +1502,28 @@ const styles = StyleSheet.create({
   colorPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
   colorOption: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   colorOptionActive: { borderWidth: 3, borderColor: WHITE, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 },
+  devResetBtn: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16, marginTop: 8 },
+  devResetText: { fontSize: 12, color: GRAY, fontWeight: '500' },
+  // Tab selector — estilo LinkedIn
+  tabUnderlineRow: { flexDirection: 'row', backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
+  tabUnderlineItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  tabUnderlineText: { fontSize: 14, fontWeight: '500', color: GRAY },
+  tabUnderlineTextActive: { color: TEXT, fontWeight: '700' },
+  tabUnderlineIndicator: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: BLUE },
+  // Family tab
+  familyMemberRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: WHITE, gap: 12 },
+  familyAvatar: { width: 40, height: 40, borderRadius: 20 },
+  familyAvatarFallback: { width: 40, height: 40, borderRadius: 20, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
+  familyAvatarInitial: { color: WHITE, fontWeight: '700', fontSize: 16 },
+  familyInfo: { flex: 1 },
+  familyMemberName: { fontSize: 14, fontWeight: '700', color: TEXT },
+  familyMemberEmail: { fontSize: 12, color: GRAY, marginTop: 2 },
+  familyRoleBadge: { backgroundColor: '#E8E8E8', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  familyRoleBadgeAdmin: { backgroundColor: BLUE + '1A' },
+  familyRoleText: { fontSize: 11, fontWeight: '700', color: GRAY },
+  familyRoleTextAdmin: { color: BLUE },
+  familyStatusActive: { backgroundColor: '#F0FAF0', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  familyStatusActiveText: { fontSize: 11, fontWeight: '700', color: '#2E7D32' },
+  familyStatusPending: { backgroundColor: '#FFF7ED', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  familyStatusPendingText: { fontSize: 11, fontWeight: '700', color: '#F97316' },
 });

@@ -14,7 +14,8 @@
     "colleague": "Familiar",
     "error_camera_permission": "Necesitamos permiso para usar la cámara.",
     "error_gallery_permission": "Necesitamos permiso para acceder a tu galería.",
-    "coming_soon": "Próximamente"
+    "coming_soon": "Próximamente",
+    "close": "Cerrar"
   },
   "errors": {
     "generic": "Ocurrió un error. Intenta de nuevo.",
@@ -66,7 +67,16 @@
     "error_invite_invalid": "Código de invitación inválido.",
     "error_invite_expired": "Este código de invitación ha expirado.",
     "error_no_user": "No se pudo obtener el usuario tras el registro. Si debes confirmar el email, hazlo e inicia sesión.",
-    "error_generic": "No se pudo completar el registro. Revisa tu conexión e inténtalo de nuevo."
+    "error_generic": "No se pudo completar el registro. Revisa tu conexión e inténtalo de nuevo.",
+    "activate_account": "Activar mi cuenta",
+    "activate_desc": "Tienes un código de activación personal",
+    "enter_code": "Introduce tu código de activación",
+    "code_placeholder": "Código de 6 dígitos",
+    "code_invalid": "Código inválido o expirado",
+    "create_password": "Crea tu contraseña",
+    "your_email": "Tu email",
+    "submit_activate": "Activar cuenta",
+    "submit_continue": "Continuar"
   },
   "home": {
     "greeting": "Hola, {{name}}",
@@ -86,7 +96,30 @@
     "validators_approved": "Aprobado por",
     "validators_rejected": "Rechazado por",
     "validators_pending": "Pendiente de validar",
-    "validators_count": "{{done}} de {{total}} validadores"
+    "validators_count": "{{done}} de {{total}} validadores",
+    "empty_admin": "Aún no hay hábitos en tu grupo",
+    "empty_user": "Aún no tienes hábitos asignados",
+    "empty_user_sub": "El administrador de tu grupo debe asignarte hábitos",
+    "create_habit": "Crear hábito"
+  },
+  "onboarding": {
+    "welcome_title": "¡Bienvenido a HabitTeam!",
+    "welcome_subtitle": "Crea hábitos para tu familia y celebrad juntos cada logro",
+    "start": "Empezar",
+    "habit_title": "Crea tu primer hábito",
+    "habit_subtitle": "Elige uno de estos o crea el tuyo propio",
+    "habit_custom": "Crear hábito personalizado",
+    "habit_continue": "Continuar",
+    "habit_water": "Beber agua",
+    "habit_walk": "Salir a caminar",
+    "habit_meds": "Tomar medicación",
+    "habit_read": "Leer 15 minutos",
+    "habit_sleep": "Dormir 8 horas",
+    "habit_chores": "Tareas del hogar",
+    "invite_title": "Invita a tu familia",
+    "invite_subtitle": "Comparte este código con tu familia para que se unan al grupo",
+    "invite_share": "Compartir código",
+    "invite_done": "Finalizar"
   },
   "habit_detail": {
     "header_title": "Completar hábito",
@@ -167,7 +200,17 @@
     "custom": "Personalizadas",
     "delete_habit_title": "Eliminar hábito",
     "delete_habit_message": "Se eliminarán también todas las fotos y validaciones asociadas. Esta acción no se puede deshacer.",
-    "delete_habit_confirm": "Eliminar"
+    "delete_habit_confirm": "Eliminar",
+    "tab_habits": "Hábitos",
+    "tab_family": "Familia",
+    "add_member": "+ Añadir miembro",
+    "member_name": "Nombre completo",
+    "member_email": "Email",
+    "generate_code": "Generar código de activación",
+    "activation_code_label": "Código de activación",
+    "share_activation": "Únete a {{group}} en HabitTeam. Tu código de activación es: {{code}}. Descarga la app e introdúcelo para activar tu cuenta.",
+    "member_role_admin": "Admin",
+    "member_role_user": "Miembro"
   },
   "history": {
     "header_title": "Historial",

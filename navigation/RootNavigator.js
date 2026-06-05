@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 
 import { supabase } from '../lib/supabase';
+import { authFlags, registerSetSession } from '../lib/authFlags';
 
 import LoginScreen from '../screens/LoginScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
@@ -54,6 +55,7 @@ function TabNavigator() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userAvatarUrl, setUserAvatarUrl] = useState(null);
   const [userFullName, setUserFullName] = useState('');
+  const [hasNoHabits, setHasNoHabits] = useState(false);
 
   const fetchCompanyName = useCallback(async () => {
     try {
@@ -74,6 +76,10 @@ function TabNavigator() {
         .eq('id', profile.company_id)
         .single();
       if (company?.name) setCompanyName(company.name);
+      const { count } = await supabase
+        .from('habits').select('id', { count: 'exact', head: true })
+        .eq('company_id', profile.company_id).eq('is_active', true);
+      setHasNoHabits((count ?? 0) === 0);
     } catch {
       // non-critical
     }
@@ -168,7 +174,10 @@ function TabNavigator() {
                   style={styles.headerBtn}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="shield-outline" size={24} color={TEXT} />
+                  <View style={styles.shieldWrapper}>
+                    <Ionicons name="shield-outline" size={24} color={TEXT} />
+                    {hasNoHabits ? <View style={styles.shieldBadge} /> : null}
+                  </View>
                 </TouchableOpacity>
               ) : null}
               <TouchableOpacity
@@ -225,7 +234,7 @@ function AppStack() {
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerBackTitle: '' }} />
       <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="Admin" component={AdminScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
-      <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -235,12 +244,22 @@ export default function RootNavigator() {
   const [session, setSession] = useState(null);
 
   useEffect(() => {
+    // Exponer setSession al singleton para que SignUpScreen (modo activate)
+    // pueda navegar al AppStack manualmente tras completar el registro.
+    registerSetSession(setSession);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setInitializing(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Si el flujo de activación está en marcha, bloqueamos el redirect automático.
+      // SignUpScreen reseteará el flag y llamará a activateSession() cuando termine.
+      if (session && authFlags.skipNextRedirect) {
+        authFlags.skipNextRedirect = false;
+        return;
+      }
       setSession(session);
     });
 
@@ -298,5 +317,17 @@ const styles = StyleSheet.create({
   },
   headerBtn: {
     paddingHorizontal: 12,
+  },
+  shieldWrapper: {
+    position: 'relative',
+  },
+  shieldBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#DC2626',
   },
 });

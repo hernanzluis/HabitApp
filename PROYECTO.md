@@ -63,7 +63,8 @@ HabitApp/
 │   ├── splash-icon.png
 │   └── favicon.png
 ├── lib/
-│   └── supabase.js             # Cliente Supabase (singleton)
+│   ├── supabase.js             # Cliente Supabase (singleton)
+│   └── authFlags.js            # Singleton para coordinar activación y evitar race condition
 ├── navigation/
 │   └── RootNavigator.js        # Navegación raíz + lógica de sesión + badge tab
 ├── screens/
@@ -76,7 +77,8 @@ HabitApp/
 │   ├── HistoryScreen.js
 │   ├── RankingScreen.js
 │   ├── ProfileScreen.js
-│   └── AdminScreen.js
+│   ├── AdminScreen.js
+│   └── OnboardingModal.js
 ├── App.js                      # Punto de entrada (renderiza RootNavigator)
 ├── index.js                    # Registro de la app con Expo
 ├── app.json                    # Configuración de Expo
@@ -195,6 +197,20 @@ Las categorías con `company_id = null` son predefinidas del sistema y no se pue
 | Bienestar | heart | #9E9E9E |
 | Hogar | home | #009688 |
 
+### `activation_codes`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| code | text | — | Código numérico de 6 dígitos, único |
+| company_id | uuid | — | FK → companies(id) |
+| email | text | — | Email del miembro invitado |
+| full_name | text | — | Nombre completo del miembro invitado |
+| used | boolean | false | Se marca `true` tras activar la cuenta |
+| expires_at | timestamptz | null | Opcional; si está en el pasado el código no es válido |
+| created_at | timestamptz | now() | — |
+
+El admin genera un código desde la pestaña Familia de AdminScreen. El código se comparte con el miembro, quien lo introduce en SignUpScreen para activar su cuenta sin necesidad de código de invitación genérico.
+
 ### `teams` _(creada, sin uso todavía)_
 | Campo | Tipo | Default | Notas |
 |---|---|---|---|
@@ -228,6 +244,7 @@ auth.users   ──── profiles          (1:1)
 companies    ──── profiles          (1:N, company_id)
 companies    ──── habits            (1:N, company_id)
 companies    ──── invitations       (1:N, company_id)
+companies    ──── activation_codes  (1:N, company_id)
 companies    ──── teams             (1:N, company_id)
 habits       ──── habit_assignments (1:N, habit_id)   ← asignación explícita por usuario
 habits       ──── habit_validators  (1:N, habit_id)   ← quién puede validar cada hábito
@@ -261,6 +278,22 @@ Crea empresa nueva y perfil de administrador en una sola transacción. Se llama 
 1. INSERT en `companies` con el nombre dado, guarda el nuevo `company_id`
 2. INSERT en `profiles` con `role = 'admin'` y el `company_id` creado
 3. UPDATE en `companies.admin_id` con el `user_id`
+
+### `handle_activation_registration`
+Registra un usuario en una empresa existente usando un código de activación personal. Se llama desde SignUpScreen (flujo `activate`) tras `auth.signUp`.
+
+**Parámetros:**
+- `user_id` uuid
+- `user_email` text
+- `user_full_name` text
+- `activation_code` text
+
+**Lógica:**
+1. Busca el código en `activation_codes` donde `code = activation_code` y `used = false`
+2. Si no existe, lanza excepción "Código de activación inválido o ya usado"
+3. Obtiene `company_id` del registro del código
+4. INSERT en `profiles` con `role = 'user'` y el `company_id` obtenido
+5. El cliente marca el código como `used = true` tras la llamada (UPDATE en `activation_codes`)
 
 ### `handle_invited_user_registration`
 Registra un usuario en una empresa existente usando un código de invitación. Se llama desde la app tras `auth.signUp`.
@@ -350,12 +383,14 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 - Muestra mensaje de confirmación tras enviar
 
 ### `SignUpScreen`
-- Dos modos seleccionables con toggle: **"Crear grupo"** y **"Tengo un código de invitación"**
-- Campos comunes: nombre completo, email, contraseña, confirmar contraseña
-- Modo "Crear grupo": campo nombre del grupo → llama a RPC `handle_new_user_registration`
-- Modo "Tengo un código de invitación": campo código → valida código en `invitations` antes de crear auth user → llama a RPC `handle_invited_user_registration`
-- Validación inline por campo antes de enviar
-- Tras éxito, `onAuthStateChange` navega automáticamente sin necesidad de `navigation.navigate`
+- Paso `choose`: dos opciones en tarjetas:
+  - **"Crear un grupo familiar"** → flujo `create`
+  - **"Activar mi cuenta"** → flujo `activate`
+- **Flujo `create`:** campos nombre completo, email, contraseña, confirmar contraseña, nombre del grupo → llama a RPC `handle_new_user_registration` → `onAuthStateChange` navega al AppStack automáticamente
+- **Flujo `activate` — paso 1 (código):** campo numérico de 6 dígitos → consulta `activation_codes` WHERE `code = X AND used = false AND (expires_at IS NULL OR expires_at > now())` → si no existe muestra error inline; si existe guarda `{ email, full_name, company_id }` y avanza al paso 2
+- **Flujo `activate` — paso 2 (contraseña):** email no editable (proviene del código), campos contraseña y confirmar contraseña → `auth.signUp` → RPC `handle_activation_registration` → UPDATE `activation_codes SET used = true` → `activateSession()` navega al AppStack
+- **Race condition:** se usa el singleton `authFlags` (`lib/authFlags.js`) para bloquear el redirect automático de `onAuthStateChange` durante el flujo de activación. `skipNextRedirect = true` se pone antes del `signUp`; se resetea en cada path de error; al terminar se llama `activateSession(session)` que ejecuta `setSession` directamente en RootNavigator
+- Validación inline por campo antes de enviar en ambos flujos
 
 ### `HomeScreen`
 - **Datos:** perfil del usuario, hábitos asignados al usuario, habit_logs del usuario, habit_validations
@@ -415,22 +450,28 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 
 ### `AdminScreen`
 - Solo accesible para usuarios con `role = 'admin'` (visible vía icono escudo en header de Home)
-- **Sección 1 — Código de invitación:**
-  - Muestra el código activo más reciente del grupo (query a `invitations` ORDER BY created_at DESC LIMIT 1)
-  - Botón "Compartir" → `Share.share()` nativo con mensaje i18n
-  - Botón "Generar código" → genera un código `XXXX-XXXX` aleatorio, INSERT en `invitations` con `expires_at` a 7 días
-- **Sección 2 — Hábitos:**
-  - Lista todos los hábitos del grupo ordenados por `created_at DESC`; cada fila muestra "X asignado(s)" (tappable) y un icono de papelera
-  - Switch por hábito para activar/desactivar (`is_active`) con actualización optimista + rollback en error
-  - **Icono papelera:** Alert de confirmación destructiva → DELETE en `habits` (CASCADE elimina habit_assignments, habit_logs y habit_validations); actualización optimista del estado local
-  - **Botón "Nuevo hábito":** abre modal de creación
-- **Modal crear hábito:**
-  - Campos: título (obligatorio), descripción opcional, recurrencia (pills Diario / Una vez)
-  - Para `daily`: selector nativo de hora (`DateTimePicker` mode='time') para `due_time` opcional
-  - Para `once`: selector nativo de fecha + hora (`DateTimePicker` mode='date' y mode='time') para `expires_at` opcional
-  - Lista de miembros del grupo con checkboxes para asignar
-  - Al guardar: INSERT en `habits` + INSERT en `habit_assignments` por cada miembro seleccionado
-- **Modal editar asignaciones:** al pulsar "X asignado(s)" de un hábito → lista de miembros con estado actual → al guardar: DELETE todas asignaciones del hábito + INSERT nuevas
+- **Dos pestañas** con indicador LinkedIn-style (borde inferior azul): **Hábitos** y **Familia**
+
+#### Pestaña Hábitos
+- Lista todos los hábitos del grupo ordenados por `created_at DESC`; cada fila muestra "X asignado(s)" (tappable) y un icono de papelera
+- Switch por hábito para activar/desactivar (`is_active`) con actualización optimista + rollback en error
+- **Icono papelera:** Alert de confirmación destructiva → DELETE en `habits` (CASCADE elimina habit_assignments, habit_logs y habit_validations); actualización optimista del estado local
+- **Botón "Nuevo hábito":** abre modal de creación
+
+**Modal crear hábito:**
+- Campos: título (obligatorio), descripción opcional, recurrencia (pills Diario / Una vez)
+- Para `daily`: selector nativo de hora (`DateTimePicker` mode='time') para `due_time` opcional
+- Para `once`: selector nativo de fecha + hora (`DateTimePicker` mode='date' y mode='time') para `expires_at` opcional
+- Lista de miembros del grupo con checkboxes para asignar
+- Al guardar: INSERT en `habits` + INSERT en `habit_assignments` por cada miembro seleccionado
+
+**Modal editar asignaciones:** al pulsar "X asignado(s)" de un hábito → lista de miembros con estado actual → al guardar: DELETE todas asignaciones del hábito + INSERT nuevas
+
+#### Pestaña Familia
+- **Miembros activos:** lista los perfiles del grupo (`profiles` WHERE `company_id = X`), mostrando nombre, email y rol (Admin / Miembro)
+- **Códigos pendientes:** lista los `activation_codes` WHERE `used = false AND company_id = X`, mostrando nombre, email y fecha de creación
+- **Botón "+ Añadir miembro":** abre modal con campos nombre completo y email → genera un código numérico de 6 dígitos aleatorio → INSERT en `activation_codes` → botón "Compartir" con mensaje i18n que incluye nombre del grupo y código
+
 - Pull-to-refresh, estado vacío, manejo de errores por sección
 
 ### `ActivityScreen` _(antes RankingScreen)_
@@ -525,12 +566,34 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 
 ---
 
-## 13. Funcionalidades Pendientes (v2)
+## 13. Índices de Base de Datos
+
+Índices creados para optimizar el rendimiento con escala:
+
+| Tabla | Campo(s) | Motivo |
+|---|---|---|
+| habit_logs | user_id | Filtrar logs por usuario (HomeScreen, ProfileScreen, ActivityScreen) |
+| habit_logs | habit_id | Filtrar logs por hábito |
+| habit_logs | created_at DESC | Ordenación por fecha en historial y actividad |
+| habit_logs | status | Filtrar por estado pendiente/validado en ValidateHabitScreen |
+| habit_validations | habit_log_id | JOIN con habit_logs en validaciones |
+| habit_validations | validator_id | Filtrar validaciones por validador (badge, ValidateHabitScreen) |
+| habit_assignments | user_id | Filtrar hábitos asignados por usuario (HomeScreen) |
+| habit_assignments | habit_id | JOIN inverso desde hábitos |
+| habit_validators | user_id | Filtrar validadores por usuario (ValidateHabitScreen, badge) |
+| habit_validators | habit_id | JOIN desde hábitos |
+| habits | company_id | Filtrar hábitos por empresa/grupo |
+| habits | is_active | Filtrar hábitos activos |
+| profiles | company_id | Filtrar miembros por grupo |
+
+---
+
+## 14. Funcionalidades Pendientes (v2)
 
 - ~~**AdminScreen (ampliación):** creación de hábitos nuevos con asignación por miembro~~ ✅ Implementado
 - ~~**Sistema de asignación de hábitos:** `habit_assignments` para mostrar solo los hábitos asignados a cada usuario~~ ✅ Implementado
-- **AdminScreen — gestión de usuarios:** vista de miembros del grupo, posibilidad de eliminar/cambiar rol
-- **AdminScreen — invitaciones históricas:** lista de códigos generados con fecha y estado
+- ~~**AdminScreen — gestión de usuarios:** vista de miembros del grupo, posibilidad de eliminar/cambiar rol~~ ✅ Implementado (pestaña Familia con miembros activos y códigos pendientes)
+- ~~**AdminScreen — invitaciones históricas / sistema de invitación personal:** lista de códigos generados con fecha y estado~~ ✅ Implementado (tabla `activation_codes`, pestaña Familia, flujo `activate` en SignUpScreen)
 - **Sistema de equipos:** el admin crea subgrupos dentro del grupo principal; `team_members` ya creada, sin uso activo. Los hábitos podrían asignarse a subgrupos. Requiere extensión de AdminScreen.
 - **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un familiar valida tu hábito
 - **SplashScreen animada** con logo de la app
@@ -543,7 +606,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 
 ---
 
-## 14. Reglas de Trabajo
+## 15. Reglas de Trabajo
 
 - Todas las políticas RLS, tablas nuevas y cambios de esquema se hacen **siempre mediante SQL Editor** de Supabase, nunca desde la UI
 - Antes de crear cualquier tabla o política usar siempre el SQL Editor
@@ -553,7 +616,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 
 ---
 
-## 15. Usuarios de Prueba
+## 16. Usuarios de Prueba
 
 | Email | Rol | Empresa |
 |---|---|---|
@@ -563,7 +626,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 
 ---
 
-## 16. Producto Web — HabitTeam.app
+## 17. Producto Web — HabitTeam.app
 
 **Repositorio web:** habitteam-web (proyecto separado, mismo Supabase)
 **Dominio:** habitteam.app (registrado en Namecheap)
@@ -595,7 +658,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 
 ---
 
-## 17. Forma de trabajo con Claude
+## 18. Forma de trabajo con Claude
 
 Cuando generes instrucciones para ejecutar en Claude Code, inclúyelas siempre dentro de un bloque de código con triple backtick para que aparezca el botón de copiar. Nunca las escribas como texto plano o lista.
 
