@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -31,7 +31,6 @@ const TAB_ICONS = {
   Home: ['home', 'home-outline'],
   ValidateHabit: ['checkmark-circle', 'checkmark-circle-outline'],
   Ranking: ['people', 'people-outline'],
-  Profile: ['person', 'person-outline'],
 };
 
 const HEADER_OPTIONS = {
@@ -53,6 +52,8 @@ function TabNavigator() {
   const [pendingCount, setPendingCount] = useState(0);
   const [companyName, setCompanyName] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userAvatarUrl, setUserAvatarUrl] = useState(null);
+  const [userFullName, setUserFullName] = useState('');
 
   const fetchCompanyName = useCallback(async () => {
     try {
@@ -60,11 +61,13 @@ function TabNavigator() {
       if (!user) return;
       const { data: profile } = await supabase
         .from('profiles')
-        .select('company_id, role')
+        .select('company_id, role, avatar_url, full_name')
         .eq('id', user.id)
         .single();
       if (!profile?.company_id) return;
       if (profile.role === 'admin') setIsAdmin(true);
+      setUserAvatarUrl(profile.avatar_url ?? null);
+      setUserFullName(profile.full_name ?? '');
       const { data: company } = await supabase
         .from('companies')
         .select('name')
@@ -81,7 +84,6 @@ function TabNavigator() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 1. habit_ids donde el usuario es validador explícito
       const { data: validatorHabits } = await supabase
         .from('habit_validators')
         .select('habit_id')
@@ -89,7 +91,6 @@ function TabNavigator() {
       const validatorHabitIds = (validatorHabits ?? []).map((v) => v.habit_id);
       if (!validatorHabitIds.length) { setPendingCount(0); return; }
 
-      // 2. logs pendientes de esos hábitos, no propios
       const { data: pendingLogs } = await supabase
         .from('habit_logs')
         .select('id')
@@ -98,7 +99,6 @@ function TabNavigator() {
         .in('habit_id', validatorHabitIds);
       if (!pendingLogs?.length) { setPendingCount(0); return; }
 
-      // 3. excluir los que el usuario ya votó
       const logIds = pendingLogs.map((l) => l.id);
       const { data: myValidations } = await supabase
         .from('habit_validations')
@@ -106,7 +106,6 @@ function TabNavigator() {
         .eq('validator_id', user.id)
         .in('habit_log_id', logIds);
 
-      // 4. badge = pendientes no votados aún
       const alreadyVoted = new Set((myValidations ?? []).map((v) => v.habit_log_id));
       setPendingCount(pendingLogs.filter((l) => !alreadyVoted.has(l.id)).length);
     } catch {
@@ -121,7 +120,12 @@ function TabNavigator() {
 
   return (
     <Tab.Navigator
-      screenListeners={{ focus: fetchPendingCount }}
+      screenListeners={{
+        focus: () => {
+          fetchPendingCount();
+          fetchCompanyName();
+        },
+      }}
       screenOptions={({ route }) => ({
         ...HEADER_OPTIONS,
         tabBarStyle: { backgroundColor: WHITE, borderTopColor: '#E0E0E0' },
@@ -139,6 +143,23 @@ function TabNavigator() {
         options={({ navigation: nav }) => ({
           title: companyName || t('nav.home'),
           tabBarLabel: t('nav.home'),
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => nav.navigate('Profile')}
+              style={styles.headerAvatarBtn}
+              activeOpacity={0.7}
+            >
+              {userAvatarUrl ? (
+                <Image source={{ uri: userAvatarUrl }} style={styles.headerAvatar} />
+              ) : (
+                <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
+                  <Text style={styles.headerAvatarInitial}>
+                    {(userFullName || '?').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ),
           headerRight: () => (
             <View style={styles.headerBtns}>
               {isAdmin ? (
@@ -150,7 +171,7 @@ function TabNavigator() {
                   <Ionicons name="shield-outline" size={24} color={TEXT} />
                 </TouchableOpacity>
               ) : null}
-<TouchableOpacity
+              <TouchableOpacity
                 onPress={() => Alert.alert(t('common.coming_soon'))}
                 style={styles.headerBtn}
                 activeOpacity={0.7}
@@ -184,11 +205,6 @@ function TabNavigator() {
         component={RankingScreen}
         options={{ title: t('activity.header_title'), tabBarLabel: t('nav.ranking') }}
       />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{ title: t('nav.profile') }}
-      />
     </Tab.Navigator>
   );
 }
@@ -209,6 +225,7 @@ function AppStack() {
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerBackTitle: '' }} />
       <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="Admin" component={AdminScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
     </Stack.Navigator>
   );
 }
@@ -251,6 +268,28 @@ const styles = StyleSheet.create({
     backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerAvatarBtn: {
+    paddingLeft: 16,
+    paddingRight: 4,
+    alignSelf: 'center',
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  headerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  headerAvatarFallback: {
+    backgroundColor: BLUE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerAvatarInitial: {
+    color: WHITE,
+    fontWeight: '700',
+    fontSize: 18,
   },
   headerBtns: {
     flexDirection: 'row',

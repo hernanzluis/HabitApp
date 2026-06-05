@@ -206,8 +206,7 @@
   "nav": {
     "home": "Home",
     "validate": "Validate",
-    "ranking": "Activity",
-    "profile": "Profile"
+    "ranking": "Activity"
   },
   "activity": {
     "header_title": "Group activity",

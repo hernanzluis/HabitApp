@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
@@ -57,6 +58,42 @@ function formatDateTime(dateString, locale) {
   });
 }
 
+function ManualTabBar({ navigation, t, pendingCount }) {
+  const insets = useSafeAreaInsets();
+  const tabs = [
+    { key: 'Home',          icon: 'home-outline',             label: t('nav.home') },
+    { key: 'ValidateHabit', icon: 'checkmark-circle-outline', label: t('nav.validate') },
+    { key: 'Ranking',       icon: 'people-outline',           label: t('nav.ranking') },
+  ];
+  return (
+    <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {tabs.map((tab) => {
+        const isValidate = tab.key === 'ValidateHabit';
+        const disabled = isValidate && pendingCount === 0;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tabItem, disabled && { opacity: 0.35 }]}
+            onPress={() => navigation.navigate('Tabs', { screen: tab.key })}
+            disabled={disabled}
+            activeOpacity={0.7}
+          >
+            <View style={styles.tabIconWrapper}>
+              <Ionicons name={tab.icon} size={24} color={GRAY} />
+              {isValidate && pendingCount > 0 ? (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{pendingCount}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.tabLabel}>{tab.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 function FilterPill({ label, active, onPress }) {
   return (
     <TouchableOpacity
@@ -91,6 +128,7 @@ export default function ProfileScreen() {
   const navigation = useNavigation();
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,6 +136,7 @@ export default function ProfileScreen() {
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -171,7 +210,7 @@ export default function ProfileScreen() {
       ] = await Promise.all([
         supabase.from('habit_validations').select('id', { count: 'exact', head: true }).eq('validator_id', user.id),
         habitIds.length > 0
-          ? supabase.from('habits').select('id, title').in('id', habitIds)
+          ? supabase.from('habits').select('id, title, company_id').in('id', habitIds)
           : Promise.resolve({ data: [], error: null }),
         myLogIds.length > 0
           ? supabase.from('habit_validations').select('habit_log_id, status').in('habit_log_id', myLogIds)
@@ -183,7 +222,9 @@ export default function ProfileScreen() {
 
       const totalValidated = (validationsData ?? []).filter((v) => v.status === 'validated').length;
 
-      const habitsMap = new Map((habitsData ?? []).map((h) => [h.id, h.title]));
+      const validHabits = (habitsData ?? []).filter((h) => h.company_id === profile.company_id);
+      const validHabitIds = new Set(validHabits.map((h) => h.id));
+      const habitsMap = new Map(validHabits.map((h) => [h.id, h.title]));
       const valCounts = {};
       (validationsData ?? []).forEach((v) => {
         if (!valCounts[v.habit_log_id]) valCounts[v.habit_log_id] = { validated: 0, rejected: 0 };
@@ -191,7 +232,7 @@ export default function ProfileScreen() {
         if (v.status === 'rejected') valCounts[v.habit_log_id].rejected++;
       });
 
-      setHistoryLogs((allLogs ?? []).map((log) => {
+      setHistoryLogs((allLogs ?? []).filter((log) => validHabitIds.has(log.habit_id)).map((log) => {
         const counts = valCounts[log.id] ?? { validated: 0, rejected: 0 };
         return {
           id: log.id,
@@ -222,10 +263,34 @@ export default function ProfileScreen() {
     }
   }, [t]);
 
+  const fetchPendingCount = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: validatorHabits } = await supabase
+        .from('habit_validators').select('habit_id').eq('user_id', user.id);
+      const validatorHabitIds = (validatorHabits ?? []).map((v) => v.habit_id);
+      if (!validatorHabitIds.length) { setPendingCount(0); return; }
+      const { data: pendingLogs } = await supabase
+        .from('habit_logs').select('id')
+        .eq('status', 'pending').neq('user_id', user.id).in('habit_id', validatorHabitIds);
+      if (!pendingLogs?.length) { setPendingCount(0); return; }
+      const logIds = pendingLogs.map((l) => l.id);
+      const { data: myValidations } = await supabase
+        .from('habit_validations').select('habit_log_id')
+        .eq('validator_id', user.id).in('habit_log_id', logIds);
+      const alreadyVoted = new Set((myValidations ?? []).map((v) => v.habit_log_id));
+      setPendingCount(pendingLogs.filter((l) => !alreadyVoted.has(l.id)).length);
+    } catch {
+      // non-critical
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       loadProfile();
-    }, [loadProfile])
+      fetchPendingCount();
+    }, [loadProfile, fetchPendingCount])
   );
 
   const filteredLogs = useMemo(() => {
@@ -375,7 +440,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => loadProfile(true)} tintColor={BLUE} />
         }
@@ -539,6 +604,8 @@ export default function ProfileScreen() {
         ) : null}
 
       </ScrollView>
+
+      <ManualTabBar navigation={navigation} t={t} pendingCount={pendingCount} />
 
       {/* Modal de ajustes */}
       <Modal
@@ -967,5 +1034,45 @@ const styles = StyleSheet.create({
   photoModalImage: {
     width: '100%',
     height: '100%',
+  },
+  // Barra de tabs manual
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: WHITE,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 10,
+    paddingBottom: 6,
+    gap: 4,
+  },
+  tabIconWrapper: {
+    position: 'relative',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    backgroundColor: '#DC2626',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  tabBadgeText: {
+    color: WHITE,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  tabLabel: {
+    fontSize: 10,
+    color: GRAY,
+    fontWeight: '500',
   },
 });
