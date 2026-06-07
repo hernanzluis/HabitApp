@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   Modal,
@@ -12,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -112,8 +113,12 @@ function ValidatorRow({ profile, status, comment }) {
 
 export default function HomeScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const [categoriesMap, setCategoriesMap] = useState({});
   const { t } = useTranslation();
+
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const [pulseHabitId, setPulseHabitId] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -122,6 +127,22 @@ export default function HomeScreen() {
   const [habits, setHabits] = useState([]);
   const [detailHabit, setDetailHabit] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // Pulso verde en la tarjeta recién completada al volver de HabitDetailScreen
+  useEffect(() => {
+    const id = route.params?.justCompletedHabitId;
+    if (!id) return;
+    navigation.setParams({ justCompletedHabitId: undefined });
+    const timer = setTimeout(() => {
+      setPulseHabitId(id);
+      pulseAnim.setValue(0);
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.25, duration: 300, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0,    duration: 300, useNativeDriver: true }),
+      ]).start(() => setPulseHabitId(null));
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [route.params?.justCompletedHabitId]);
 
   // Si el admin no tiene hábitos ni ha configurado su familia todavía → ir a pestaña Familia
   useEffect(() => {
@@ -414,6 +435,12 @@ export default function HomeScreen() {
 
     return (
       <Card style={[styles.habitCard, completedCardStyle]} {...cardPressProps}>
+        {item.id === pulseHabitId ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: '#4CAF50', opacity: pulseAnim }]}
+          />
+        ) : null}
         <View style={styles.habitTitleRow}>
           <Text style={styles.habitTitle}>{item.title}</Text>
           {cat ? (
@@ -668,6 +695,7 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     paddingHorizontal: 16,
     paddingVertical: 14,
+    overflow: 'hidden',
   },
   habitCardValidated: {
     backgroundColor: '#F0FAF0',

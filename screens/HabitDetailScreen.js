@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
   ScrollView,
   StyleSheet,
@@ -20,6 +21,28 @@ const WHITE = '#ffffff';
 const BLUE = '#0A66C2';
 const TEXT = '#1D2226';
 const GRAY = '#666666';
+const GREEN = '#4CAF50';
+
+// ── Utilidades de racha ───────────────────────────────────────────────────
+function toDateKey(d) {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+// Misma lógica que calculateStreak en RankingScreen.
+// Dado que acabamos de insertar el log de hoy, today siempre está en el Set.
+function calculateStreak(logs) {
+  const logDays = new Set(logs.map((l) => toDateKey(new Date(l.created_at))));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let cursor = new Date(today);
+  if (!logDays.has(toDateKey(today))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (logDays.has(toDateKey(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
 
 function getFileExtension(mimeType, uri) {
   if (mimeType?.includes('png')) return 'png';
@@ -63,7 +86,11 @@ export default function HabitDetailScreen() {
   const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [streak, setStreak] = useState(0);
+
+  const celebrateOpacity = useRef(new Animated.Value(0)).current;
+  const flameScale = useRef(new Animated.Value(1)).current;
   const navTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -92,9 +119,8 @@ export default function HabitDetailScreen() {
   };
 
   const onSubmit = async () => {
-    if (uploading) return;
+    if (uploading || showCelebration) return;
     setError('');
-    setSuccess('');
 
     if (!habit?.id) {
       setError(t('habit_detail.error_not_found_retry'));
@@ -115,9 +141,7 @@ export default function HabitDetailScreen() {
       } = await supabase.auth.getUser();
 
       if (userError) throw userError;
-      if (!user) {
-        return;
-      }
+      if (!user) return;
 
       const extension = getFileExtension(photo.mimeType, photo.uri);
       const contentType = getContentType(photo.mimeType);
@@ -128,10 +152,7 @@ export default function HabitDetailScreen() {
 
       const { error: uploadError } = await supabase.storage
         .from('habit-photos')
-        .upload(filePath, arrayBuffer, {
-          contentType,
-          upsert: false,
-        });
+        .upload(filePath, arrayBuffer, { contentType, upsert: false });
 
       if (uploadError) throw uploadError;
 
@@ -148,10 +169,38 @@ export default function HabitDetailScreen() {
 
       if (logError) throw logError;
 
-      setSuccess(t('habit_detail.success'));
+      // ── Calcular racha ────────────────────────────────────────────────
+      const { data: recentLogs } = await supabase
+        .from('habit_logs')
+        .select('created_at')
+        .eq('habit_id', habit.id)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      const calculatedStreak = calculateStreak(recentLogs ?? []);
+      setStreak(calculatedStreak);
+
+      // ── Mostrar celebración ───────────────────────────────────────────
+      setShowCelebration(true);
+      celebrateOpacity.setValue(0);
+      flameScale.setValue(1);
+
+      Animated.sequence([
+        Animated.timing(celebrateOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(flameScale, { toValue: 1.3, duration: 300, useNativeDriver: true }),
+        Animated.timing(flameScale, { toValue: 1.0, duration: 300, useNativeDriver: true }),
+      ]).start();
+
       navTimeoutRef.current = setTimeout(() => {
-        navigation.goBack();
-      }, 1500);
+        Animated.timing(celebrateOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+          navigation.navigate('Tabs', {
+            screen: 'Home',
+            params: { justCompletedHabitId: habit.id },
+          });
+        });
+      }, 1600);
+
     } catch (e) {
       setError(e?.message || t('habit_detail.error_upload'));
     } finally {
@@ -170,71 +219,91 @@ export default function HabitDetailScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.section}>
-        <Text style={styles.title}>{habit.title}</Text>
-        {habit.description ? <Text style={styles.description}>{habit.description}</Text> : null}
+    <View style={styles.outerContainer}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.section}>
+          <Text style={styles.title}>{habit.title}</Text>
+          {habit.description ? <Text style={styles.description}>{habit.description}</Text> : null}
 
-        <Text style={styles.sectionLabel}>{t('habit_detail.proof_label')}</Text>
-        <Text style={styles.sectionHint}>{t('habit_detail.proof_hint')}</Text>
+          <Text style={styles.sectionLabel}>{t('habit_detail.proof_label')}</Text>
+          <Text style={styles.sectionHint}>{t('habit_detail.proof_hint')}</Text>
 
-        {/* Botón principal: cámara */}
-        <TouchableOpacity
-          style={[styles.cameraBtn, uploading && styles.btnDisabled]}
-          onPress={takePhoto}
-          disabled={uploading}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="camera-outline" size={22} color={WHITE} style={styles.cameraBtnIcon} />
-          <Text style={styles.cameraBtnText}>{t('common.camera')}</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.cameraBtn, uploading && styles.btnDisabled]}
+            onPress={takePhoto}
+            disabled={uploading}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="camera-outline" size={22} color={WHITE} style={styles.cameraBtnIcon} />
+            <Text style={styles.cameraBtnText}>{t('common.camera')}</Text>
+          </TouchableOpacity>
 
-        {/* Área de previsualización */}
-        {photo?.uri ? (
-          <View style={styles.previewContainer}>
-            <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="contain" />
-          </View>
-        ) : (
-          <View style={styles.previewPlaceholder}>
-            <Ionicons name="image-outline" size={28} color="#C0C0C0" />
-            <Text style={styles.previewPlaceholderText}>{t('habit_detail.no_photo')}</Text>
-          </View>
-        )}
-
-        {/* Campo de nota opcional */}
-        <Text style={styles.noteLabel}>{t('habit_detail.note_label')}</Text>
-        <TextInput
-          style={styles.noteInput}
-          value={notes}
-          onChangeText={setNotes}
-          placeholder={t('habit_detail.note_placeholder')}
-          placeholderTextColor={GRAY}
-          multiline
-          maxLength={150}
-          editable={!uploading}
-        />
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        {success ? <Text style={styles.successText}>{success}</Text> : null}
-
-        <TouchableOpacity
-          style={[styles.submitBtn, (uploading || !!success) && styles.btnDisabled]}
-          onPress={onSubmit}
-          disabled={uploading || !!success}
-          activeOpacity={0.9}
-        >
-          {uploading ? (
-            <ActivityIndicator color={WHITE} />
+          {photo?.uri ? (
+            <View style={styles.previewContainer}>
+              <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="contain" />
+            </View>
           ) : (
-            <Text style={styles.submitBtnText}>{t('habit_detail.submit')}</Text>
+            <View style={styles.previewPlaceholder}>
+              <Ionicons name="image-outline" size={28} color="#C0C0C0" />
+              <Text style={styles.previewPlaceholderText}>{t('habit_detail.no_photo')}</Text>
+            </View>
           )}
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+
+          <Text style={styles.noteLabel}>{t('habit_detail.note_label')}</Text>
+          <TextInput
+            style={styles.noteInput}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder={t('habit_detail.note_placeholder')}
+            placeholderTextColor={GRAY}
+            multiline
+            maxLength={150}
+            editable={!uploading}
+          />
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          <TouchableOpacity
+            style={[styles.submitBtn, (uploading || showCelebration) && styles.btnDisabled]}
+            onPress={onSubmit}
+            disabled={uploading || showCelebration}
+            activeOpacity={0.9}
+          >
+            {uploading ? (
+              <ActivityIndicator color={WHITE} />
+            ) : (
+              <Text style={styles.submitBtnText}>{t('habit_detail.submit')}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* ── Overlay de celebración ──────────────────────────────────────── */}
+      {showCelebration ? (
+        <Animated.View style={[styles.celebrationOverlay, { opacity: celebrateOpacity }]}>
+          <Animated.View style={{ transform: [{ scale: flameScale }] }}>
+            <Ionicons name="flame" size={80} color={GREEN} />
+          </Animated.View>
+
+          {streak === 1 ? (
+            <Text style={styles.celebrationFirstDay}>{t('habit_detail.streak_first')}</Text>
+          ) : (
+            <>
+              <Text style={styles.celebrationNumber}>{streak}</Text>
+              <Text style={styles.celebrationDays}>{t('habit_detail.streak_days')}</Text>
+            </>
+          )}
+
+          <Text style={styles.celebrationHabitName} numberOfLines={2}>{habit.title}</Text>
+          <Text style={styles.celebrationWellDone}>{t('habit_detail.streak_well_done')}</Text>
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outerContainer: { flex: 1, backgroundColor: BG },
   container: { flex: 1, backgroundColor: BG },
   content: { paddingBottom: 28 },
   section: {
@@ -293,7 +362,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   errorText: { marginTop: 12, color: '#b91c1c', fontSize: 13, fontWeight: '600' },
-  successText: { marginTop: 12, color: '#0f766e', fontSize: 13, fontWeight: '700' },
   submitBtn: {
     marginTop: 16,
     minHeight: 56,
@@ -304,4 +372,48 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.7 },
   submitBtnText: { color: WHITE, fontWeight: '700', fontSize: 16 },
+  // Celebración
+  celebrationOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  celebrationNumber: {
+    fontSize: 72,
+    fontWeight: '800',
+    color: GREEN,
+    lineHeight: 80,
+    marginTop: 12,
+  },
+  celebrationDays: {
+    fontSize: 18,
+    color: WHITE,
+    marginTop: 4,
+  },
+  celebrationFirstDay: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: GREEN,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  celebrationHabitName: {
+    fontSize: 16,
+    color: '#A0A0A0',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  celebrationWellDone: {
+    fontSize: 15,
+    color: WHITE,
+    marginTop: 8,
+    fontWeight: '600',
+  },
 });

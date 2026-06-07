@@ -114,7 +114,10 @@
     "error_not_found": "Habit not found.",
     "error_not_found_retry": "Habit not found. Go back and try again.",
     "error_no_photo": "Select or take a photo before submitting.",
-    "error_upload": "Could not submit the proof. Check your connection and try again."
+    "error_upload": "Could not submit the proof. Check your connection and try again.",
+    "streak_days": "days in a row",
+    "streak_first": "First day!",
+    "streak_well_done": "Keep it up!"
   },
   "validate": {
     "title": "Validate habits",
