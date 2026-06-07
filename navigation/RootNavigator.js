@@ -18,6 +18,7 @@ import ValidateHabitScreen from '../screens/ValidateHabitScreen';
 import RankingScreen from '../screens/RankingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import AdminScreen from '../screens/AdminScreen';
+import HabitStatsScreen from '../screens/HabitStatsScreen';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -235,6 +236,7 @@ function AppStack() {
       <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="Admin" component={AdminScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="HabitStats" component={HabitStatsScreen} options={{ headerShown: true, title: '' }} />
     </Stack.Navigator>
   );
 }

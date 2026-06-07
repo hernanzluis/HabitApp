@@ -240,6 +240,16 @@
     "validate": "Validar",
     "ranking": "Actividad"
   },
+  "stats": {
+    "current_streak": "Racha actual",
+    "best_streak": "Mejor racha",
+    "total_completed": "Total completados",
+    "completion_rate": "Tasa de completado",
+    "activity": "Actividad",
+    "last_validations": "Últimas validaciones",
+    "days": "días",
+    "no_comments": "Aún no hay comentarios de validación"
+  },
   "activity": {
     "header_title": "Actividad del grupo",
     "loading": "Cargando actividad...",

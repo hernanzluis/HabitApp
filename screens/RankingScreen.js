@@ -6,9 +6,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
@@ -206,6 +207,7 @@ function WeekDots({ dots, dayLabels, size = 28, compact = false }) {
 }
 
 export default function RankingScreen() {
+  const navigation = useNavigation();
   const { t, i18n } = useTranslation();
   const dayLabels = i18n.language === 'es' ? DAY_LABELS_ES : DAY_LABELS_EN;
   const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
@@ -214,6 +216,7 @@ export default function RankingScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [myUserId, setMyUserId] = useState(null);
   const [myHabits, setMyHabits] = useState([]);
   const [myLogs, setMyLogs] = useState([]);
   const [groupMembers, setGroupMembers] = useState([]);
@@ -298,6 +301,7 @@ export default function RankingScreen() {
       const myHabitIds = memberAssignMap[user.id] || new Set();
 
       setIsAdmin(profile.role === 'admin');
+      setMyUserId(user.id);
       setActiveHabitsWithCat(allHabitsWithCat);
       setMyHabits(allHabitsWithCat.filter((h) => myHabitIds.has(h.id)));
       setMyLogs(logs.filter((l) => l.user_id === user.id));
@@ -358,14 +362,20 @@ export default function RankingScreen() {
             const streak = calculateStreak(myLogs, habit.id);
             const weekCompleted = dots.filter(Boolean).length;
             return (
-              <View key={habit.id} style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+              <TouchableOpacity
+                key={habit.id}
+                style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}
+                onPress={() => navigation.navigate('HabitStats', { habit, userId: myUserId })}
+                activeOpacity={0.8}
+              >
                 <View style={styles.habitTitleRow}>
                   {habit.category ? (
                     <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
                       <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
                     </View>
                   ) : null}
-                  <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+                  <Text style={[styles.habitTitle, { flex: 1 }]} numberOfLines={2}>{habit.title}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={GRAY} />
                 </View>
                 <View style={styles.streakRow}>
                   <Ionicons name="flame-outline" size={22} color={streak > 0 ? FLAME : '#E0E0E0'} />
@@ -380,21 +390,27 @@ export default function RankingScreen() {
                 <Text style={styles.weekSummary}>
                   {t('activity.week_completed', { completed: weekCompleted })}
                 </Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
           {myHabits.filter((h) => h.recurrence === 'weekly_x').map((habit) => {
             const wCount = getWeeklyTargetCount(myLogs, habit.id);
             const wStreak = calculateWeeklyStreak(myLogs, habit.id, habit.weekly_target || 1);
             return (
-              <View key={habit.id} style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+              <TouchableOpacity
+                key={habit.id}
+                style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}
+                onPress={() => navigation.navigate('HabitStats', { habit, userId: myUserId })}
+                activeOpacity={0.8}
+              >
                 <View style={styles.habitTitleRow}>
                   {habit.category ? (
                     <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
                       <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
                     </View>
                   ) : null}
-                  <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+                  <Text style={[styles.habitTitle, { flex: 1 }]} numberOfLines={2}>{habit.title}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={GRAY} />
                 </View>
                 <View style={styles.streakRow}>
                   <Ionicons name="flame-outline" size={22} color={wStreak > 0 ? FLAME : '#E0E0E0'} />
@@ -408,7 +424,7 @@ export default function RankingScreen() {
                 <Text style={styles.weekSummary}>
                   {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
                 </Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
           {myHabits.some((h) => h.recurrence === 'once') ? (
@@ -467,14 +483,20 @@ export default function RankingScreen() {
                         const streak = calculateStreak(memberLogs, habit.id);
                         const weekCompleted = dots.filter(Boolean).length;
                         return (
-                          <View key={habit.id} style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+                          <TouchableOpacity
+                            key={habit.id}
+                            style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}
+                            onPress={() => navigation.navigate('HabitStats', { habit, userId: member.id })}
+                            activeOpacity={0.8}
+                          >
                             <View style={styles.habitTitleRow}>
                               {habit.category ? (
                                 <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
                                   <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
                                 </View>
                               ) : null}
-                              <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+                              <Text style={[styles.habitTitle, { flex: 1 }]} numberOfLines={2}>{habit.title}</Text>
+                              <Ionicons name="chevron-forward" size={16} color={GRAY} />
                             </View>
                             <View style={styles.streakRow}>
                               <Ionicons name="flame-outline" size={22} color={streak > 0 ? FLAME : '#E0E0E0'} />
@@ -489,21 +511,27 @@ export default function RankingScreen() {
                             <Text style={styles.weekSummary}>
                               {t('activity.week_completed', { completed: weekCompleted })}
                             </Text>
-                          </View>
+                          </TouchableOpacity>
                         );
                       })}
                       {weeklyMemberHabits.map((habit) => {
                         const wCount = getWeeklyTargetCount(memberLogs, habit.id);
                         const wStreak = calculateWeeklyStreak(memberLogs, habit.id, habit.weekly_target || 1);
                         return (
-                          <View key={habit.id} style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}>
+                          <TouchableOpacity
+                            key={habit.id}
+                            style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}
+                            onPress={() => navigation.navigate('HabitStats', { habit, userId: member.id })}
+                            activeOpacity={0.8}
+                          >
                             <View style={styles.habitTitleRow}>
                               {habit.category ? (
                                 <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
                                   <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
                                 </View>
                               ) : null}
-                              <Text style={styles.habitTitle} numberOfLines={2}>{habit.title}</Text>
+                              <Text style={[styles.habitTitle, { flex: 1 }]} numberOfLines={2}>{habit.title}</Text>
+                              <Ionicons name="chevron-forward" size={16} color={GRAY} />
                             </View>
                             <View style={styles.streakRow}>
                               <Ionicons name="flame-outline" size={22} color={wStreak > 0 ? FLAME : '#E0E0E0'} />
@@ -517,7 +545,7 @@ export default function RankingScreen() {
                             <Text style={styles.weekSummary}>
                               {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
                             </Text>
-                          </View>
+                          </TouchableOpacity>
                         );
                       })}
                       {onceMemberHabits.length > 0 ? (
