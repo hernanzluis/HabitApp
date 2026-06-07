@@ -407,6 +407,7 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 - **Tarjeta pendiente:** botón "Completar" → navega a HabitDetailScreen
 - **Hora límite (`due_time`):** para hábitos `daily` con `due_time`, muestra "Antes de las HH:MM" en gris. Si la hora ya pasó y el hábito no está completado, se muestra en naranja
 - **Expiración (`expires_at`):** fecha (y hora si no es 00:00) visible siempre en gris. Sin color naranja por proximidad de fecha
+- **Redirección al admin nuevo:** `useEffect` al montar que comprueba si el usuario es admin, no hay hábitos en el grupo y `AsyncStorage('family_setup_done')` es null → navega automáticamente a `AdminScreen` con `{ initialTab: 'family' }`. El flag se guarda en AsyncStorage cuando el admin añade su primer miembro desde la pestaña Familia.
 - Reintento automático (500ms) en primer load para evitar race condition de sesión
 - Pull-to-refresh, estado vacío, manejo de errores
 
@@ -468,9 +469,13 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 **Modal editar asignaciones:** al pulsar "X asignado(s)" de un hábito → lista de miembros con estado actual → al guardar: DELETE todas asignaciones del hábito + INSERT nuevas
 
 #### Pestaña Familia
-- **Miembros activos:** lista los perfiles del grupo (`profiles` WHERE `company_id = X`), mostrando nombre, email y rol (Admin / Miembro)
-- **Códigos pendientes:** lista los `activation_codes` WHERE `used = false AND company_id = X`, mostrando nombre, email y fecha de creación
-- **Botón "+ Añadir miembro":** abre modal con campos nombre completo y email → genera un código numérico de 6 dígitos aleatorio → INSERT en `activation_codes` → botón "Compartir" con mensaje i18n que incluye nombre del grupo y código
+- **Recibe `initialTab: 'family'`** como parámetro de navegación (enviado por HomeScreen en el primer arranque del admin) → `useEffect` lo lee y llama `setActiveTab('family')`
+- **Mensaje de bienvenida** (`admin.family_welcome`) cuando no hay miembros ni códigos pendientes — sustituye el onboarding modal eliminado
+- **Miembros activos:** lista los perfiles del grupo (`profiles` WHERE `company_id = X`), cada fila tappable con chevron → modal "Editar miembro" (nombre, email, avatar con upload a Storage vía RPC `update_member_avatar`)
+- **Códigos pendientes:** lista los `activation_codes` WHERE `used = false AND company_id = X`, cada fila tappable con chevron → modal con código en grande, edición de nombre/email, botón compartir y botón "Cancelar invitación" (DELETE)
+- **Botón "+ Añadir miembro":** modal con campos nombre y email → genera código de 6 dígitos → INSERT en `activation_codes` → muestra código para compartir → guarda `family_setup_done` en AsyncStorage para que HomeScreen no redirija de nuevo
+- **Avatar upload:** `fetch(uri).arrayBuffer()` (no `.blob()` que devuelve 0 bytes en React Native) → Supabase Storage `avatars/{user_id}/avatar.jpg` → RPC `update_member_avatar` (SECURITY DEFINER, bypasea RLS)
+- **`MemberAvatar`** componente auxiliar con `onError` para mostrar inicial cuando el archivo no existe; `key={avatar_url}` fuerza remount al cambiar URL
 
 - Pull-to-refresh, estado vacío, manejo de errores por sección
 
@@ -594,6 +599,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - ~~**Sistema de asignación de hábitos:** `habit_assignments` para mostrar solo los hábitos asignados a cada usuario~~ ✅ Implementado
 - ~~**AdminScreen — gestión de usuarios:** vista de miembros del grupo, posibilidad de eliminar/cambiar rol~~ ✅ Implementado (pestaña Familia con miembros activos y códigos pendientes)
 - ~~**AdminScreen — invitaciones históricas / sistema de invitación personal:** lista de códigos generados con fecha y estado~~ ✅ Implementado (tabla `activation_codes`, pestaña Familia, flujo `activate` en SignUpScreen)
+- ~~**Onboarding guiado para admin nuevo:**~~ ✅ Resuelto con redirección directa a AdminScreen pestaña Familia (más simple y sin modal)
 - **Sistema de equipos:** el admin crea subgrupos dentro del grupo principal; `team_members` ya creada, sin uso activo. Los hábitos podrían asignarse a subgrupos. Requiere extensión de AdminScreen.
 - **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un familiar valida tu hábito
 - **SplashScreen animada** con logo de la app
