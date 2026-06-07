@@ -17,7 +17,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
-import OnboardingModal, { ONBOARDING_KEY } from './OnboardingModal';
+
+const FAMILY_SETUP_KEY = 'family_setup_done';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -121,50 +122,40 @@ export default function HomeScreen() {
   const [habits, setHabits] = useState([]);
   const [detailHabit, setDetailHabit] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // Comprobación de onboarding al montar, independiente de loadHomeData
+  // Si el admin no tiene hábitos ni ha configurado su familia todavía → ir a pestaña Familia
   useEffect(() => {
     let cancelled = false;
-    const checkOnboarding = async () => {
+    const checkFamilySetup = async () => {
       try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        console.log('ONBOARDING CHECK — user:', user?.id, 'error:', userError?.message);
+        const { data: { user } } = await supabase.auth.getUser();
         if (!user || cancelled) return;
 
-        let { data: profile, error: profileError } = await supabase
+        let { data: prof } = await supabase
           .from('profiles').select('role, company_id').eq('id', user.id).maybeSingle();
-        console.log('ONBOARDING CHECK — profile:', profile, 'error:', JSON.stringify(profileError));
 
-        if (!profile && !cancelled) {
-          console.log('ONBOARDING CHECK — profile null, retrying in 800ms');
+        if (!prof && !cancelled) {
           await new Promise((r) => setTimeout(r, 800));
           if (cancelled) return;
-          ({ data: profile, error: profileError } = await supabase
+          ({ data: prof } = await supabase
             .from('profiles').select('role, company_id').eq('id', user.id).maybeSingle());
-          console.log('ONBOARDING CHECK — profile retry:', profile, 'error:', JSON.stringify(profileError));
         }
 
-        if (!profile || profile.role !== 'admin' || !profile.company_id || cancelled) return;
+        if (!prof || prof.role !== 'admin' || !prof.company_id || cancelled) return;
 
-        const completed = await AsyncStorage.getItem(ONBOARDING_KEY);
-        console.log('ONBOARDING CHECK — onboarding_completed:', completed);
-        if (completed || cancelled) return;
+        const done = await AsyncStorage.getItem(FAMILY_SETUP_KEY);
+        if (done || cancelled) return;
 
-        const { count, error: countError } = await supabase
+        const { count } = await supabase
           .from('habits').select('id', { count: 'exact', head: true })
-          .eq('company_id', profile.company_id).eq('is_active', true);
-        console.log('ONBOARDING CHECK — habit count:', count, 'error:', countError?.message);
+          .eq('company_id', prof.company_id).eq('is_active', true);
 
         if ((count ?? 0) === 0 && !cancelled) {
-          console.log('ONBOARDING CHECK — showing modal');
-          setShowOnboarding(true);
+          navigation.navigate('Admin', { initialTab: 'family' });
         }
-      } catch (e) {
-        console.log('ONBOARDING CHECK — caught error:', e?.message);
-      }
+      } catch {}
     };
-    checkOnboarding();
+    checkFamilySetup();
     return () => { cancelled = true; };
   }, []);
 
@@ -561,14 +552,6 @@ export default function HomeScreen() {
           }
         />
       </View>
-
-      <OnboardingModal
-        visible={showOnboarding}
-        companyId={profile?.company_id}
-        userId={profile?.id}
-        onComplete={() => { setShowOnboarding(false); loadHomeData(); }}
-        onGoToAdmin={() => { setShowOnboarding(false); navigation.navigate('Admin'); }}
-      />
 
       {/* Modal de detalle de validadores */}
       <Modal

@@ -102,25 +102,6 @@
     "empty_user_sub": "El administrador de tu grupo debe asignarte hábitos",
     "create_habit": "Crear hábito"
   },
-  "onboarding": {
-    "welcome_title": "¡Bienvenido a HabitTeam!",
-    "welcome_subtitle": "Crea hábitos para tu familia y celebrad juntos cada logro",
-    "start": "Empezar",
-    "habit_title": "Crea tu primer hábito",
-    "habit_subtitle": "Elige uno de estos o crea el tuyo propio",
-    "habit_custom": "Crear hábito personalizado",
-    "habit_continue": "Continuar",
-    "habit_water": "Beber agua",
-    "habit_walk": "Salir a caminar",
-    "habit_meds": "Tomar medicación",
-    "habit_read": "Leer 15 minutos",
-    "habit_sleep": "Dormir 8 horas",
-    "habit_chores": "Tareas del hogar",
-    "invite_title": "Invita a tu familia",
-    "invite_subtitle": "Comparte este código con tu familia para que se unan al grupo",
-    "invite_share": "Compartir código",
-    "invite_done": "Finalizar"
-  },
   "habit_detail": {
     "header_title": "Completar hábito",
     "proof_label": "Prueba del hábito",
@@ -214,7 +195,8 @@
     "edit_member": "Editar miembro",
     "pending_code_title": "Código pendiente",
     "cancel_invitation": "Cancelar invitación",
-    "cancel_invitation_confirm": "¿Eliminar este código de activación?"
+    "cancel_invitation_confirm": "¿Eliminar este código de activación?",
+    "family_welcome": "¡Bienvenido! Empieza añadiendo a los miembros de tu familia"
   },
   "history": {
     "header_title": "Historial",

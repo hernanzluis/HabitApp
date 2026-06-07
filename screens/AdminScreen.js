@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -116,6 +116,7 @@ function MemberAvatar({ avatarUrl, initial }) {
 
 export default function AdminScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
 
@@ -184,6 +185,13 @@ export default function AdminScreen() {
   const [editPendingEmail, setEditPendingEmail] = useState('');
   const [savingPending, setSavingPending] = useState(false);
   const [pendingModalError, setPendingModalError] = useState('');
+
+  // Leer pestaña inicial del parámetro de navegación (p.ej. desde el flujo de nuevo admin)
+  useEffect(() => {
+    if (route.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route.params?.initialTab]);
 
   useEffect(() => {
     navigation.setOptions({
@@ -618,6 +626,8 @@ export default function AdminScreen() {
         { id: code, full_name: memberName.trim(), email: memberEmail.trim(), code, created_at: new Date().toISOString() },
         ...prev,
       ]);
+      // Marcar setup de familia como completado para no redirigir de nuevo al admin
+      await AsyncStorage.setItem('family_setup_done', '1');
     } catch (e) {
       setError(e?.message || t('admin.error_generate'));
     } finally {
@@ -965,8 +975,9 @@ export default function AdminScreen() {
                   );
                 })}
                 {members.filter((m) => m.id !== currentUserId).length === 0 && pendingMembers.length === 0 ? (
-                  <View style={styles.emptyRow}>
-                    <Text style={styles.emptyText}>{t('admin.tab_family')}: sin miembros todavía</Text>
+                  <View style={styles.familyWelcomeBox}>
+                    <Ionicons name="people-outline" size={40} color={BLUE} />
+                    <Text style={styles.familyWelcomeText}>{t('admin.family_welcome')}</Text>
                   </View>
                 ) : null}
               </>
@@ -1883,4 +1894,6 @@ const styles = StyleSheet.create({
   familyStatusActiveText: { fontSize: 11, fontWeight: '700', color: '#2E7D32' },
   familyStatusPending: { backgroundColor: '#FFF7ED', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
   familyStatusPendingText: { fontSize: 11, fontWeight: '700', color: '#F97316' },
+  familyWelcomeBox: { alignItems: 'center', padding: 32, gap: 12, backgroundColor: WHITE },
+  familyWelcomeText: { fontSize: 15, color: GRAY, fontWeight: '600', textAlign: 'center', lineHeight: 22 },
 });

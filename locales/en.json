@@ -102,25 +102,6 @@
     "empty_user_sub": "Your group administrator needs to assign you habits",
     "create_habit": "Create habit"
   },
-  "onboarding": {
-    "welcome_title": "Welcome to HabitTeam!",
-    "welcome_subtitle": "Create habits for your family and celebrate every achievement together",
-    "start": "Get started",
-    "habit_title": "Create your first habit",
-    "habit_subtitle": "Choose one of these or create your own",
-    "habit_custom": "Create a custom habit",
-    "habit_continue": "Continue",
-    "habit_water": "Drink water",
-    "habit_walk": "Go for a walk",
-    "habit_meds": "Take medication",
-    "habit_read": "Read 15 minutes",
-    "habit_sleep": "Sleep 8 hours",
-    "habit_chores": "Household chores",
-    "invite_title": "Invite your family",
-    "invite_subtitle": "Share this code with your family to join the group",
-    "invite_share": "Share code",
-    "invite_done": "Finish"
-  },
   "habit_detail": {
     "header_title": "Complete habit",
     "proof_label": "Habit proof",
@@ -248,7 +229,8 @@
     "edit_member": "Edit member",
     "pending_code_title": "Pending code",
     "cancel_invitation": "Cancel invitation",
-    "cancel_invitation_confirm": "Delete this activation code?"
+    "cancel_invitation_confirm": "Delete this activation code?",
+    "family_welcome": "Welcome! Start by adding your family members"
   },
   "nav": {
     "home": "Home",
