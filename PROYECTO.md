@@ -646,8 +646,9 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 **Despliegue:** Vercel (gratuito)
 
 **Modelo de negocio:**
-- Hasta 20 usuarios por empresa/grupo: gratuito
-- Más de 20 usuarios: de pago (precio por definir)
+- Plan Familiar: gratis hasta 6 miembros, hasta 10 hábitos activos, historial 30 días
+- Plan Plus: 4€/mes hasta 20 miembros, hábitos ilimitados, historial completo
+- Plan Empresa: precio a consultar, miembros ilimitados, soporte prioritario
 
 **Público objetivo:**
 - Familias y grupos de amigos como punto de entrada (boca a boca orgánico)
@@ -655,18 +656,22 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - Estrategia bottom-up: el usuario individual adopta el producto y lo lleva a su entorno
 
 **Página corporativa (pública):**
-- Hero con titular impactante, mensaje cercano no corporativo
-- Sección Cómo funciona (3 pasos)
-- Sección Características
-- Sección Precios (freemium: gratis hasta 20 usuarios)
-- Footer
+- Hero con titular impactante, mensaje cercano no corporativo y enfoque familiar
+- Sección Cómo funciona (3 pasos: crear grupo → completar hábitos con foto → validar entre miembros)
+- Sección Características (8 features alineadas con la app)
+- Sección Precios (3 planes: Familiar / Plus / Empresa)
+- CTA final + Footer
+- i18n completo ES/EN con detección automática de idioma del navegador
 
 **Panel de administración (privado /admin):**
-- Pendiente de implementar
-- Login con Supabase Auth
-- Gestión de hábitos, usuarios, equipos e invitaciones
+- Login con Supabase Auth restringido a usuarios con `role = 'admin'`
+- Protección de ruta: verificación de sesión y rol al montar, redirige a `/acceder` si no autorizado
+- Sidebar en desktop, tabs en móvil
+- **Miembros:** tabla de miembros activos con rol y fecha de registro; tabla de invitaciones pendientes con código en monospace; modal "+ Añadir miembro" que genera código de activación de 6 dígitos con botón copiar; botón eliminar miembro con confirmación
+- **Hábitos:** tabla con categoría (punto de color), título, recurrencia, avatares de asignados y validadores, toggle activo/inactivo con actualización optimista; click en título abre modal de edición completo (campos + asignados + validadores precargados); modal "+ Nuevo hábito" con todos los campos de la app móvil (título, descripción, recurrencia, weekly_target, hora límite, fecha expiración, categoría, foto obligatoria, asignados, validadores)
+- **Categorías:** tabla de categorías personalizadas del grupo con botón eliminar; tabla de categorías predefinidas del sistema (solo lectura); modal "+ Nueva categoría" con selector de color (8 colores) y selector de icono (15 opciones en texto) con preview en tiempo real
 
-**Estado actual:** página pública en desarrollo, hero y nav implementados
+**Estado actual:** en producción en habitteam.app. Landing page completa con copy familiar y modelo de precios (Familiar gratis / Plus 4€ / Empresa a consultar). Panel de administración en /admin con gestión de miembros, hábitos y categorías. Login funcional con Supabase Auth restringido a admins. Despliegue en Vercel, dominio en Namecheap.
 
 ---
 
