@@ -75,10 +75,9 @@ HabitApp/
 │   ├── HabitDetailScreen.js
 │   ├── ValidateHabitScreen.js
 │   ├── HistoryScreen.js
-│   ├── RankingScreen.js
+│   ├── ActivityScreen.js
 │   ├── ProfileScreen.js
-│   ├── AdminScreen.js
-│   └── OnboardingModal.js
+│   └── AdminScreen.js
 ├── App.js                      # Punto de entrada (renderiza RootNavigator)
 ├── index.js                    # Registro de la app con Expo
 ├── app.json                    # Configuración de Expo
@@ -128,6 +127,7 @@ HabitApp/
 | due_time | time | null | Para hábitos 'daily': hora límite opcional. Si la hora actual la supera y el hábito no está completado, se muestra en naranja |
 | team_id | uuid | null | FK → teams(id), nullable — sin uso activo todavía |
 | photo_required | boolean | true | Si false, el usuario puede completar el hábito sin adjuntar foto |
+| weekly_target | integer | null | Para hábitos 'weekly_x': número de veces por semana que debe completarse (1–7) |
 
 ### `habit_assignments`
 | Campo | Tipo | Default | Notas |
@@ -405,6 +405,7 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 - **Lógica recurrence:**
   - `once`: si ya existe cualquier log para ese hábito → no se muestra
   - `daily`: si existe log de hoy → muestra tarjeta "Completado hoy" con check verde
+  - `weekly_x`: muestra progreso semanal ("X/N esta semana"); si `weeklyCount >= weekly_target` → tarjeta completada con fondo verde
 - **Tarjeta completada:** fondo verde muy suave (#F0FAF0), borde izquierdo 3px verde (#2E7D32), icono check Ionicons + texto "Completado hoy" + contadores ✓ N / ✗ N de validaciones recibidas ese día (alineados a la derecha)
 - **Tarjeta pendiente:** botón "Completar" → navega a HabitDetailScreen
 - **Hora límite (`due_time`):** para hábitos `daily` con `due_time`, muestra "Antes de las HH:MM" en gris. Si la hora ya pasó y el hábito no está completado, se muestra en naranja
@@ -463,12 +464,13 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 - **Botón "Nuevo hábito":** abre modal de creación
 
 **Modal crear hábito:**
-- Campos: título (obligatorio), descripción opcional, recurrencia (pills Diario / Una vez)
+- Campos: título (obligatorio), descripción opcional, recurrencia (pills Diario / X veces/semana / Una vez)
 - Para `daily`: selector nativo de hora (`DateTimePicker` mode='time') para `due_time` opcional
+- Para `weekly_x`: stepper numérico (botones − y + con el número en el centro, rango 1–7) para `weekly_target`
 - Para `once`: selector nativo de fecha + hora (`DateTimePicker` mode='date' y mode='time') para `expires_at` opcional
 - Toggle "Foto obligatoria" → guarda en `habits.photo_required` (default true)
 - Lista de miembros del grupo con checkboxes para asignar
-- Al guardar: INSERT en `habits` + INSERT en `habit_assignments` por cada miembro seleccionado
+- Al guardar: INSERT en `habits` (con `weekly_target` si `recurrence = 'weekly_x'`) + INSERT en `habit_assignments` por cada miembro seleccionado
 
 **Modal editar asignaciones:** al pulsar "X asignado(s)" de un hábito → lista de miembros con estado actual → al guardar: DELETE todas asignaciones del hábito + INSERT nuevas
 
