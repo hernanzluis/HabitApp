@@ -171,22 +171,21 @@ export default function ProfileScreen() {
         .single();
       if (profileError) throw profileError;
 
-      let companyName = null;
-      if (profile.company_id) {
-        const { data: company, error: companyError } = await supabase
-          .from('companies')
-          .select('name')
-          .eq('id', profile.company_id)
-          .single();
-        if (!companyError) companyName = company?.name ?? null;
-      }
-
-      const { data: allLogs, error: allLogsError } = await supabase
-        .from('habit_logs')
-        .select('id, habit_id, photo_url, notes, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const [
+        { data: allLogs, error: allLogsError },
+        { data: companyRow },
+      ] = await Promise.all([
+        supabase
+          .from('habit_logs')
+          .select('id, habit_id, photo_url, notes, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        profile.company_id
+          ? supabase.from('companies').select('name').eq('id', profile.company_id).single()
+          : Promise.resolve({ data: null }),
+      ]);
       if (allLogsError) throw allLogsError;
+      const companyName = companyRow?.name ?? null;
 
       const totalCompleted = (allLogs ?? []).length;
       const myLogIds = (allLogs ?? []).map((l) => l.id);

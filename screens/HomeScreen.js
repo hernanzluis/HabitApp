@@ -174,7 +174,10 @@ export default function HomeScreen() {
         if ((count ?? 0) === 0 && !cancelled) {
           navigation.navigate('Admin', { initialTab: 'family' });
         }
-      } catch {}
+      } catch (e) {
+        // No-crítico: la redirección de onboarding del admin falla silenciosamente
+        if (__DEV__) console.warn('checkFamilySetup error:', e?.message);
+      }
     };
     checkFamilySetup();
     return () => { cancelled = true; };

@@ -222,7 +222,7 @@ export default function HabitStatsScreen() {
         setComments([]);
       }
     } catch (e) {
-      setError(e?.message || t('admin.error_load'));
+      setError(e?.message || t('stats.error_load'));
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -231,15 +231,12 @@ export default function AdminScreen() {
       setCompanyId(profile.company_id);
       setCurrentUserId(user.id);
 
-      const { data: companyData } = await supabase
-        .from('companies').select('name').eq('id', profile.company_id).single();
-      if (companyData?.name) setCompanyName(companyData.name);
-
       const [
         { data: habitsData, error: habitsError },
         { data: membersData, error: membersError },
         { data: categoriesData, error: categoriesError },
         { data: pendingData, error: pendingError },
+        { data: companyData },
       ] = await Promise.all([
         supabase
           .from('habits')
@@ -261,7 +258,13 @@ export default function AdminScreen() {
           .eq('company_id', profile.company_id)
           .eq('used', false)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('companies')
+          .select('name')
+          .eq('id', profile.company_id)
+          .single(),
       ]);
+      if (companyData?.name) setCompanyName(companyData.name);
       if (habitsError) throw habitsError;
       if (membersError) throw membersError;
       if (categoriesError) throw categoriesError;
@@ -477,10 +480,21 @@ export default function AdminScreen() {
 
   // ── Edit habit ───────────────────────────────────────────────────────────
   const openEditModal = async (habit) => {
-    const [{ data: current }, { data: currentValidators }] = await Promise.all([
-      supabase.from('habit_assignments').select('user_id').eq('habit_id', habit.id),
-      supabase.from('habit_validators').select('user_id').eq('habit_id', habit.id),
-    ]);
+    setModalError('');
+    let current, currentValidators;
+    try {
+      const [assignResult, validResult] = await Promise.all([
+        supabase.from('habit_assignments').select('user_id').eq('habit_id', habit.id),
+        supabase.from('habit_validators').select('user_id').eq('habit_id', habit.id),
+      ]);
+      if (assignResult.error) throw assignResult.error;
+      if (validResult.error) throw validResult.error;
+      current = assignResult.data;
+      currentValidators = validResult.data;
+    } catch (e) {
+      setError(e?.message || t('admin.error_load'));
+      return;
+    }
 
     setEditingHabit(habit);
     setNewTitle(habit.title);
@@ -529,7 +543,8 @@ export default function AdminScreen() {
         .from('habits').update(updatedFields).eq('id', editingHabit.id);
       if (updateError) throw updateError;
 
-      await supabase.from('habit_assignments').delete().eq('habit_id', editingHabit.id);
+      const { error: delAssignError } = await supabase.from('habit_assignments').delete().eq('habit_id', editingHabit.id);
+      if (delAssignError) throw delAssignError;
       if (selectedMembers.size > 0) {
         const { error: assignError } = await supabase.from('habit_assignments').insert(
           [...selectedMembers].map((userId) => ({ habit_id: editingHabit.id, user_id: userId }))
@@ -537,7 +552,8 @@ export default function AdminScreen() {
         if (assignError) throw assignError;
       }
 
-      await supabase.from('habit_validators').delete().eq('habit_id', editingHabit.id);
+      const { error: delValidError } = await supabase.from('habit_validators').delete().eq('habit_id', editingHabit.id);
+      if (delValidError) throw delValidError;
       if (validatorIds.size > 0) {
         const { error: validError } = await supabase.from('habit_validators').insert(
           [...validatorIds].map((userId) => ({ habit_id: editingHabit.id, user_id: userId }))
@@ -763,13 +779,15 @@ export default function AdminScreen() {
           text: t('admin.delete_habit_confirm'),
           style: 'destructive',
           onPress: async () => {
+            const pending = editingPending; // captura el valor actual antes del await
+            if (!pending) return;
             try {
               const { error: deleteError } = await supabase
                 .from('activation_codes')
                 .delete()
-                .eq('id', editingPending.id);
+                .eq('id', pending.id);
               if (deleteError) throw deleteError;
-              setPendingMembers((prev) => prev.filter((p) => p.id !== editingPending.id));
+              setPendingMembers((prev) => prev.filter((p) => p.id !== pending.id));
               setEditPendingVisible(false);
               setEditingPending(null);
             } catch (e) {
@@ -939,7 +957,7 @@ export default function AdminScreen() {
                             <Text style={styles.familyMemberEmail} numberOfLines={1}>{m.email || '—'}</Text>
                           </View>
                           <View style={styles.familyStatusActive}>
-                            <Text style={styles.familyStatusActiveText}>Activo</Text>
+                            <Text style={styles.familyStatusActiveText}>{t('admin.member_status_active')}</Text>
                           </View>
                           <Ionicons name="chevron-forward" size={16} color={GRAY} style={{ marginLeft: 4 }} />
                         </TouchableOpacity>
@@ -966,7 +984,7 @@ export default function AdminScreen() {
                           <Text style={styles.familyMemberEmail} numberOfLines={1}>{p.email || '—'}</Text>
                         </View>
                         <View style={styles.familyStatusPending}>
-                          <Text style={styles.familyStatusPendingText}>Pendiente</Text>
+                          <Text style={styles.familyStatusPendingText}>{t('admin.member_status_pending')}</Text>
                         </View>
                         <Ionicons name="chevron-forward" size={16} color={GRAY} style={{ marginLeft: 4 }} />
                       </TouchableOpacity>
@@ -1203,10 +1221,10 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                     <Text style={styles.weeklyTargetValue}>{weeklyTarget}</Text>
                     <TouchableOpacity
-                      onPress={() => setWeeklyTarget((p) => Math.min(6, p + 1))}
-                      style={[styles.weeklyTargetBtn, weeklyTarget >= 6 && styles.btnDisabled]}
+                      onPress={() => setWeeklyTarget((p) => Math.min(7, p + 1))}
+                      style={[styles.weeklyTargetBtn, weeklyTarget >= 7 && styles.btnDisabled]}
                       activeOpacity={0.7}
-                      disabled={weeklyTarget >= 6}
+                      disabled={weeklyTarget >= 7}
                     >
                       <Text style={styles.weeklyTargetBtnText}>+</Text>
                     </TouchableOpacity>
@@ -1427,7 +1445,7 @@ export default function AdminScreen() {
                       <Text style={styles.weeklyTargetBtnText}>−</Text>
                     </TouchableOpacity>
                     <Text style={styles.weeklyTargetValue}>{weeklyTarget}</Text>
-                    <TouchableOpacity onPress={() => setWeeklyTarget((p) => Math.min(6, p + 1))} style={[styles.weeklyTargetBtn, weeklyTarget >= 6 && styles.btnDisabled]} activeOpacity={0.7} disabled={weeklyTarget >= 6}>
+                    <TouchableOpacity onPress={() => setWeeklyTarget((p) => Math.min(7, p + 1))} style={[styles.weeklyTargetBtn, weeklyTarget >= 7 && styles.btnDisabled]} activeOpacity={0.7} disabled={weeklyTarget >= 7}>
                       <Text style={styles.weeklyTargetBtnText}>+</Text>
                     </TouchableOpacity>
                   </View>

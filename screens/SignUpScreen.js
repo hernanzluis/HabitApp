@@ -251,10 +251,12 @@ export default function SignUpScreen() {
       activateSession(session);
       registered = true;
     } catch (e) {
-      authFlags.skipNextRedirect = false; // reset en cualquier error
       setFormError(e?.message || t('signup.error_generic'));
     } finally {
-      if (!registered) setLoading(false);
+      if (!registered) {
+        authFlags.skipNextRedirect = false; // garantiza reset aunque haya crash o return temprano
+        setLoading(false);
+      }
     }
   };
 

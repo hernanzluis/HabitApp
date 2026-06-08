@@ -20,7 +20,7 @@ const BLUE = '#0A66C2';
 const TEXT = '#1D2226';
 const GRAY = '#666666';
 const GREEN = '#4CAF50';
-const FLAME = '#4CAF50';
+const FLAME = GREEN;
 
 const DAY_LABELS_ES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const DAY_LABELS_EN = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -131,7 +131,11 @@ function calculateWeeklyStreak(logs, habitId, weeklyTarget) {
     const d = new Date(l.created_at);
     return d >= weekStart && d < currentWeekEnd;
   }).length;
-  if (currentCount < weeklyTarget) weekStart = new Date(weekStart.setDate(weekStart.getDate() - 7));
+  if (currentCount < weeklyTarget) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() - 7);
+    weekStart = d;
+  }
   let streak = 0;
   while (true) {
     const wEnd = new Date(weekStart);
@@ -139,7 +143,9 @@ function calculateWeeklyStreak(logs, habitId, weeklyTarget) {
     const count = habitLogs.filter((l) => { const d = new Date(l.created_at); return d >= weekStart && d < wEnd; }).length;
     if (count < weeklyTarget) break;
     streak++;
-    weekStart = new Date(weekStart.setDate(weekStart.getDate() - 7));
+    const next = new Date(weekStart);
+    next.setDate(next.getDate() - 7);
+    weekStart = next;
   }
   return streak;
 }
@@ -320,7 +326,7 @@ export default function RankingScreen() {
 
   // Derived at render time — cheap, avoids storing in state
   const dailyHabitIdsSet = new Set(
-    activeHabitsWithCat.filter((h) => h.recurrence === 'daily').map((h) => h.id)
+    activeHabitsWithCat.filter((h) => h.recurrence === 'daily' || h.recurrence === 'weekly_x').map((h) => h.id)
   );
 
   if (loading) {

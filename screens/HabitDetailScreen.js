@@ -176,7 +176,7 @@ export default function HabitDetailScreen() {
         .eq('habit_id', habit.id)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(30);
+        .limit(90);
 
       const calculatedStreak = calculateStreak(recentLogs ?? []);
       setStreak(calculatedStreak);
