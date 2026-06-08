@@ -127,6 +127,7 @@ HabitApp/
 | expires_at | timestamptz | null | Para hábitos 'once': fecha y hora límite combinadas. Si está en el pasado, no se muestra |
 | due_time | time | null | Para hábitos 'daily': hora límite opcional. Si la hora actual la supera y el hábito no está completado, se muestra en naranja |
 | team_id | uuid | null | FK → teams(id), nullable — sin uso activo todavía |
+| photo_required | boolean | true | Si false, el usuario puede completar el hábito sin adjuntar foto |
 
 ### `habit_assignments`
 | Campo | Tipo | Default | Notas |
@@ -170,6 +171,7 @@ Solo los usuarios que aparecen en esta tabla para un `habit_id` dado verán los 
 | habit_log_id | uuid | — | FK → habit_logs(id) ON DELETE CASCADE |
 | validator_id | uuid | — | FK → profiles(id) ON DELETE CASCADE |
 | status | text | — | 'validated' o 'rejected' |
+| reaction | text | null | Emoji de reacción opcional: '👏', '❤️', '💪', '😊', '🌟' o null |
 | created_at | timestamptz | now() | — |
 | — | UNIQUE | — | (habit_log_id, validator_id) — un voto por usuario por log |
 
@@ -414,12 +416,12 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 ### `HabitDetailScreen`
 - Recibe el objeto `habit` como param de navegación
 - **Foto:** botón principal ancho completo "Cámara" (Ionicons `camera-outline`, fondo BLUE). Sin opción de galería
+- Si `habit.photo_required = false`, la foto es opcional: se muestra el botón de cámara pero el usuario puede enviar sin foto
 - Preview de la foto seleccionada (height 220)
 - **Nota opcional:** TextInput multiline, máx 150 caracteres, debajo del preview
 - Al enviar:
-  1. Sube la imagen a Storage `habit-photos/{user_id}/{habit_id}/{timestamp}.ext`
-  2. Obtiene la URL pública
-  3. INSERT en `habit_logs` con `status = 'pending'` y `notes` (null si vacío)
+  1. Si hay foto, la sube a Storage `habit-photos/{user_id}/{habit_id}/{timestamp}.ext` y obtiene la URL pública
+  2. INSERT en `habit_logs` con `status = 'pending'`, `photo_url` (null si no hay foto) y `notes` (null si vacío)
 - Spinner durante la subida, mensaje de éxito "¡Prueba enviada!", vuelve a Home tras 1.5s
 
 ### `ValidateHabitScreen`
@@ -431,8 +433,9 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
      - `habits` → títulos y `company_id` para filtrar por grupo (por habitIds extraídos)
      - `habit_validations` → todos los votos para los logIds obtenidos
 - **Filtrado:** solo muestra logs de hábitos con `company_id` coincidente y donde `userValidated = false`
-- **Votación:** INSERT en `habit_validations` con `status = 'validated'` o `'rejected'`; la constraint UNIQUE previene doble voto a nivel DB
-- **UI por tarjeta:** avatar del miembro (foto real si tiene `avatar_url`, inicial si no), nombre, título del hábito, fecha, foto de prueba, nota del log (si existe, en caja gris #F9F9F9), contadores ✓ N / ✗ N, botones Aprobar/Rechazar
+- **Votación:** INSERT en `habit_validations` con `status = 'validated'` o `'rejected'`, `comment` (texto libre opcional) y `reaction` (emoji opcional); la constraint UNIQUE previene doble voto a nivel DB
+- **Reacciones emoji:** fila de 5 emojis (👏 ❤️ 💪 😊 🌟) entre la foto y el campo de comentario. Al pulsar uno se selecciona (fondo `#EEF3FB`, borde BLUE); al pulsar el mismo se deselecciona. Solo uno seleccionable a la vez. Completamente opcional, no bloquea aprobar/rechazar. Se resetea al pasar al siguiente log
+- **UI por tarjeta:** avatar del miembro (foto real si tiene `avatar_url`, inicial si no), nombre, título del hábito, fecha, foto de prueba, nota del log (si existe, en caja gris #F9F9F9), contadores ✓ N / ✗ N, fila de reacciones emoji, campo de comentario, botones Aprobar/Rechazar
 - Tras votar el último pendiente → muestra "Todo al día ✓" → navega a Home tras 1 segundo
 - Pull-to-refresh, estado vacío
 
@@ -463,6 +466,7 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 - Campos: título (obligatorio), descripción opcional, recurrencia (pills Diario / Una vez)
 - Para `daily`: selector nativo de hora (`DateTimePicker` mode='time') para `due_time` opcional
 - Para `once`: selector nativo de fecha + hora (`DateTimePicker` mode='date' y mode='time') para `expires_at` opcional
+- Toggle "Foto obligatoria" → guarda en `habits.photo_required` (default true)
 - Lista de miembros del grupo con checkboxes para asignar
 - Al guardar: INSERT en `habits` + INSERT en `habit_assignments` por cada miembro seleccionado
 
@@ -600,6 +604,8 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - ~~**AdminScreen — gestión de usuarios:** vista de miembros del grupo, posibilidad de eliminar/cambiar rol~~ ✅ Implementado (pestaña Familia con miembros activos y códigos pendientes)
 - ~~**AdminScreen — invitaciones históricas / sistema de invitación personal:** lista de códigos generados con fecha y estado~~ ✅ Implementado (tabla `activation_codes`, pestaña Familia, flujo `activate` en SignUpScreen)
 - ~~**Onboarding guiado para admin nuevo:**~~ ✅ Resuelto con redirección directa a AdminScreen pestaña Familia (más simple y sin modal)
+- ~~**Foto opcional por hábito:** campo `photo_required` en `habits`; HabitDetailScreen permite enviar sin foto si es false; AdminScreen con toggle en modal de creación~~ ✅ Implementado
+- ~~**Reacciones rápidas en validación:** fila de emojis (👏 ❤️ 💪 😊 🌟) en ValidateHabitScreen; campo `reaction` en `habit_validations`; emoji visible junto al nombre del validador en el modal de HomeScreen~~ ✅ Implementado
 - **Sistema de equipos:** el admin crea subgrupos dentro del grupo principal; `team_members` ya creada, sin uso activo. Los hábitos podrían asignarse a subgrupos. Requiere extensión de AdminScreen.
 - **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un familiar valida tu hábito
 - **SplashScreen animada** con logo de la app

@@ -131,6 +131,7 @@
     "error_load": "No se pudieron cargar los hábitos pendientes.",
     "error_submit": "No se pudo registrar la validación.",
     "no_photo": "Sin foto adjunta",
+    "reaction_label": "Reacciona (opcional)",
     "comment_label": "Añade un comentario (opcional)",
     "comment_placeholder": "Ej: ¡Muy bien, sigue así!"
   },

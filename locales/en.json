@@ -131,6 +131,7 @@
     "error_load": "Could not load pending habits.",
     "error_submit": "Could not register the validation.",
     "no_photo": "No photo attached",
+    "reaction_label": "React (optional)",
     "comment_label": "Add a comment (optional)",
     "comment_placeholder": "E.g: Great job, keep it up!"
   },

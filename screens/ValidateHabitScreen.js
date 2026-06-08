@@ -33,16 +33,25 @@ function formatDate(dateString, locale) {
   });
 }
 
+const REACTIONS = ['👏', '❤️', '💪', '😊', '🌟'];
+const REACTION_BLUE_BG = '#EEF3FB';
+
 function ValidateCard({ item, onVote, t, locale }) {
   const [comment, setComment] = useState('');
+  const [reaction, setReaction] = useState(null);
   const { companion, habit } = item;
   const name = companion?.full_name || t('common.colleague');
   const title = habit?.title || t('validate.habit_fallback');
   const { userValidated, userVote, validatedCount, rejectedCount } = item;
 
   const handleVote = (status) => {
-    onVote(item.id, status, comment.trim() || null);
+    onVote(item.id, status, comment.trim() || null, reaction);
     setComment('');
+    setReaction(null);
+  };
+
+  const toggleReaction = (emoji) => {
+    setReaction((prev) => (prev === emoji ? null : emoji));
   };
 
   return (
@@ -89,6 +98,23 @@ function ValidateCard({ item, onVote, t, locale }) {
             {userVote === 'validated' ? t('validate.approved') : t('validate.rejected_label')}
           </Text>
         ) : null}
+      </View>
+
+      <Text style={styles.reactionLabel}>{t('validate.reaction_label')}</Text>
+      <View style={styles.reactionsRow}>
+        {REACTIONS.map((emoji) => {
+          const selected = reaction === emoji;
+          return (
+            <TouchableOpacity
+              key={emoji}
+              style={[styles.reactionBtn, selected && styles.reactionBtnSelected]}
+              onPress={() => toggleReaction(emoji)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.reactionEmoji}>{emoji}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <Text style={styles.commentLabel}>{t('validate.comment_label')}</Text>
@@ -263,7 +289,7 @@ export default function ValidateHabitScreen() {
     }, [loadData])
   );
 
-  const submitValidation = async (logId, voteStatus, comment) => {
+  const submitValidation = async (logId, voteStatus, comment, reaction) => {
     try {
       const {
         data: { user },
@@ -277,7 +303,7 @@ export default function ValidateHabitScreen() {
 
       const { error: insertError } = await supabase
         .from('habit_validations')
-        .insert({ habit_log_id: logId, validator_id: user.id, status: voteStatus, comment });
+        .insert({ habit_log_id: logId, validator_id: user.id, status: voteStatus, comment, reaction: reaction ?? null });
 
       if (insertError) throw insertError;
 
@@ -524,8 +550,36 @@ const styles = StyleSheet.create({
     color: GRAY,
     fontSize: 13,
   },
-  commentLabel: {
+  reactionLabel: {
     marginTop: 10,
+    fontSize: 12,
+    color: GRAY,
+    marginBottom: 6,
+  },
+  reactionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  reactionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: WHITE,
+  },
+  reactionBtnSelected: {
+    backgroundColor: REACTION_BLUE_BG,
+    borderColor: BLUE,
+  },
+  reactionEmoji: {
+    fontSize: 22,
+  },
+  commentLabel: {
+    marginTop: 0,
     fontSize: 12,
     color: GRAY,
     marginBottom: 4,

@@ -86,7 +86,7 @@ function ValidatorAvatar({ profile, status, size = 28 }) {
   );
 }
 
-function ValidatorRow({ profile, status, comment }) {
+function ValidatorRow({ profile, status, comment, reaction }) {
   const name = profile?.full_name || '?';
   const isPending = status === 'pending';
   return (
@@ -101,7 +101,10 @@ function ValidatorRow({ profile, status, comment }) {
         </View>
       )}
       <View style={styles.validatorRowInfo}>
-        <Text style={[styles.validatorRowName, isPending && { color: '#666666' }]} numberOfLines={1}>{name}</Text>
+        <View style={styles.validatorRowNameRow}>
+          <Text style={[styles.validatorRowName, isPending && { color: '#666666' }]} numberOfLines={1}>{name}</Text>
+          {reaction ? <Text style={styles.validatorReaction}>{reaction}</Text> : null}
+        </View>
         {comment ? <Text style={styles.validatorComment}>{comment}</Text> : null}
       </View>
       {status === 'validated' ? <Ionicons name="checkmark-circle" size={18} color="#2E7D32" /> : null}
@@ -251,7 +254,7 @@ export default function HomeScreen() {
 
       const [logsResult, catsResult, validatorsResult] = await Promise.all([
         habitIds.length > 0
-          ? supabase.from('habit_logs').select('id, habit_id, created_at, habit_validations(habit_log_id, status, validator_id, comment)').eq('user_id', user.id).in('habit_id', habitIds)
+          ? supabase.from('habit_logs').select('id, habit_id, created_at, habit_validations(habit_log_id, status, validator_id, comment, reaction)').eq('user_id', user.id).in('habit_id', habitIds)
           : Promise.resolve({ data: [], error: null }),
         supabase.from('categories').select('id, name, icon, color').or(`company_id.is.null,company_id.eq.${profileData.company_id}`),
         habitIds.length > 0
@@ -315,6 +318,7 @@ export default function HomeScreen() {
             validatorId: v.validator_id,
             status: v.status,
             comment: v.comment ?? null,
+            reaction: v.reaction ?? null,
           }));
         }
       });
@@ -576,7 +580,7 @@ export default function HomeScreen() {
                 <View style={styles.modalSection}>
                   <Text style={styles.modalSectionTitle}>{t('home.validators_approved')}</Text>
                   {modalSections.approved.map((v) => (
-                    <ValidatorRow key={v.validatorId} profile={v.profile} status="validated" comment={v.comment} />
+                    <ValidatorRow key={v.validatorId} profile={v.profile} status="validated" comment={v.comment} reaction={v.reaction} />
                   ))}
                 </View>
               ) : null}
@@ -585,7 +589,7 @@ export default function HomeScreen() {
                 <View style={styles.modalSection}>
                   <Text style={styles.modalSectionTitle}>{t('home.validators_rejected')}</Text>
                   {modalSections.rejected.map((v) => (
-                    <ValidatorRow key={v.validatorId} profile={v.profile} status="rejected" comment={v.comment} />
+                    <ValidatorRow key={v.validatorId} profile={v.profile} status="rejected" comment={v.comment} reaction={v.reaction} />
                   ))}
                 </View>
               ) : null}
@@ -872,10 +876,19 @@ const styles = StyleSheet.create({
   validatorRowInfo: {
     flex: 1,
   },
+  validatorRowNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   validatorRowName: {
     fontSize: 15,
     fontWeight: '600',
     color: TEXT,
+    flexShrink: 1,
+  },
+  validatorReaction: {
+    fontSize: 16,
   },
   validatorComment: {
     fontSize: 13,
