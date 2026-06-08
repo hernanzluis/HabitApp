@@ -112,6 +112,7 @@
     "error_not_found_retry": "No se encontró el hábito. Vuelve e inténtalo de nuevo.",
     "error_no_photo": "Selecciona o toma una foto antes de enviar.",
     "error_upload": "No se pudo enviar la prueba. Revisa tu conexión e inténtalo de nuevo.",
+    "proof_optional": "Añade una foto (opcional)",
     "streak_days": "días seguidos",
     "streak_first": "¡Primer día!",
     "streak_well_done": "¡Sigue así!"
@@ -129,6 +130,7 @@
     "error_no_session": "Debes iniciar sesión para validar hábitos.",
     "error_load": "No se pudieron cargar los hábitos pendientes.",
     "error_submit": "No se pudo registrar la validación.",
+    "no_photo": "Sin foto adjunta",
     "comment_label": "Añade un comentario (opcional)",
     "comment_placeholder": "Ej: ¡Muy bien, sigue así!"
   },
@@ -187,6 +189,8 @@
     "member_role_admin": "Admin",
     "member_role_user": "Miembro",
     "member_status_active": "Activo",
+    "photo_required_label": "Foto obligatoria",
+    "photo_required_desc": "El usuario debe adjuntar una foto como prueba",
     "member_status_pending": "Pendiente",
     "edit_member": "Editar miembro",
     "pending_code_title": "Código pendiente",

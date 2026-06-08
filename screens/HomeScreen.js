@@ -234,7 +234,7 @@ export default function HomeScreen() {
 
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
-        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time, category_id, weekly_target')
+        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time, category_id, weekly_target, photo_required')
         .eq('company_id', profileData.company_id)
         .eq('is_active', true)
         .in('id', assignedIds)

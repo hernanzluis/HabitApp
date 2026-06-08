@@ -127,7 +127,7 @@ export default function HabitDetailScreen() {
       return;
     }
 
-    if (!photo?.uri) {
+    if (!photo?.uri && habit.photo_required !== false) {
       setError(t('habit_detail.error_no_photo'));
       return;
     }
@@ -143,21 +143,25 @@ export default function HabitDetailScreen() {
       if (userError) throw userError;
       if (!user) return;
 
-      const extension = getFileExtension(photo.mimeType, photo.uri);
-      const contentType = getContentType(photo.mimeType);
-      const filePath = `${user.id}/${habit.id}/${Date.now()}.${extension}`;
+      let photoUrl = null;
 
-      const response = await fetch(photo.uri);
-      const arrayBuffer = await response.arrayBuffer();
+      if (photo?.uri) {
+        const extension = getFileExtension(photo.mimeType, photo.uri);
+        const contentType = getContentType(photo.mimeType);
+        const filePath = `${user.id}/${habit.id}/${Date.now()}.${extension}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('habit-photos')
-        .upload(filePath, arrayBuffer, { contentType, upsert: false });
+        const response = await fetch(photo.uri);
+        const arrayBuffer = await response.arrayBuffer();
 
-      if (uploadError) throw uploadError;
+        const { error: uploadError } = await supabase.storage
+          .from('habit-photos')
+          .upload(filePath, arrayBuffer, { contentType, upsert: false });
 
-      const { data: publicUrlData } = supabase.storage.from('habit-photos').getPublicUrl(filePath);
-      const photoUrl = publicUrlData.publicUrl;
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage.from('habit-photos').getPublicUrl(filePath);
+        photoUrl = publicUrlData.publicUrl;
+      }
 
       const { error: logError } = await supabase.from('habit_logs').insert({
         habit_id: habit.id,
@@ -225,8 +229,14 @@ export default function HabitDetailScreen() {
           <Text style={styles.title}>{habit.title}</Text>
           {habit.description ? <Text style={styles.description}>{habit.description}</Text> : null}
 
-          <Text style={styles.sectionLabel}>{t('habit_detail.proof_label')}</Text>
-          <Text style={styles.sectionHint}>{t('habit_detail.proof_hint')}</Text>
+          <Text style={styles.sectionLabel}>
+            {habit.photo_required === false
+              ? t('habit_detail.proof_optional')
+              : t('habit_detail.proof_label')}
+          </Text>
+          {habit.photo_required !== false ? (
+            <Text style={styles.sectionHint}>{t('habit_detail.proof_hint')}</Text>
+          ) : null}
 
           <TouchableOpacity
             style={[styles.cameraBtn, uploading && styles.btnDisabled]}

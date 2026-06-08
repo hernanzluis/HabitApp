@@ -11,6 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
@@ -67,7 +68,12 @@ function ValidateCard({ item, onVote, t, locale }) {
         <View style={styles.photoWrapper}>
           <Image source={{ uri: item.photo_url }} style={styles.photo} resizeMode="contain" />
         </View>
-      ) : null}
+      ) : (
+        <View style={styles.noPhotoContainer}>
+          <Ionicons name="checkmark-circle-outline" size={48} color="#C0C0C0" />
+          <Text style={styles.noPhotoText}>{t('validate.no_photo')}</Text>
+        </View>
+      )}
 
       {item.notes ? (
         <View style={styles.notesBox}>
@@ -429,6 +435,17 @@ const styles = StyleSheet.create({
   photo: {
     width: '100%',
     height: 250,
+  },
+  noPhotoContainer: {
+    marginTop: 10,
+    paddingVertical: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  noPhotoText: {
+    fontSize: 13,
+    color: '#C0C0C0',
+    fontWeight: '500',
   },
   countsRow: {
     flexDirection: 'row',

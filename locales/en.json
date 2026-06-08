@@ -112,6 +112,7 @@
     "error_not_found_retry": "Habit not found. Go back and try again.",
     "error_no_photo": "Select or take a photo before submitting.",
     "error_upload": "Could not submit the proof. Check your connection and try again.",
+    "proof_optional": "Add a photo (optional)",
     "streak_days": "days in a row",
     "streak_first": "First day!",
     "streak_well_done": "Keep it up!"
@@ -129,6 +130,7 @@
     "error_no_session": "You must be signed in to validate habits.",
     "error_load": "Could not load pending habits.",
     "error_submit": "Could not register the validation.",
+    "no_photo": "No photo attached",
     "comment_label": "Add a comment (optional)",
     "comment_placeholder": "E.g: Great job, keep it up!"
   },
@@ -220,6 +222,8 @@
     "member_role_admin": "Admin",
     "member_role_user": "Member",
     "member_status_active": "Active",
+    "photo_required_label": "Photo required",
+    "photo_required_desc": "The user must attach a photo as proof",
     "member_status_pending": "Pending",
     "edit_member": "Edit member",
     "pending_code_title": "Pending code",

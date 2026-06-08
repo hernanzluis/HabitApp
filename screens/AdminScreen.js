@@ -145,6 +145,7 @@ export default function AdminScreen() {
   const [selectedMembers, setSelectedMembers] = useState(new Set());
   const [validatorIds, setValidatorIds] = useState(new Set());
   const [weeklyTarget, setWeeklyTarget] = useState(3);
+  const [photoRequired, setPhotoRequired] = useState(true);
   const [savingHabit, setSavingHabit] = useState(false);
   const [modalError, setModalError] = useState('');
 
@@ -240,7 +241,7 @@ export default function AdminScreen() {
       ] = await Promise.all([
         supabase
           .from('habits')
-          .select('id, title, description, recurrence, is_active, expires_at, due_time, category_id, weekly_target')
+          .select('id, title, description, recurrence, is_active, expires_at, due_time, category_id, weekly_target, photo_required')
           .eq('company_id', profile.company_id)
           .order('created_at', { ascending: false }),
         supabase
@@ -408,6 +409,7 @@ export default function AdminScreen() {
     setSelectedMembers(new Set());
     setValidatorIds(new Set());
     setWeeklyTarget(3);
+    setPhotoRequired(true);
     setModalError('');
     setCreateModalVisible(true);
   };
@@ -450,6 +452,7 @@ export default function AdminScreen() {
           due_time: newRecurrence === 'daily' && dueTime ? `${formatDisplayTime(dueTime)}:00` : null,
           expires_at: newRecurrence === 'once' ? buildExpiresAt(expiresDate, expiresTime) : null,
           weekly_target: newRecurrence === 'weekly_x' ? weeklyTarget : null,
+          photo_required: photoRequired,
         })
         .select('id')
         .single();
@@ -515,6 +518,7 @@ export default function AdminScreen() {
     } else { setExpiresDate(null); setExpiresTime(null); }
 
     setWeeklyTarget(habit.weekly_target ?? 3);
+    setPhotoRequired(habit.photo_required !== false);
     setShowDuePicker(false);
     setShowExpDatePicker(false);
     setShowExpTimePicker(false);
@@ -538,6 +542,7 @@ export default function AdminScreen() {
         due_time: newRecurrence === 'daily' && dueTime ? `${formatDisplayTime(dueTime)}:00` : null,
         expires_at: newRecurrence === 'once' ? buildExpiresAt(expiresDate, expiresTime) : null,
         weekly_target: newRecurrence === 'weekly_x' ? weeklyTarget : null,
+        photo_required: photoRequired,
       };
       const { error: updateError } = await supabase
         .from('habits').update(updatedFields).eq('id', editingHabit.id);
@@ -1380,6 +1385,21 @@ export default function AdminScreen() {
                 </>
               )}
 
+              {/* Foto obligatoria */}
+              <View style={styles.photoRequiredRow}>
+                <View style={styles.photoRequiredInfo}>
+                  <Text style={styles.fieldLabel}>{t('admin.photo_required_label')}</Text>
+                  <Text style={styles.photoRequiredDesc}>{t('admin.photo_required_desc')}</Text>
+                </View>
+                <Switch
+                  value={photoRequired}
+                  onValueChange={setPhotoRequired}
+                  trackColor={{ false: '#D0D0D0', true: '#BFDBFE' }}
+                  thumbColor={photoRequired ? BLUE : '#888'}
+                  disabled={savingHabit}
+                />
+              </View>
+
               {/* Asignación */}
               <Text style={styles.fieldLabel}>{t('admin.habit_assign_label')}</Text>
               {members.map(renderMemberToggle)}
@@ -1498,6 +1518,21 @@ export default function AdminScreen() {
                   </ScrollView>
                 </>
               )}
+
+              {/* Foto obligatoria */}
+              <View style={styles.photoRequiredRow}>
+                <View style={styles.photoRequiredInfo}>
+                  <Text style={styles.fieldLabel}>{t('admin.photo_required_label')}</Text>
+                  <Text style={styles.photoRequiredDesc}>{t('admin.photo_required_desc')}</Text>
+                </View>
+                <Switch
+                  value={photoRequired}
+                  onValueChange={setPhotoRequired}
+                  trackColor={{ false: '#D0D0D0', true: '#BFDBFE' }}
+                  thumbColor={photoRequired ? BLUE : '#888'}
+                  disabled={savingHabit}
+                />
+              </View>
 
               <Text style={styles.fieldLabel}>{t('admin.habit_assign_label')}</Text>
               {members.map(renderMemberToggle)}
@@ -1867,6 +1902,9 @@ const styles = StyleSheet.create({
   colorPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
   colorOption: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   colorOptionActive: { borderWidth: 3, borderColor: WHITE, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 },
+  photoRequiredRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, marginBottom: 8 },
+  photoRequiredInfo: { flex: 1, marginRight: 16 },
+  photoRequiredDesc: { fontSize: 12, color: GRAY, marginTop: 2 },
   devResetBtn: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16, marginTop: 8 },
   devResetText: { fontSize: 12, color: GRAY, fontWeight: '500' },
   // Member edit modal
