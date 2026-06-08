@@ -84,6 +84,7 @@
     "empty": "No hay hábitos asignados hoy",
     "complete": "Completar",
     "completed_today": "Completado hoy",
+    "completed_today_once": "Ya completado hoy",
     "expires": "Expira el {{date}}",
     "status_validated": "Validado",
     "status_rejected": "Rechazado",

@@ -316,39 +316,14 @@ export default function HomeScreen() {
         }
       });
 
-      // habitId → [{validatorId, status}] week-level, deduped per validator (for weekly_x)
-      // A validator who voted on multiple logs of the same habit this week counts once (latest wins)
-      const weekValidationsPerHabit = {};
-      weekLogs.forEach((l) => {
-        if (!l.habit_validations?.length) return;
-        if (!weekValidationsPerHabit[l.habit_id]) weekValidationsPerHabit[l.habit_id] = {};
-        l.habit_validations.forEach((v) => {
-          weekValidationsPerHabit[l.habit_id][v.validator_id] = { validatorId: v.validator_id, status: v.status, comment: v.comment ?? null };
-        });
-      });
-      Object.keys(weekValidationsPerHabit).forEach((k) => {
-        weekValidationsPerHabit[k] = Object.values(weekValidationsPerHabit[k]);
-      });
-
       const processed = active
         .filter((h) => h.recurrence !== 'once' || !doneEver.has(h.id))
         .map((h) => {
           const weeklyCount = h.recurrence === 'weekly_x' ? (weeklyCountMap[h.id] || 0) : 0;
           const weeklyGoalMet = h.recurrence === 'weekly_x' && weeklyCount >= (h.weekly_target || 1);
-          const completedToday = (h.recurrence === 'daily' && doneToday.has(h.id)) || weeklyGoalMet;
+          const completedToday = doneToday.has(h.id);
           const logId = todayLogIdByHabit[h.id];
-          // weekly_x uses week-level aggregated validations; daily uses today's log only
-          const weeklyValidations = (h.recurrence === 'weekly_x' && weeklyCount > 0)
-            ? (weekValidationsPerHabit[h.id] ?? [])
-            : [];
-          const vCounts = h.recurrence === 'weekly_x'
-            ? (weeklyValidations.length > 0
-                ? {
-                    validatedCount: weeklyValidations.filter((v) => v.status === 'validated').length,
-                    rejectedCount:  weeklyValidations.filter((v) => v.status === 'rejected').length,
-                  }
-                : null)
-            : ((completedToday && logId && validationsMap[logId]) || null);
+          const vCounts = (completedToday && logId && validationsMap[logId]) || null;
           return {
             ...h,
             completedToday,
@@ -356,9 +331,7 @@ export default function HomeScreen() {
             weeklyGoalMet,
             todayValidatedCount: vCounts?.validatedCount ?? 0,
             todayRejectedCount:  vCounts?.rejectedCount  ?? 0,
-            todayValidations: h.recurrence === 'weekly_x'
-              ? weeklyValidations
-              : ((completedToday && logId) ? (todayValidationsPerLog[logId] ?? []) : []),
+            todayValidations: (completedToday && logId) ? (todayValidationsPerLog[logId] ?? []) : [],
             validators: validatorsPerHabit[h.id] ?? [],
           };
         });
@@ -393,11 +366,7 @@ export default function HomeScreen() {
     let statusColor = GRAY;
 
     if (item.completedToday) {
-      if (item.weeklyGoalMet) {
-        completedCardStyle = styles.habitCardValidated;
-        statusText = t('home.weekly_goal_met');
-        statusColor = '#2E7D32';
-      } else if (item.todayValidatedCount > 0) {
+      if (item.todayValidatedCount > 0) {
         completedCardStyle = styles.habitCardValidated;
         statusText = t('home.status_validated');
         statusColor = '#2E7D32';
@@ -410,6 +379,8 @@ export default function HomeScreen() {
         statusText = t('home.awaiting_validation');
         statusColor = '#F59E0B';
       }
+    } else if (item.weeklyGoalMet) {
+      completedCardStyle = styles.habitCardValidated;
     }
 
     const cat = item.category_id ? categoriesMap[item.category_id] : null;
@@ -422,12 +393,8 @@ export default function HomeScreen() {
     const overflowCount = voted.length - visibleVoters.length;
     const totalValidators = (item.validators ?? []).filter((v) => v.userId !== profile?.id).length;
 
-    const showValidators = (item.validators?.length ?? 0) > 0 && (
-      item.completedToday ||
-      (item.recurrence === 'weekly_x' && item.weeklyCount > 0)
-    );
-    const isCardTappable = item.completedToday ||
-      (item.recurrence === 'weekly_x' && item.weeklyCount > 0 && (item.validators?.length ?? 0) > 0);
+    const showValidators = (item.validators?.length ?? 0) > 0 && item.completedToday;
+    const isCardTappable = item.completedToday;
     const Card = isCardTappable ? TouchableOpacity : View;
     const cardPressProps = isCardTappable
       ? { onPress: () => setDetailHabit(item), activeOpacity: 0.92 }
@@ -460,6 +427,11 @@ export default function HomeScreen() {
             {t('home.expires', { date: formatExpiry(item.expires_at) })}
           </Text>
         ) : null}
+        {item.recurrence === 'weekly_x' ? (
+          <Text style={styles.weeklyProgressText}>
+            {t('home.weekly_progress', { done: item.weeklyCount, target: item.weekly_target })}
+          </Text>
+        ) : null}
         {item.completedToday ? (
           <View style={styles.completedRow}>
             <View style={styles.completedLeft}>
@@ -467,21 +439,21 @@ export default function HomeScreen() {
               <Text style={[styles.completedText, { color: statusColor }]}>{statusText}</Text>
             </View>
           </View>
+        ) : item.weeklyGoalMet ? (
+          <View style={styles.completedRow}>
+            <View style={styles.completedLeft}>
+              <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
+              <Text style={[styles.completedText, { color: '#2E7D32' }]}>{t('home.weekly_goal_met')}</Text>
+            </View>
+          </View>
         ) : (
-          <>
-            {item.recurrence === 'weekly_x' ? (
-              <Text style={styles.weeklyProgressText}>
-                {t('home.weekly_progress', { done: item.weeklyCount, target: item.weekly_target })}
-              </Text>
-            ) : null}
-            <TouchableOpacity
-              style={styles.completeBtn}
-              onPress={() => onCompleteHabit(item)}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.completeBtnText}>{t('home.complete')}</Text>
-            </TouchableOpacity>
-          </>
+          <TouchableOpacity
+            style={styles.completeBtn}
+            onPress={() => onCompleteHabit(item)}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.completeBtnText}>{t('home.complete')}</Text>
+          </TouchableOpacity>
         )}
         {showValidators ? (
           <View style={styles.validatorSection}>

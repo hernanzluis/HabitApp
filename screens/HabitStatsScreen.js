@@ -158,7 +158,6 @@ export default function HabitStatsScreen() {
     navigation.setOptions({
       title: habit?.title ?? '',
       headerShown: true,
-      headerBackButtonDisplayMode: 'minimal',
       headerBackTitle: '',
       headerStyle: { backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
       headerTitleStyle: { fontSize: 16, fontWeight: '700', color: TEXT },
