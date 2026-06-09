@@ -20,6 +20,7 @@ const BLUE = '#0A66C2';
 const TEXT = '#1D2226';
 const GRAY = '#666666';
 const GREEN = '#4CAF50';
+const YELLOW = '#F59E0B';
 const FLAME = GREEN;
 
 const DAY_LABELS_ES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -85,31 +86,43 @@ function calculateGeneralStreak(logs, assignedHabitIds, memberId) {
   return streak;
 }
 
-// 7 booleans (Mon→Sun) — true if the habit has at least one log that day this week
-function getWeekDots(logs, habitId) {
+// 7 states (Mon→Sun): 'validated' | 'pending' | 'none'
+function getWeekDots(logs, habitId, validatedLogIds) {
   const monday = getWeekStart();
-  const logDays = new Set(
-    logs.filter((l) => l.habit_id === habitId).map((l) => toDateKey(new Date(l.created_at)))
-  );
+  const dayLogsMap = {};
+  logs
+    .filter((l) => l.habit_id === habitId)
+    .forEach((l) => {
+      const key = toDateKey(new Date(l.created_at));
+      if (!dayLogsMap[key]) dayLogsMap[key] = [];
+      dayLogsMap[key].push(l.id);
+    });
   return Array.from({ length: 7 }, (_, i) => {
     const day = new Date(monday);
     day.setDate(monday.getDate() + i);
-    return logDays.has(toDateKey(day));
+    const ids = dayLogsMap[toDateKey(day)] || [];
+    if (ids.length === 0) return 'none';
+    return ids.some((id) => validatedLogIds.has(id)) ? 'validated' : 'pending';
   });
 }
 
-// 7 booleans — true if the member completed at least one assigned habit that day
-function getGeneralWeekDots(logs, assignedHabitIds, memberId) {
+// 7 states — 'validated' | 'pending' | 'none' for any assigned habit that day
+function getGeneralWeekDots(logs, assignedHabitIds, memberId, validatedLogIds) {
   const monday = getWeekStart();
-  const logDays = new Set(
-    logs
-      .filter((l) => l.user_id === memberId && assignedHabitIds.has(l.habit_id))
-      .map((l) => toDateKey(new Date(l.created_at)))
-  );
+  const dayLogsMap = {};
+  logs
+    .filter((l) => l.user_id === memberId && assignedHabitIds.has(l.habit_id))
+    .forEach((l) => {
+      const key = toDateKey(new Date(l.created_at));
+      if (!dayLogsMap[key]) dayLogsMap[key] = [];
+      dayLogsMap[key].push(l.id);
+    });
   return Array.from({ length: 7 }, (_, i) => {
     const day = new Date(monday);
     day.setDate(monday.getDate() + i);
-    return logDays.has(toDateKey(day));
+    const ids = dayLogsMap[toDateKey(day)] || [];
+    if (ids.length === 0) return 'none';
+    return ids.some((id) => validatedLogIds.has(id)) ? 'validated' : 'pending';
   });
 }
 
@@ -150,12 +163,15 @@ function calculateWeeklyStreak(logs, habitId, weeklyTarget) {
   return streak;
 }
 
-function WeeklyTargetDots({ count, target }) {
+function WeeklyTargetDots({ count, target, validatedCount = 0 }) {
   return (
     <View style={styles.targetDotsRow}>
-      {Array.from({ length: target }, (_, i) => (
-        <View key={i} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: i < count ? GREEN : '#E0E0E0' }} />
-      ))}
+      {Array.from({ length: target }, (_, i) => {
+        let bg = '#E0E0E0';
+        if (i < validatedCount) bg = GREEN;
+        else if (i < count) bg = YELLOW;
+        return <View key={i} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: bg }} />;
+      })}
     </View>
   );
 }
@@ -197,14 +213,17 @@ function OnceHabitCard({ habit, logs, t, locale }) {
 function WeekDots({ dots, dayLabels, size = 28, compact = false }) {
   return (
     <View style={compact ? styles.weekRowCompact : styles.weekRow}>
-      {dots.map((done, i) => (
+      {dots.map((state, i) => (
         <View key={i} style={compact ? styles.dotColCompact : styles.dotCol}>
           <Text style={styles.dotLabel}>{dayLabels[i]}</Text>
           <View style={{
             width: size,
             height: size,
             borderRadius: size / 2,
-            backgroundColor: done ? GREEN : '#E0E0E0',
+            backgroundColor:
+              state === 'validated' ? GREEN
+              : state === 'pending' ? YELLOW
+              : '#E0E0E0',
           }} />
         </View>
       ))}
@@ -229,6 +248,7 @@ export default function RankingScreen() {
   const [allLogs, setAllLogs] = useState([]);
   const [memberAssignmentsMap, setMemberAssignmentsMap] = useState({});
   const [activeHabitsWithCat, setActiveHabitsWithCat] = useState([]);
+  const [validatedLogIds, setValidatedLogIds] = useState(new Set());
 
   const loadActivity = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -293,6 +313,19 @@ export default function RankingScreen() {
       const assignments = assignmentsResult.data ?? [];
       const logs = [...(dailyLogsResult.data ?? []), ...(onceLogsResult.data ?? [])];
 
+      // Round trip 3: validated habit_validations for all daily logs
+      const allLogIds = (dailyLogsResult.data ?? []).map((l) => l.id);
+      let validatedIds = new Set();
+      if (allLogIds.length > 0) {
+        const { data: validationsData, error: validationsError } = await supabase
+          .from('habit_validations')
+          .select('habit_log_id')
+          .in('habit_log_id', allLogIds)
+          .eq('status', 'validated');
+        if (validationsError) throw validationsError;
+        validatedIds = new Set((validationsData ?? []).map((v) => v.habit_log_id));
+      }
+
       // Build userId → Set<habitId> map
       const memberAssignMap = {};
       allMemberIds.forEach((id) => { memberAssignMap[id] = new Set(); });
@@ -314,6 +347,7 @@ export default function RankingScreen() {
       setAllLogs(logs);
       setGroupMembers(allMembers.filter((m) => m.id !== user.id));
       setMemberAssignmentsMap(memberAssignMap);
+      setValidatedLogIds(validatedIds);
     } catch (e) {
       setError(e?.message || t('activity.error_load'));
     } finally {
@@ -364,9 +398,9 @@ export default function RankingScreen() {
       ) : (
         <>
           {myHabits.filter((h) => h.recurrence === 'daily').map((habit) => {
-            const dots = getWeekDots(myLogs, habit.id);
+            const dots = getWeekDots(myLogs, habit.id, validatedLogIds);
             const streak = calculateStreak(myLogs, habit.id);
-            const weekCompleted = dots.filter(Boolean).length;
+            const weekCompleted = dots.filter((s) => s !== 'none').length;
             return (
               <TouchableOpacity
                 key={habit.id}
@@ -402,6 +436,11 @@ export default function RankingScreen() {
           {myHabits.filter((h) => h.recurrence === 'weekly_x').map((habit) => {
             const wCount = getWeeklyTargetCount(myLogs, habit.id);
             const wStreak = calculateWeeklyStreak(myLogs, habit.id, habit.weekly_target || 1);
+            const monday = getWeekStart();
+            const weekLogIds = myLogs
+              .filter((l) => l.habit_id === habit.id && new Date(l.created_at) >= monday)
+              .map((l) => l.id);
+            const wValidatedCount = weekLogIds.filter((id) => validatedLogIds.has(id)).length;
             return (
               <TouchableOpacity
                 key={habit.id}
@@ -426,7 +465,7 @@ export default function RankingScreen() {
                     </Text>
                   ) : null}
                 </View>
-                <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} />
+                <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} validatedCount={wValidatedCount} />
                 <Text style={styles.weekSummary}>
                   {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
                 </Text>
@@ -485,9 +524,9 @@ export default function RankingScreen() {
                   ) : (
                     <>
                       {dailyMemberHabits.map((habit) => {
-                        const dots = getWeekDots(memberLogs, habit.id);
+                        const dots = getWeekDots(memberLogs, habit.id, validatedLogIds);
                         const streak = calculateStreak(memberLogs, habit.id);
-                        const weekCompleted = dots.filter(Boolean).length;
+                        const weekCompleted = dots.filter((s) => s !== 'none').length;
                         return (
                           <TouchableOpacity
                             key={habit.id}
@@ -523,6 +562,11 @@ export default function RankingScreen() {
                       {weeklyMemberHabits.map((habit) => {
                         const wCount = getWeeklyTargetCount(memberLogs, habit.id);
                         const wStreak = calculateWeeklyStreak(memberLogs, habit.id, habit.weekly_target || 1);
+                        const monday = getWeekStart();
+                        const weekLogIds = memberLogs
+                          .filter((l) => l.habit_id === habit.id && new Date(l.created_at) >= monday)
+                          .map((l) => l.id);
+                        const wValidatedCount = weekLogIds.filter((id) => validatedLogIds.has(id)).length;
                         return (
                           <TouchableOpacity
                             key={habit.id}
@@ -547,7 +591,7 @@ export default function RankingScreen() {
                                 </Text>
                               ) : null}
                             </View>
-                            <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} />
+                            <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} validatedCount={wValidatedCount} />
                             <Text style={styles.weekSummary}>
                               {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
                             </Text>
@@ -572,9 +616,9 @@ export default function RankingScreen() {
 
             // ── Non-admin: compact summary card (daily habits only for streak/dots) ──
             const dailyAssignedSet = new Set([...assignedSet].filter((id) => dailyHabitIdsSet.has(id)));
-            const dots = getGeneralWeekDots(allLogs, dailyAssignedSet, member.id);
+            const dots = getGeneralWeekDots(allLogs, dailyAssignedSet, member.id, validatedLogIds);
             const streak = calculateGeneralStreak(allLogs, dailyAssignedSet, member.id);
-            const weekCompleted = dots.filter(Boolean).length;
+            const weekCompleted = dots.filter((s) => s !== 'none').length;
 
             return (
               <View key={member.id} style={styles.memberCard}>
