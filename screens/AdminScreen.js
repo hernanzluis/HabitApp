@@ -176,6 +176,7 @@ export default function AdminScreen() {
   const [editMemberName, setEditMemberName] = useState('');
   const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberAvatarUrl, setEditMemberAvatarUrl] = useState(null);
+  const [editMemberRole, setEditMemberRole] = useState('user');
   const [savingMember, setSavingMember] = useState(false);
   const [memberModalError, setMemberModalError] = useState('');
 
@@ -662,6 +663,7 @@ export default function AdminScreen() {
     setEditMemberName(member.full_name || '');
     setEditMemberEmail(member.email || '');
     setEditMemberAvatarUrl(member.avatar_url || null);
+    setEditMemberRole(member.role || 'user');
     setMemberModalError('');
     setEditMemberVisible(true);
   };
@@ -718,18 +720,32 @@ export default function AdminScreen() {
     setSavingMember(true);
     setMemberModalError('');
     try {
+      // Verificar mínimo de admins si se baja de admin a user
+      const roleChanged = editMemberRole !== editingMember.role;
+      if (roleChanged && editingMember.role === 'admin' && editMemberRole !== 'admin') {
+        const adminCount = members.filter((m) => m.role === 'admin').length;
+        if (adminCount <= 1) {
+          setMemberModalError(t('admin.role_min_admin_error'));
+          setSavingMember(false);
+          return;
+        }
+      }
+
+      const updatePayload = {
+        full_name: editMemberName.trim(),
+        email: editMemberEmail.trim(),
+      };
+      if (roleChanged) updatePayload.role = editMemberRole;
+
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({
-          full_name: editMemberName.trim(),
-          email: editMemberEmail.trim(),
-          // TODO: actualizar también en auth.users cuando se implemente backend admin
-        })
+        .update(updatePayload)
         .eq('id', editingMember.id);
       if (updateError) throw updateError;
+
       setMembers((prev) => prev.map((m) =>
         m.id === editingMember.id
-          ? { ...m, full_name: editMemberName.trim(), email: editMemberEmail.trim(), avatar_url: editMemberAvatarUrl }
+          ? { ...m, full_name: editMemberName.trim(), email: editMemberEmail.trim(), avatar_url: editMemberAvatarUrl, role: editMemberRole }
           : m
       ));
       setEditMemberVisible(false);
@@ -1602,6 +1618,45 @@ export default function AdminScreen() {
                   autoCapitalize="none"
                   editable={!savingMember}
                 />
+
+                {/* Toggle de rol — solo si no es el usuario actual */}
+                {editingMember && editingMember.id !== currentUserId ? (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.inputLabel}>{t('admin.role_label')}</Text>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <TouchableOpacity
+                        onPress={() => setEditMemberRole('user')}
+                        activeOpacity={0.8}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          backgroundColor: editMemberRole === 'user' ? BLUE : '#F0F0F0',
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: editMemberRole === 'user' ? WHITE : GRAY }}>
+                          {t('admin.role_member')}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setEditMemberRole('admin')}
+                        activeOpacity={0.8}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          backgroundColor: editMemberRole === 'admin' ? BLUE : '#F0F0F0',
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: editMemberRole === 'admin' ? WHITE : GRAY }}>
+                          {t('admin.role_admin')}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
 
                 {memberModalError ? <Text style={styles.modalErrorText}>{memberModalError}</Text> : null}
 
