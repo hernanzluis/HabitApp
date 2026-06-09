@@ -246,6 +246,9 @@
     "last_validations": "Últimas validaciones",
     "days": "días",
     "no_comments": "Aún no hay comentarios de validación",
+    "legend_none": "Sin actividad",
+    "legend_pending": "Pendiente",
+    "legend_validated": "Validado",
     "error_load": "No se pudieron cargar las estadísticas."
   },
   "activity": {

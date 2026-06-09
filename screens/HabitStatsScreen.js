@@ -20,6 +20,7 @@ const TEXT = '#1D2226';
 const GRAY = '#666666';
 const GREEN = '#4CAF50';
 const GREEN_LIGHT = '#81C784';
+const YELLOW = '#F59E0B';
 const CELL_EMPTY = '#EEEEEE';
 
 const DAY_LABELS_ES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -86,8 +87,15 @@ function getMondayKey(date) {
   return toDateKey(d);
 }
 
-function getDaysInMonth(year, month, logs, habit) {
-  const logDaySet = new Set(logs.map((l) => toDateKey(new Date(l.created_at))));
+function getDaysInMonth(year, month, logs, habit, validatedLogIds) {
+  // Map de dateKey → array de logIds para ese día
+  const dayLogsMap = {};
+  logs.forEach((l) => {
+    const key = toDateKey(new Date(l.created_at));
+    if (!dayLogsMap[key]) dayLogsMap[key] = [];
+    dayLogsMap[key].push(l.id);
+  });
+
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -95,12 +103,16 @@ function getDaysInMonth(year, month, logs, habit) {
   const isWeekly = habit?.recurrence === 'weekly_x';
   const weeklyTarget = habit?.weekly_target ?? 1;
 
-  // Para weekly_x: contar logs por semana
+  // Para weekly_x: contar logs validados y totales por semana
   const weekCountMap = {};
+  const weekValidatedMap = {};
   if (isWeekly) {
     logs.forEach((l) => {
       const key = getMondayKey(new Date(l.created_at));
       weekCountMap[key] = (weekCountMap[key] || 0) + 1;
+      if (validatedLogIds.has(l.id)) {
+        weekValidatedMap[key] = (weekValidatedMap[key] || 0) + 1;
+      }
     });
   }
 
@@ -109,7 +121,8 @@ function getDaysInMonth(year, month, logs, habit) {
     const key = toDateKey(date);
     const isFuture = date > today;
     const isToday = key === todayKey;
-    const hasLog = !isFuture && logDaySet.has(key);
+    const dayIds = dayLogsMap[key] || [];
+    const hasLog = !isFuture && dayIds.length > 0;
 
     let cellColor = CELL_EMPTY;
     if (isFuture) {
@@ -117,9 +130,15 @@ function getDaysInMonth(year, month, logs, habit) {
     } else if (hasLog) {
       if (isWeekly) {
         const weekCount = weekCountMap[getMondayKey(date)] || 0;
-        cellColor = weekCount >= weeklyTarget ? GREEN : GREEN_LIGHT;
+        const weekValidated = weekValidatedMap[getMondayKey(date)] || 0;
+        if (weekCount >= weeklyTarget) {
+          cellColor = weekValidated >= weeklyTarget ? GREEN : YELLOW;
+        } else {
+          cellColor = YELLOW;
+        }
       } else {
-        cellColor = GREEN;
+        const hasValidated = dayIds.some((id) => validatedLogIds.has(id));
+        cellColor = hasValidated ? GREEN : YELLOW;
       }
     }
 
@@ -152,6 +171,7 @@ export default function HabitStatsScreen() {
   const [error, setError] = useState('');
   const [stats, setStats] = useState({ streakCurrent: 0, streakBest: 0, totalCompleted: 0, completionRate: 0 });
   const [habitLogs, setHabitLogs] = useState([]);
+  const [validatedLogIds, setValidatedLogIds] = useState(new Set());
   const [comments, setComments] = useState([]);
 
   useEffect(() => {
@@ -198,14 +218,24 @@ export default function HabitStatsScreen() {
       });
 
       const logIds = logs.map((l) => l.id);
-      const { data: valData } = await supabase
-        .from('habit_validations')
-        .select('id, habit_log_id, validator_id, comment, created_at')
-        .in('habit_log_id', logIds)
-        .eq('status', 'validated')
-        .not('comment', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(10);
+
+      const [{ data: allValidated }, { data: valData }] = await Promise.all([
+        supabase
+          .from('habit_validations')
+          .select('habit_log_id')
+          .in('habit_log_id', logIds)
+          .eq('status', 'validated'),
+        supabase
+          .from('habit_validations')
+          .select('id, habit_log_id, validator_id, comment, created_at')
+          .in('habit_log_id', logIds)
+          .eq('status', 'validated')
+          .not('comment', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(10),
+      ]);
+
+      setValidatedLogIds(new Set((allValidated ?? []).map((v) => v.habit_log_id)));
 
       const filtered = (valData ?? []).filter((v) => v.comment?.trim()).slice(0, 5);
 
@@ -256,7 +286,7 @@ export default function HabitStatsScreen() {
   const firstDayDow = new Date(curYear, curMonth, 1).getDay();
   const offset = firstDayDow === 0 ? 6 : firstDayDow - 1;
 
-  const days = getDaysInMonth(curYear, curMonth, habitLogs, habit);
+  const days = getDaysInMonth(curYear, curMonth, habitLogs, habit, validatedLogIds);
 
   // ── Loading ───────────────────────────────────────────────────────────
   if (loading) {
@@ -368,6 +398,22 @@ export default function HabitStatsScreen() {
             </View>
           ))}
         </View>
+
+        {/* Leyenda */}
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: CELL_EMPTY }]} />
+            <Text style={styles.legendLabel}>{t('stats.legend_none')}</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: YELLOW }]} />
+            <Text style={styles.legendLabel}>{t('stats.legend_pending')}</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: GREEN }]} />
+            <Text style={styles.legendLabel}>{t('stats.legend_validated')}</Text>
+          </View>
+        </View>
       </View>
 
       {/* ── Últimas validaciones ──────────────────────────────────────── */}
@@ -446,6 +492,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   calDayNum: { fontSize: 13, fontWeight: '500' },
+  // Legend
+  legend: { flexDirection: 'row', gap: 16, marginTop: 12, flexWrap: 'wrap' },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendLabel: { fontSize: 11, color: GRAY },
   // Comments
   emptyText: { fontSize: 13, color: GRAY, fontStyle: 'italic' },
   commentRow: {
