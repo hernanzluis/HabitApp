@@ -665,15 +665,23 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - CTA final + Footer
 - i18n completo ES/EN con detección automática de idioma del navegador
 
+**Página corporativa (detalles adicionales):**
+- Banner fijo encima del Nav: "Producto en desarrollo — Únete a la lista de espera" con enlace mailto:hernanz.luis@gmail.com. `z-[60]`, Nav desplazado a `top-[40px]`
+- Título de pestaña del navegador: "HabitTeam" (index.html)
+- Logo "HabitTeam" enlazado a `/` en todas las páginas (Nav con `<Link>` + scroll al top, Admin y MemberDetail con `<a href="/">`)
+
 **Panel de administración (privado /admin):**
 - Login con Supabase Auth restringido a usuarios con `role = 'admin'`
 - Protección de ruta: verificación de sesión y rol al montar, redirige a `/acceder` si no autorizado
 - Sidebar en desktop, tabs en móvil
+- **Actividad** (sección por defecto): 3 métricas (completados hoy, cumplimiento semanal %, validaciones pendientes); grid de tarjetas por miembro con avatar, racha general, X/Y completados hoy, 7 círculos L-D con tres estados de color, thumbnail foto reciente, última actividad, borde naranja si >3 días sin actividad; click en tarjeta navega a detalle de miembro
+- **Detalle de miembro** (`/admin/miembro/:userId`): calendario mensual navegable con tres estados de color, racha individual por hábito, últimas 3 fotos con lightbox, últimas 10 validaciones recibidas con validador/reaction/comentario
+- **Código de colores** (círculos y calendario): gris (#E5E7EB / #EEEEEE) = sin actividad; amarillo (#F59E0B) = log registrado pero sin validación `validated`; verde (#22C55E / #4CAF50) = log con al menos una validación `validated`
 - **Miembros:** tabla de miembros activos con rol y fecha de registro; tabla de invitaciones pendientes con código en monospace; modal "+ Añadir miembro" que genera código de activación de 6 dígitos con botón copiar; botón eliminar miembro con confirmación
 - **Hábitos:** tabla con categoría (punto de color), título, recurrencia, avatares de asignados y validadores, toggle activo/inactivo con actualización optimista; click en título abre modal de edición completo (campos + asignados + validadores precargados); modal "+ Nuevo hábito" con todos los campos de la app móvil (título, descripción, recurrencia, weekly_target, hora límite, fecha expiración, categoría, foto obligatoria, asignados, validadores)
 - **Categorías:** tabla de categorías personalizadas del grupo con botón eliminar; tabla de categorías predefinidas del sistema (solo lectura); modal "+ Nueva categoría" con selector de color (8 colores) y selector de icono (15 opciones en texto) con preview en tiempo real
 
-**Estado actual:** en producción en habitteam.app. Landing page completa con copy familiar y modelo de precios (Familiar gratis / Plus 4€ / Empresa a consultar). Panel de administración en /admin con gestión de miembros, hábitos y categorías. Login funcional con Supabase Auth restringido a admins. Despliegue en Vercel, dominio en Namecheap.
+**Estado actual:** en producción en habitteam.app. Landing page completa con banner de lista de espera, copy familiar y modelo de precios (Familiar gratis / Plus 4€ / Empresa a consultar). Panel de administración en /admin con sección Actividad (dashboard del grupo con código de colores gris/amarillo/verde), detalle de miembro con calendario mensual navegable, y gestión de miembros, hábitos y categorías. Login funcional con Supabase Auth restringido a admins. Despliegue en Vercel, dominio en Namecheap.
 
 ---
 
@@ -686,3 +694,5 @@ Cuando una tarea requiera tanto cambios en Supabase como cambios en el código, 
 - "Para Code:" con las instrucciones en otro bloque de código
 
 Nunca mezclar instrucciones manuales e instrucciones para Code en el mismo bloque.
+
+Cuando las instrucciones sean para un repositorio específico, indicar siempre al principio del bloque de código el repositorio destino: "Para Code (en HabitApp):" o "Para Code (en habitteam-web):". Esto evita ejecutar instrucciones en el repositorio equivocado.
