@@ -234,7 +234,9 @@
     "pending_code_title": "Pending code",
     "cancel_invitation": "Cancel invitation",
     "cancel_invitation_confirm": "Delete this activation code?",
-    "family_welcome": "Welcome! Start by adding your family members"
+    "family_welcome": "Welcome! Start by adding your family members",
+    "delete_member_title": "Delete member",
+    "delete_member_message": "Delete {{name}} from the group? All their data, habits and validations will be deleted. This action cannot be undone."
   },
   "nav": {
     "home": "Home",

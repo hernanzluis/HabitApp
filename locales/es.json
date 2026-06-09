@@ -201,7 +201,9 @@
     "pending_code_title": "Código pendiente",
     "cancel_invitation": "Cancelar invitación",
     "cancel_invitation_confirm": "¿Eliminar este código de activación?",
-    "family_welcome": "¡Bienvenido! Empieza añadiendo a los miembros de tu familia"
+    "family_welcome": "¡Bienvenido! Empieza añadiendo a los miembros de tu familia",
+    "delete_member_title": "Eliminar miembro",
+    "delete_member_message": "¿Eliminar a {{name}} del grupo? Se eliminarán todos sus datos, hábitos y validaciones. Esta acción no se puede deshacer."
   },
   "history": {
     "header_title": "Historial",

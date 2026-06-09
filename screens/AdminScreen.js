@@ -715,6 +715,32 @@ export default function AdminScreen() {
     ]);
   };
 
+  const handleDeleteMember = () => {
+    if (!editingMember) return;
+    Alert.alert(
+      t('admin.delete_member_title'),
+      t('admin.delete_member_message', { name: editingMember.full_name }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('admin.delete_member_title'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.from('profiles').delete().eq('id', editingMember.id);
+              if (error) throw error;
+              setMembers((prev) => prev.filter((m) => m.id !== editingMember.id));
+              setEditMemberVisible(false);
+              setEditingMember(null);
+            } catch (e) {
+              Alert.alert(t('common.error'), e?.message || t('admin.error_load'));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleSaveMember = async () => {
     if (!editingMember) return;
     setSavingMember(true);
@@ -961,10 +987,9 @@ export default function AdminScreen() {
             {activeTab === 'family' ? (
               <>
                 {/* Miembros activos */}
-                {members
-                  .filter((m) => m.id !== currentUserId)
-                  .map((m) => {
+                {members.map((m) => {
                     const initial = (m.full_name || '?').charAt(0).toUpperCase();
+                    const isMe = m.id === currentUserId;
                     return (
                       <View key={m.id}>
                         <TouchableOpacity
@@ -977,9 +1002,15 @@ export default function AdminScreen() {
                             <Text style={styles.familyMemberName} numberOfLines={1}>{m.full_name || '—'}</Text>
                             <Text style={styles.familyMemberEmail} numberOfLines={1}>{m.email || '—'}</Text>
                           </View>
-                          <View style={styles.familyStatusActive}>
-                            <Text style={styles.familyStatusActiveText}>{t('admin.member_status_active')}</Text>
-                          </View>
+                          {isMe ? (
+                            <View style={[styles.familyStatusActive, { backgroundColor: '#E8E8E8' }]}>
+                              <Text style={[styles.familyStatusActiveText, { color: GRAY }]}>Tú</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.familyStatusActive}>
+                              <Text style={styles.familyStatusActiveText}>{t('admin.member_status_active')}</Text>
+                            </View>
+                          )}
                           <Ionicons name="chevron-forward" size={16} color={GRAY} style={{ marginLeft: 4 }} />
                         </TouchableOpacity>
                         <View style={styles.separator} />
@@ -1013,7 +1044,7 @@ export default function AdminScreen() {
                     </View>
                   );
                 })}
-                {members.filter((m) => m.id !== currentUserId).length === 0 && pendingMembers.length === 0 ? (
+                {members.filter((m) => m.id !== currentUserId).length === 0 && pendingMembers.length === 0 && members.length <= 1 ? (
                   <View style={styles.familyWelcomeBox}>
                     <Ionicons name="people-outline" size={40} color={BLUE} />
                     <Text style={styles.familyWelcomeText}>{t('admin.family_welcome')}</Text>
@@ -1668,6 +1699,21 @@ export default function AdminScreen() {
                 >
                   {savingMember ? <ActivityIndicator color={WHITE} /> : <Text style={styles.saveBtnText}>{t('common.save')}</Text>}
                 </TouchableOpacity>
+
+                {editingMember && editingMember.id !== currentUserId ? (
+                  <>
+                    <View style={{ height: 1, backgroundColor: '#F0F0F0', marginVertical: 16 }} />
+                    <TouchableOpacity
+                      onPress={handleDeleteMember}
+                      activeOpacity={0.7}
+                      style={{ alignSelf: 'flex-start' }}
+                    >
+                      <Text style={{ fontSize: 14, color: '#CC0000', fontWeight: '600' }}>
+                        {t('admin.delete_member_title')}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : null}
               </ScrollView>
             </Pressable>
           </Pressable>
