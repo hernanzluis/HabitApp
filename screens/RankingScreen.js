@@ -163,14 +163,21 @@ function calculateWeeklyStreak(logs, habitId, weeklyTarget) {
   return streak;
 }
 
-function WeeklyTargetDots({ count, target, validatedCount = 0 }) {
+function WeeklyTargetDots({ count, target, validatedCount = 0, weekLogDates = [], dayLabels = [] }) {
   return (
     <View style={styles.targetDotsRow}>
       {Array.from({ length: target }, (_, i) => {
         let bg = '#E0E0E0';
         if (i < validatedCount) bg = GREEN;
         else if (i < count) bg = YELLOW;
-        return <View key={i} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: bg }} />;
+        const date = i < count ? weekLogDates[i] : null;
+        const label = date ? dayLabels[(date.getDay() + 6) % 7] ?? '' : '';
+        return (
+          <View key={i} style={styles.targetDotWrapper}>
+            <Text style={styles.targetDotLabel}>{label}</Text>
+            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: bg }} />
+          </View>
+        );
       })}
     </View>
   );
@@ -437,9 +444,11 @@ export default function RankingScreen() {
             const wCount = getWeeklyTargetCount(myLogs, habit.id);
             const wStreak = calculateWeeklyStreak(myLogs, habit.id, habit.weekly_target || 1);
             const monday = getWeekStart();
-            const weekLogIds = myLogs
+            const weekLogs = myLogs
               .filter((l) => l.habit_id === habit.id && new Date(l.created_at) >= monday)
-              .map((l) => l.id);
+              .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            const weekLogIds = weekLogs.map((l) => l.id);
+            const weekLogDates = weekLogs.map((l) => new Date(l.created_at));
             const wValidatedCount = weekLogIds.filter((id) => validatedLogIds.has(id)).length;
             return (
               <TouchableOpacity
@@ -465,7 +474,7 @@ export default function RankingScreen() {
                     </Text>
                   ) : null}
                 </View>
-                <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} validatedCount={wValidatedCount} />
+                <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} validatedCount={wValidatedCount} weekLogDates={weekLogDates} dayLabels={dayLabels} />
                 <Text style={styles.weekSummary}>
                   {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
                 </Text>
@@ -563,9 +572,11 @@ export default function RankingScreen() {
                         const wCount = getWeeklyTargetCount(memberLogs, habit.id);
                         const wStreak = calculateWeeklyStreak(memberLogs, habit.id, habit.weekly_target || 1);
                         const monday = getWeekStart();
-                        const weekLogIds = memberLogs
+                        const weekLogs = memberLogs
                           .filter((l) => l.habit_id === habit.id && new Date(l.created_at) >= monday)
-                          .map((l) => l.id);
+                          .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                        const weekLogIds = weekLogs.map((l) => l.id);
+                        const weekLogDates = weekLogs.map((l) => new Date(l.created_at));
                         const wValidatedCount = weekLogIds.filter((id) => validatedLogIds.has(id)).length;
                         return (
                           <TouchableOpacity
@@ -591,7 +602,7 @@ export default function RankingScreen() {
                                 </Text>
                               ) : null}
                             </View>
-                            <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} validatedCount={wValidatedCount} />
+                            <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} validatedCount={wValidatedCount} weekLogDates={weekLogDates} dayLabels={dayLabels} />
                             <Text style={styles.weekSummary}>
                               {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
                             </Text>
@@ -858,6 +869,17 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
     flexWrap: 'wrap',
+  },
+  targetDotWrapper: {
+    alignItems: 'center',
+  },
+  targetDotLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: GRAY,
+    marginBottom: 2,
+    height: 14,
+    lineHeight: 14,
   },
   // Once habits
   eventsLabel: {
