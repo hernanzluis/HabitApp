@@ -523,9 +523,7 @@ export default function ValidateHabitScreen() {
                         style: 'destructive',
                         onPress: async () => {
                           const { error: delErr } = await supabase
-                            .from('habits')
-                            .delete()
-                            .eq('id', item.habit.id);
+                            .rpc('delete_expired_habit', { habit_id: item.habit.id });
                           if (!delErr) {
                             setExpiredItems((prev) => prev.filter((r) => r.habit.id !== item.habit.id));
                           }
