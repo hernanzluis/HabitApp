@@ -236,7 +236,7 @@ function AppStack() {
       <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="Admin" component={AdminScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="HabitStats" component={HabitStatsScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="HabitStats" component={HabitStatsScreen} options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
     </Stack.Navigator>
   );
 }
