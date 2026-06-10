@@ -90,6 +90,8 @@
     "error_load": "Could not load data. Check your connection.",
     "weekly_progress": "{{done}} of {{target}} times this week",
     "weekly_goal_met": "✓ Weekly goal met",
+    "monthly_progress": "{{done}} of {{target}} times this month",
+    "monthly_goal_met": "✓ Monthly goal met",
     "validators_approved": "Approved by",
     "validators_rejected": "Rejected by",
     "validators_pending": "Pending validation",
@@ -190,7 +192,9 @@
     "habit_recurrence_daily": "Daily",
     "habit_recurrence_once": "Once",
     "recurrence_weekly": "X times/week",
+    "recurrence_monthly": "X times/month",
     "weekly_target_label": "How many times per week?",
+    "monthly_target_label": "How many times per month?",
     "habit_assign_label": "Assign to",
     "habit_save": "Save",
     "habit_assigned_count": "{{count}} assigned",
@@ -256,9 +260,12 @@
     "legend_pending": "Pending",
     "legend_validated": "Validated",
     "weekly_target_label": "{{count}} times per week",
+    "monthly_target_label": "{{count}} times per month",
     "once_label": "One-time habit",
     "current_streak_weeks": "Current streak (wks)",
     "best_streak_weeks": "Best streak (wks)",
+    "current_streak_months": "Current streak (mo.)",
+    "best_streak_months": "Best streak (mo.)",
     "error_load": "Could not load stats."
   },
   "activity": {
@@ -273,6 +280,7 @@
     "pending_once": "Pending",
     "days": "days",
     "weeks": "{{count}} weeks",
+    "months": "{{count}} months",
     "week_completed": "{{completed}} completed this week",
     "member_progress": "{{completed}} of {{total}} days this week"
   }

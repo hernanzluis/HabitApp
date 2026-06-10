@@ -78,6 +78,50 @@ function calculateCompletionRate(logs) {
   return Math.min(100, Math.round((uniqueDays.size / totalDays) * 100));
 }
 
+function calculateMonthlyStreakForStats(logs, monthlyTarget) {
+  if (!logs.length) return 0;
+  let year = new Date().getFullYear();
+  let month = new Date().getMonth();
+  const currentCount = logs.filter((l) => {
+    const d = new Date(l.created_at);
+    return d >= new Date(year, month, 1) && d < new Date(year, month + 1, 1);
+  }).length;
+  if (currentCount < monthlyTarget) {
+    month--; if (month < 0) { month = 11; year--; }
+  }
+  let streak = 0;
+  while (true) {
+    const mStart = new Date(year, month, 1);
+    const mEnd = new Date(year, month + 1, 1);
+    const count = logs.filter((l) => { const d = new Date(l.created_at); return d >= mStart && d < mEnd; }).length;
+    if (count < monthlyTarget) break;
+    streak++;
+    month--; if (month < 0) { month = 11; year--; }
+  }
+  return streak;
+}
+
+function calculateMonthlyBestStreak(logs, monthlyTarget) {
+  if (!logs.length) return 0;
+  const monthCountMap = {};
+  logs.forEach((l) => {
+    const d = new Date(l.created_at);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    monthCountMap[key] = (monthCountMap[key] || 0) + 1;
+  });
+  const qualified = Object.entries(monthCountMap)
+    .filter(([, count]) => count >= monthlyTarget)
+    .map(([key]) => { const [y, m] = key.split('-').map(Number); return y * 12 + m; })
+    .sort((a, b) => a - b);
+  let best = 0, cur = 0, prev = null;
+  for (const w of qualified) {
+    cur = prev !== null && w - prev === 1 ? cur + 1 : 1;
+    if (cur > best) best = cur;
+    prev = w;
+  }
+  return best;
+}
+
 function calculateWeeklyStreakForStats(logs, weeklyTarget) {
   if (!logs.length) return 0;
   const weekCountMap = {};
@@ -202,6 +246,7 @@ export default function HabitStatsScreen() {
 
   const accentColor = habit?.category?.color ?? BLUE;
   const isWeekly = habit?.recurrence === 'weekly_x';
+  const isMonthly = habit?.recurrence === 'monthly_x';
   const dayLabels = i18n.language === 'es' ? DAY_LABELS_ES : DAY_LABELS_EN;
   const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
 
@@ -257,10 +302,14 @@ export default function HabitStatsScreen() {
         return;
       }
 
-      const target = habit?.weekly_target ?? 1;
+      const target = isWeekly ? (habit?.weekly_target ?? 1) : isMonthly ? (habit?.monthly_target ?? 1) : 1;
       setStats({
-        streakCurrent:  isWeekly ? calculateWeeklyStreakForStats(logs, target) : calculateCurrentStreak(logs),
-        streakBest:     isWeekly ? calculateWeeklyBestStreak(logs, target)     : calculateBestStreak(logs),
+        streakCurrent:  isWeekly  ? calculateWeeklyStreakForStats(logs, target)
+                      : isMonthly ? calculateMonthlyStreakForStats(logs, target)
+                      : calculateCurrentStreak(logs),
+        streakBest:     isWeekly  ? calculateWeeklyBestStreak(logs, target)
+                      : isMonthly ? calculateMonthlyBestStreak(logs, target)
+                      : calculateBestStreak(logs),
         totalCompleted: logs.length,
         completionRate: calculateCompletionRate(logs),
       });
@@ -371,12 +420,14 @@ export default function HabitStatsScreen() {
       <View style={styles.section}>
         {isWeekly ? (
           <Text style={styles.habitTypeLabel}>{t('stats.weekly_target_label', { count: habit?.weekly_target ?? 1 })}</Text>
+        ) : isMonthly ? (
+          <Text style={styles.habitTypeLabel}>{t('stats.monthly_target_label', { count: habit?.monthly_target ?? 1 })}</Text>
         ) : habit?.recurrence === 'once' ? (
           <Text style={styles.habitTypeLabel}>{t('stats.once_label')}</Text>
         ) : null}
         <View style={styles.statsGrid}>
-          <StatBox value={stats.streakCurrent} label={isWeekly ? t('stats.current_streak_weeks') : t('stats.current_streak')} />
-          <StatBox value={stats.streakBest}    label={isWeekly ? t('stats.best_streak_weeks')    : t('stats.best_streak')} />
+          <StatBox value={stats.streakCurrent} label={isWeekly ? t('stats.current_streak_weeks') : isMonthly ? t('stats.current_streak_months') : t('stats.current_streak')} />
+          <StatBox value={stats.streakBest}    label={isWeekly ? t('stats.best_streak_weeks')    : isMonthly ? t('stats.best_streak_months')    : t('stats.best_streak')} />
           <StatBox value={stats.totalCompleted} label={t('stats.total_completed')} />
           <StatBox value={`${stats.completionRate}%`} label={t('stats.completion_rate')} />
         </View>

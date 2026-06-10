@@ -145,6 +145,7 @@ export default function AdminScreen() {
   const [selectedMembers, setSelectedMembers] = useState(new Set());
   const [validatorIds, setValidatorIds] = useState(new Set());
   const [weeklyTarget, setWeeklyTarget] = useState(3);
+  const [monthlyTarget, setMonthlyTarget] = useState(5);
   const [photoRequired, setPhotoRequired] = useState(true);
   const [savingHabit, setSavingHabit] = useState(false);
   const [modalError, setModalError] = useState('');
@@ -242,7 +243,7 @@ export default function AdminScreen() {
       ] = await Promise.all([
         supabase
           .from('habits')
-          .select('id, title, description, recurrence, is_active, expires_at, due_time, category_id, weekly_target, photo_required')
+          .select('id, title, description, recurrence, is_active, expires_at, due_time, category_id, weekly_target, monthly_target, photo_required')
           .eq('company_id', profile.company_id)
           .order('created_at', { ascending: false }),
         supabase
@@ -410,6 +411,7 @@ export default function AdminScreen() {
     setSelectedMembers(new Set());
     setValidatorIds(new Set());
     setWeeklyTarget(3);
+    setMonthlyTarget(5);
     setPhotoRequired(true);
     setModalError('');
     setCreateModalVisible(true);
@@ -453,6 +455,7 @@ export default function AdminScreen() {
           due_time: newRecurrence === 'daily' && dueTime ? `${formatDisplayTime(dueTime)}:00` : null,
           expires_at: newRecurrence === 'once' ? buildExpiresAt(expiresDate, expiresTime) : null,
           weekly_target: newRecurrence === 'weekly_x' ? weeklyTarget : null,
+          monthly_target: newRecurrence === 'monthly_x' ? monthlyTarget : null,
           photo_required: photoRequired,
         })
         .select('id')
@@ -519,6 +522,7 @@ export default function AdminScreen() {
     } else { setExpiresDate(null); setExpiresTime(null); }
 
     setWeeklyTarget(habit.weekly_target ?? 3);
+    setMonthlyTarget(habit.monthly_target ?? 5);
     setPhotoRequired(habit.photo_required !== false);
     setShowDuePicker(false);
     setShowExpDatePicker(false);
@@ -543,6 +547,7 @@ export default function AdminScreen() {
         due_time: newRecurrence === 'daily' && dueTime ? `${formatDisplayTime(dueTime)}:00` : null,
         expires_at: newRecurrence === 'once' ? buildExpiresAt(expiresDate, expiresTime) : null,
         weekly_target: newRecurrence === 'weekly_x' ? weeklyTarget : null,
+        monthly_target: newRecurrence === 'monthly_x' ? monthlyTarget : null,
         photo_required: photoRequired,
       };
       const { error: updateError } = await supabase
@@ -604,6 +609,11 @@ export default function AdminScreen() {
             <Text style={styles.habitExpires}>
               {t('admin.habit_expires', { date: formatDate(item.expires_at, locale) })}
             </Text>
+          ) : null}
+          {item.recurrence === 'weekly_x' && item.weekly_target ? (
+            <Text style={styles.habitExpires}>{item.weekly_target}× {t('admin.recurrence_weekly')}</Text>
+          ) : item.recurrence === 'monthly_x' && item.monthly_target ? (
+            <Text style={styles.habitExpires}>{item.monthly_target}× {t('admin.recurrence_monthly')}</Text>
           ) : null}
           <Text style={styles.habitAssigned}>
             {t('admin.habit_assigned_count', { count: item.assignedCount })}
@@ -1241,9 +1251,10 @@ export default function AdminScreen() {
               <Text style={styles.fieldLabel}>{t('admin.habit_recurrence_label')}</Text>
               <View style={styles.pillRow}>
                 {[
-                  { value: 'daily',    label: t('admin.habit_recurrence_daily') },
-                  { value: 'once',     label: t('admin.habit_recurrence_once') },
-                  { value: 'weekly_x', label: t('admin.recurrence_weekly') },
+                  { value: 'daily',     label: t('admin.habit_recurrence_daily') },
+                  { value: 'once',      label: t('admin.habit_recurrence_once') },
+                  { value: 'weekly_x',  label: t('admin.recurrence_weekly') },
+                  { value: 'monthly_x', label: t('admin.recurrence_monthly') },
                 ].map((opt) => (
                   <TouchableOpacity
                     key={opt.value}
@@ -1277,6 +1288,32 @@ export default function AdminScreen() {
                       style={[styles.weeklyTargetBtn, weeklyTarget >= 7 && styles.btnDisabled]}
                       activeOpacity={0.7}
                       disabled={weeklyTarget >= 7}
+                    >
+                      <Text style={styles.weeklyTargetBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
+              {/* Veces por mes — solo para monthly_x */}
+              {newRecurrence === 'monthly_x' && (
+                <>
+                  <Text style={styles.fieldLabel}>{t('admin.monthly_target_label')}</Text>
+                  <View style={styles.weeklyTargetSelector}>
+                    <TouchableOpacity
+                      onPress={() => setMonthlyTarget((p) => Math.max(1, p - 1))}
+                      style={[styles.weeklyTargetBtn, monthlyTarget <= 1 && styles.btnDisabled]}
+                      activeOpacity={0.7}
+                      disabled={monthlyTarget <= 1}
+                    >
+                      <Text style={styles.weeklyTargetBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.weeklyTargetValue}>{monthlyTarget}</Text>
+                    <TouchableOpacity
+                      onPress={() => setMonthlyTarget((p) => Math.min(28, p + 1))}
+                      style={[styles.weeklyTargetBtn, monthlyTarget >= 28 && styles.btnDisabled]}
+                      activeOpacity={0.7}
+                      disabled={monthlyTarget >= 28}
                     >
                       <Text style={styles.weeklyTargetBtnText}>+</Text>
                     </TouchableOpacity>
@@ -1494,9 +1531,10 @@ export default function AdminScreen() {
               <Text style={styles.fieldLabel}>{t('admin.habit_recurrence_label')}</Text>
               <View style={styles.pillRow}>
                 {[
-                  { value: 'daily',    label: t('admin.habit_recurrence_daily') },
-                  { value: 'once',     label: t('admin.habit_recurrence_once') },
-                  { value: 'weekly_x', label: t('admin.recurrence_weekly') },
+                  { value: 'daily',     label: t('admin.habit_recurrence_daily') },
+                  { value: 'once',      label: t('admin.habit_recurrence_once') },
+                  { value: 'weekly_x',  label: t('admin.recurrence_weekly') },
+                  { value: 'monthly_x', label: t('admin.recurrence_monthly') },
                 ].map((opt) => (
                   <TouchableOpacity key={opt.value} style={[styles.pill, newRecurrence === opt.value && styles.pillActive]} onPress={() => { setNewRecurrence(opt.value); setDueTime(null); setExpiresDate(null); setExpiresTime(null); }} activeOpacity={0.8}>
                     <Text style={[styles.pillText, newRecurrence === opt.value && styles.pillTextActive]}>{opt.label}</Text>
@@ -1513,6 +1551,21 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                     <Text style={styles.weeklyTargetValue}>{weeklyTarget}</Text>
                     <TouchableOpacity onPress={() => setWeeklyTarget((p) => Math.min(7, p + 1))} style={[styles.weeklyTargetBtn, weeklyTarget >= 7 && styles.btnDisabled]} activeOpacity={0.7} disabled={weeklyTarget >= 7}>
+                      <Text style={styles.weeklyTargetBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
+              {newRecurrence === 'monthly_x' && (
+                <>
+                  <Text style={styles.fieldLabel}>{t('admin.monthly_target_label')}</Text>
+                  <View style={styles.weeklyTargetSelector}>
+                    <TouchableOpacity onPress={() => setMonthlyTarget((p) => Math.max(1, p - 1))} style={[styles.weeklyTargetBtn, monthlyTarget <= 1 && styles.btnDisabled]} activeOpacity={0.7} disabled={monthlyTarget <= 1}>
+                      <Text style={styles.weeklyTargetBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.weeklyTargetValue}>{monthlyTarget}</Text>
+                    <TouchableOpacity onPress={() => setMonthlyTarget((p) => Math.min(28, p + 1))} style={[styles.weeklyTargetBtn, monthlyTarget >= 28 && styles.btnDisabled]} activeOpacity={0.7} disabled={monthlyTarget >= 28}>
                       <Text style={styles.weeklyTargetBtnText}>+</Text>
                     </TouchableOpacity>
                   </View>

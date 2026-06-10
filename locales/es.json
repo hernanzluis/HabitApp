@@ -90,6 +90,8 @@
     "error_load": "No se pudieron cargar los datos. Revisa tu conexión.",
     "weekly_progress": "{{done}} de {{target}} veces esta semana",
     "weekly_goal_met": "✓ Objetivo cumplido esta semana",
+    "monthly_progress": "{{done}} de {{target}} veces este mes",
+    "monthly_goal_met": "✓ Objetivo cumplido este mes",
     "validators_approved": "Aprobado por",
     "validators_rejected": "Rechazado por",
     "validators_pending": "Pendiente de validar",
@@ -157,7 +159,9 @@
     "habit_recurrence_daily": "Diario",
     "habit_recurrence_once": "Una vez",
     "recurrence_weekly": "X veces/semana",
+    "recurrence_monthly": "X veces/mes",
     "weekly_target_label": "¿Cuántas veces por semana?",
+    "monthly_target_label": "¿Cuántas veces al mes?",
     "habit_assign_label": "Asignar a",
     "habit_save": "Guardar",
     "habit_assigned_count": "{{count}} asignado(s)",
@@ -256,9 +260,12 @@
     "legend_pending": "Pendiente",
     "legend_validated": "Validado",
     "weekly_target_label": "{{count}} veces por semana",
+    "monthly_target_label": "{{count}} veces por mes",
     "once_label": "Hábito único",
     "current_streak_weeks": "Racha actual (sem.)",
     "best_streak_weeks": "Mejor racha (sem.)",
+    "current_streak_months": "Racha actual (mes.)",
+    "best_streak_months": "Mejor racha (mes.)",
     "error_load": "No se pudieron cargar las estadísticas."
   },
   "activity": {
@@ -273,6 +280,7 @@
     "pending_once": "Pendiente",
     "days": "días",
     "weeks": "{{count}} semanas",
+    "months": "{{count}} meses",
     "week_completed": "{{completed}} completados esta semana",
     "member_progress": "{{completed}} de {{total}} días esta semana"
   }

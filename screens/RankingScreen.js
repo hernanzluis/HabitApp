@@ -183,6 +183,65 @@ function WeeklyTargetDots({ count, target, validatedCount = 0, weekLogDates = []
   );
 }
 
+function getMonthStart() {
+  const d = new Date();
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getMonthlyTargetCount(logs, habitId) {
+  const start = getMonthStart();
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+  return logs.filter((l) => l.habit_id === habitId && new Date(l.created_at) >= start && new Date(l.created_at) < end).length;
+}
+
+function calculateMonthlyStreak(logs, habitId, monthlyTarget) {
+  const habitLogs = logs.filter((l) => l.habit_id === habitId);
+  if (!habitLogs.length) return 0;
+  let year = new Date().getFullYear();
+  let month = new Date().getMonth();
+  const currentCount = habitLogs.filter((l) => {
+    const d = new Date(l.created_at);
+    return d >= new Date(year, month, 1) && d < new Date(year, month + 1, 1);
+  }).length;
+  if (currentCount < monthlyTarget) {
+    month--;
+    if (month < 0) { month = 11; year--; }
+  }
+  let streak = 0;
+  while (true) {
+    const mStart = new Date(year, month, 1);
+    const mEnd = new Date(year, month + 1, 1);
+    const count = habitLogs.filter((l) => { const d = new Date(l.created_at); return d >= mStart && d < mEnd; }).length;
+    if (count < monthlyTarget) break;
+    streak++;
+    month--;
+    if (month < 0) { month = 11; year--; }
+  }
+  return streak;
+}
+
+function MonthlyTargetDots({ count, target, validatedCount = 0, monthLogDates = [] }) {
+  return (
+    <View style={styles.targetDotsRow}>
+      {Array.from({ length: target }, (_, i) => {
+        let bg = '#E0E0E0';
+        if (i < validatedCount) bg = GREEN;
+        else if (i < count) bg = YELLOW;
+        const date = i < count ? monthLogDates[i] : null;
+        const label = date ? String(date.getDate()) : '';
+        return (
+          <View key={i} style={styles.targetDotWrapper}>
+            <Text style={styles.targetDotLabel}>{label}</Text>
+            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: bg }} />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function formatExpiryDate(dateStr, locale) {
   if (!dateStr) return null;
   return new Date(dateStr).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -281,7 +340,7 @@ export default function RankingScreen() {
       const [profilesResult, catsResult, habitsResult] = await Promise.all([
         supabase.from('profiles').select('id, full_name, avatar_url').eq('company_id', companyId),
         supabase.from('categories').select('id, name, icon, color').or(`company_id.is.null,company_id.eq.${companyId}`),
-        supabase.from('habits').select('id, title, category_id, recurrence, expires_at, weekly_target').eq('company_id', companyId).eq('is_active', true),
+        supabase.from('habits').select('id, title, category_id, recurrence, expires_at, weekly_target, monthly_target').eq('company_id', companyId).eq('is_active', true),
       ]);
       if (profilesResult.error) throw profilesResult.error;
       if (habitsResult.error) throw habitsResult.error;
@@ -295,19 +354,24 @@ export default function RankingScreen() {
       (catsResult.data ?? []).forEach((c) => { catsMap[c.id] = c; });
 
       // Split habits by recurrence for separate log queries
-      const dailyHabitIds = activeHabits.filter((h) => h.recurrence === 'daily' || h.recurrence === 'weekly_x').map((h) => h.id);
-      const onceHabitIds  = activeHabits.filter((h) => h.recurrence === 'once').map((h) => h.id);
+      const dailyHabitIds   = activeHabits.filter((h) => h.recurrence === 'daily' || h.recurrence === 'weekly_x').map((h) => h.id);
+      const monthlyHabitIds = activeHabits.filter((h) => h.recurrence === 'monthly_x').map((h) => h.id);
+      const onceHabitIds    = activeHabits.filter((h) => h.recurrence === 'once').map((h) => h.id);
 
-      // Round trip 2: assignments + daily logs (30d) + once logs (all-time) — all parallel
+      // Round trip 2: assignments + daily logs (30d) + monthly logs (60d) + once logs (all-time)
       const thirtyDaysAgo = get30DaysAgo();
+      const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60); sixtyDaysAgo.setHours(0, 0, 0, 0);
       const hasData = activeHabitIds.length > 0 && allMemberIds.length > 0;
 
-      const [assignmentsResult, dailyLogsResult, onceLogsResult] = await Promise.all([
+      const [assignmentsResult, dailyLogsResult, monthlyLogsResult, onceLogsResult] = await Promise.all([
         hasData
           ? supabase.from('habit_assignments').select('habit_id, user_id').in('habit_id', activeHabitIds).in('user_id', allMemberIds)
           : Promise.resolve({ data: [], error: null }),
         dailyHabitIds.length > 0 && allMemberIds.length > 0
           ? supabase.from('habit_logs').select('id, habit_id, user_id, created_at').in('user_id', allMemberIds).in('habit_id', dailyHabitIds).gte('created_at', thirtyDaysAgo.toISOString())
+          : Promise.resolve({ data: [], error: null }),
+        monthlyHabitIds.length > 0 && allMemberIds.length > 0
+          ? supabase.from('habit_logs').select('id, habit_id, user_id, created_at').in('user_id', allMemberIds).in('habit_id', monthlyHabitIds).gte('created_at', sixtyDaysAgo.toISOString())
           : Promise.resolve({ data: [], error: null }),
         onceHabitIds.length > 0 && allMemberIds.length > 0
           ? supabase.from('habit_logs').select('id, habit_id, user_id, created_at').in('user_id', allMemberIds).in('habit_id', onceHabitIds)
@@ -315,13 +379,14 @@ export default function RankingScreen() {
       ]);
       if (assignmentsResult.error) throw assignmentsResult.error;
       if (dailyLogsResult.error) throw dailyLogsResult.error;
+      if (monthlyLogsResult.error) throw monthlyLogsResult.error;
       if (onceLogsResult.error) throw onceLogsResult.error;
 
       const assignments = assignmentsResult.data ?? [];
-      const logs = [...(dailyLogsResult.data ?? []), ...(onceLogsResult.data ?? [])];
+      const logs = [...(dailyLogsResult.data ?? []), ...(monthlyLogsResult.data ?? []), ...(onceLogsResult.data ?? [])];
 
-      // Round trip 3: validated habit_validations for all daily logs
-      const allLogIds = (dailyLogsResult.data ?? []).map((l) => l.id);
+      // Round trip 3: validated habit_validations for all daily + monthly logs
+      const allLogIds = [...(dailyLogsResult.data ?? []), ...(monthlyLogsResult.data ?? [])].map((l) => l.id);
       let validatedIds = new Set();
       if (allLogIds.length > 0) {
         const { data: validationsData, error: validationsError } = await supabase
@@ -481,6 +546,48 @@ export default function RankingScreen() {
               </TouchableOpacity>
             );
           })}
+          {myHabits.filter((h) => h.recurrence === 'monthly_x').map((habit) => {
+            const mCount = getMonthlyTargetCount(myLogs, habit.id);
+            const mStreak = calculateMonthlyStreak(myLogs, habit.id, habit.monthly_target || 1);
+            const monthStart = getMonthStart();
+            const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+            const monthLogs = myLogs
+              .filter((l) => l.habit_id === habit.id && new Date(l.created_at) >= monthStart && new Date(l.created_at) < monthEnd)
+              .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            const monthLogIds = monthLogs.map((l) => l.id);
+            const monthLogDates = monthLogs.map((l) => new Date(l.created_at));
+            const mValidatedCount = monthLogIds.filter((id) => validatedLogIds.has(id)).length;
+            return (
+              <TouchableOpacity
+                key={habit.id}
+                style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}
+                onPress={() => navigation.navigate('HabitStats', { habit, userId: myUserId })}
+                activeOpacity={0.8}
+              >
+                <View style={styles.habitTitleRow}>
+                  {habit.category ? (
+                    <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
+                      <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
+                    </View>
+                  ) : null}
+                  <Text style={[styles.habitTitle, { flex: 1 }]} numberOfLines={2}>{habit.title}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={GRAY} />
+                </View>
+                <View style={styles.streakRow}>
+                  <Ionicons name="flame-outline" size={22} color={mStreak > 0 ? FLAME : '#E0E0E0'} />
+                  {mStreak > 0 ? (
+                    <Text style={[styles.streakUnit, { color: FLAME }]}>
+                      {t('activity.months', { count: mStreak })}
+                    </Text>
+                  ) : null}
+                </View>
+                <MonthlyTargetDots count={mCount} target={habit.monthly_target || 1} validatedCount={mValidatedCount} monthLogDates={monthLogDates} />
+                <Text style={styles.weekSummary}>
+                  {t('home.monthly_progress', { done: mCount, target: habit.monthly_target || 1 })}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
           {myHabits.some((h) => h.recurrence === 'once') ? (
             <>
               <View style={styles.eventsLabel}>
@@ -511,6 +618,7 @@ export default function RankingScreen() {
               const memberLogs = allLogs.filter((l) => l.user_id === member.id);
               const dailyMemberHabits   = memberHabits.filter((h) => h.recurrence === 'daily');
               const weeklyMemberHabits  = memberHabits.filter((h) => h.recurrence === 'weekly_x');
+              const monthlyMemberHabits = memberHabits.filter((h) => h.recurrence === 'monthly_x');
               const onceMemberHabits    = memberHabits.filter((h) => h.recurrence === 'once');
 
               return (
@@ -605,6 +713,48 @@ export default function RankingScreen() {
                             <WeeklyTargetDots count={wCount} target={habit.weekly_target || 1} validatedCount={wValidatedCount} weekLogDates={weekLogDates} dayLabels={dayLabels} />
                             <Text style={styles.weekSummary}>
                               {t('home.weekly_progress', { done: wCount, target: habit.weekly_target || 1 })}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {monthlyMemberHabits.map((habit) => {
+                        const mCount = getMonthlyTargetCount(memberLogs, habit.id);
+                        const mStreak = calculateMonthlyStreak(memberLogs, habit.id, habit.monthly_target || 1);
+                        const monthStart = getMonthStart();
+                        const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+                        const monthLogs = memberLogs
+                          .filter((l) => l.habit_id === habit.id && new Date(l.created_at) >= monthStart && new Date(l.created_at) < monthEnd)
+                          .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                        const monthLogIds = monthLogs.map((l) => l.id);
+                        const monthLogDates = monthLogs.map((l) => new Date(l.created_at));
+                        const mValidatedCount = monthLogIds.filter((id) => validatedLogIds.has(id)).length;
+                        return (
+                          <TouchableOpacity
+                            key={habit.id}
+                            style={[styles.habitCard, { borderLeftColor: habit.category?.color ?? BLUE }]}
+                            onPress={() => navigation.navigate('HabitStats', { habit, userId: member.id })}
+                            activeOpacity={0.8}
+                          >
+                            <View style={styles.habitTitleRow}>
+                              {habit.category ? (
+                                <View style={[styles.catBadge, { backgroundColor: habit.category.color + '26' }]}>
+                                  <Ionicons name={habit.category.icon} size={16} color={habit.category.color} />
+                                </View>
+                              ) : null}
+                              <Text style={[styles.habitTitle, { flex: 1 }]} numberOfLines={2}>{habit.title}</Text>
+                              <Ionicons name="chevron-forward" size={16} color={GRAY} />
+                            </View>
+                            <View style={styles.streakRow}>
+                              <Ionicons name="flame-outline" size={22} color={mStreak > 0 ? FLAME : '#E0E0E0'} />
+                              {mStreak > 0 ? (
+                                <Text style={[styles.streakUnit, { color: FLAME }]}>
+                                  {t('activity.months', { count: mStreak })}
+                                </Text>
+                              ) : null}
+                            </View>
+                            <MonthlyTargetDots count={mCount} target={habit.monthly_target || 1} validatedCount={mValidatedCount} monthLogDates={monthLogDates} />
+                            <Text style={styles.weekSummary}>
+                              {t('home.monthly_progress', { done: mCount, target: habit.monthly_target || 1 })}
                             </Text>
                           </TouchableOpacity>
                         );

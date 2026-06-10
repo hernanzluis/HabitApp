@@ -49,7 +49,7 @@ function isDuePast(dueTime) {
 
 function sortHabitsByUrgency(habits) {
   function urgency(h) {
-    if (h.completedToday) return 4;
+    if (h.completedToday || h.weeklyGoalMet || h.monthlyGoalMet) return 4;
     if (h.due_time) return isDuePast(h.due_time) ? 0 : 1;
     if (h.expires_at) return 2;
     return 3;
@@ -237,7 +237,7 @@ export default function HomeScreen() {
 
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
-        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time, category_id, weekly_target, photo_required')
+        .select('id, title, description, company_id, type, recurrence, is_active, created_at, expires_at, due_time, category_id, weekly_target, monthly_target, photo_required')
         .eq('company_id', profileData.company_id)
         .eq('is_active', true)
         .in('id', assignedIds)
@@ -280,6 +280,17 @@ export default function HomeScreen() {
       const weeklyCountMap = {};
       weekLogs.forEach((l) => {
         weeklyCountMap[l.habit_id] = (weeklyCountMap[l.habit_id] || 0) + 1;
+      });
+
+      // Month start for monthly_x habits
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+      const monthLogs = logsData.filter((l) => { const d = new Date(l.created_at); return d >= monthStart && d < monthEnd; });
+      const monthlyCountMap = {};
+      monthLogs.forEach((l) => {
+        monthlyCountMap[l.habit_id] = (monthlyCountMap[l.habit_id] || 0) + 1;
       });
 
       const doneEver = new Set(logsData.map((l) => l.habit_id));
@@ -328,6 +339,8 @@ export default function HomeScreen() {
         .map((h) => {
           const weeklyCount = h.recurrence === 'weekly_x' ? (weeklyCountMap[h.id] || 0) : 0;
           const weeklyGoalMet = h.recurrence === 'weekly_x' && weeklyCount >= (h.weekly_target || 1);
+          const monthlyCount = h.recurrence === 'monthly_x' ? (monthlyCountMap[h.id] || 0) : 0;
+          const monthlyGoalMet = h.recurrence === 'monthly_x' && monthlyCount >= (h.monthly_target || 1);
           const completedToday = doneToday.has(h.id);
           const logId = todayLogIdByHabit[h.id];
           const vCounts = (completedToday && logId && validationsMap[logId]) || null;
@@ -336,6 +349,8 @@ export default function HomeScreen() {
             completedToday,
             weeklyCount,
             weeklyGoalMet,
+            monthlyCount,
+            monthlyGoalMet,
             todayValidatedCount: vCounts?.validatedCount ?? 0,
             todayRejectedCount:  vCounts?.rejectedCount  ?? 0,
             todayValidations: (completedToday && logId) ? (todayValidationsPerLog[logId] ?? []) : [],
@@ -439,6 +454,11 @@ export default function HomeScreen() {
             {t('home.weekly_progress', { done: item.weeklyCount, target: item.weekly_target })}
           </Text>
         ) : null}
+        {item.recurrence === 'monthly_x' ? (
+          <Text style={styles.weeklyProgressText}>
+            {t('home.monthly_progress', { done: item.monthlyCount, target: item.monthly_target })}
+          </Text>
+        ) : null}
         {item.completedToday ? (
           <View style={styles.completedRow}>
             <View style={styles.completedLeft}>
@@ -451,6 +471,13 @@ export default function HomeScreen() {
             <View style={styles.completedLeft}>
               <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
               <Text style={[styles.completedText, { color: '#2E7D32' }]}>{t('home.weekly_goal_met')}</Text>
+            </View>
+          </View>
+        ) : item.monthlyGoalMet ? (
+          <View style={styles.completedRow}>
+            <View style={styles.completedLeft}>
+              <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
+              <Text style={[styles.completedText, { color: '#2E7D32' }]}>{t('home.monthly_goal_met')}</Text>
             </View>
           </View>
         ) : (
