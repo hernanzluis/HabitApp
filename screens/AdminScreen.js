@@ -737,7 +737,7 @@ export default function AdminScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase.from('profiles').delete().eq('id', editingMember.id);
+              const { error } = await supabase.rpc('delete_member', { member_id: editingMember.id });
               if (error) throw error;
               setMembers((prev) => prev.filter((m) => m.id !== editingMember.id));
               setEditMemberVisible(false);
