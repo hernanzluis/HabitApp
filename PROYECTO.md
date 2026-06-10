@@ -477,7 +477,8 @@ RLS activado en todas las tablas. Todas las políticas se crean mediante SQL Edi
 #### Pestaña Familia
 - **Recibe `initialTab: 'family'`** como parámetro de navegación (enviado por HomeScreen en el primer arranque del admin) → `useEffect` lo lee y llama `setActiveTab('family')`
 - **Mensaje de bienvenida** (`admin.family_welcome`) cuando no hay miembros ni códigos pendientes — sustituye el onboarding modal eliminado
-- **Miembros activos:** lista los perfiles del grupo (`profiles` WHERE `company_id = X`), cada fila tappable con chevron → modal "Editar miembro" (nombre, email, avatar con upload a Storage vía RPC `update_member_avatar`)
+- **Miembros activos:** lista todos los perfiles del grupo incluyendo el admin actual (muestra badge "Tú" en su fila), cada fila tappable con chevron → modal "Editar miembro"
+- **Modal editar miembro:** nombre, email, avatar con upload a Storage vía RPC `update_member_avatar`; toggle de rol Miembro/Administrador (oculto para el usuario actual); botón "Eliminar miembro" en rojo al final del modal con Alert de confirmación destructivo (oculto para el usuario actual). Restricción: no se puede bajar de admin a miembro si es el único administrador del grupo
 - **Códigos pendientes:** lista los `activation_codes` WHERE `used = false AND company_id = X`, cada fila tappable con chevron → modal con código en grande, edición de nombre/email, botón compartir y botón "Cancelar invitación" (DELETE)
 - **Botón "+ Añadir miembro":** modal con campos nombre y email → genera código de 6 dígitos → INSERT en `activation_codes` → muestra código para compartir → guarda `family_setup_done` en AsyncStorage para que HomeScreen no redirija de nuevo
 - **Avatar upload:** `fetch(uri).arrayBuffer()` (no `.blob()` que devuelve 0 bytes en React Native) → Supabase Storage `avatars/{user_id}/avatar.jpg` → RPC `update_member_avatar` (SECURITY DEFINER, bypasea RLS)
@@ -669,6 +670,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - Banner fijo encima del Nav: "Producto en desarrollo — Únete a la lista de espera" con enlace mailto:hernanz.luis@gmail.com. `z-[60]`, Nav desplazado a `top-[40px]`
 - Título de pestaña del navegador: "HabitTeam" (index.html)
 - Logo "HabitTeam" enlazado a `/` en todas las páginas (Nav con `<Link>` + scroll al top, Admin y MemberDetail con `<a href="/">`)
+- **Páginas legales:** `/privacidad`, `/terminos`, `/cookies` — contenido en ES/EN según idioma del navegador, breadcrumb, aviso informativo, sin banner de desarrollo; enlazadas desde el footer de Home
 
 **Panel de administración (privado /admin):**
 - Login con Supabase Auth restringido a usuarios con `role = 'admin'`
@@ -677,7 +679,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 - **Actividad** (sección por defecto): 3 métricas (completados hoy, cumplimiento semanal %, validaciones pendientes); grid de tarjetas por miembro con avatar, racha general, X/Y completados hoy, 7 círculos L-D con tres estados de color, thumbnail foto reciente, última actividad, borde naranja si >3 días sin actividad; click en tarjeta navega a detalle de miembro
 - **Detalle de miembro** (`/admin/miembro/:userId`): calendario mensual navegable con tres estados de color, racha individual por hábito, últimas 3 fotos con lightbox, últimas 10 validaciones recibidas con validador/reaction/comentario
 - **Código de colores** (círculos y calendario): gris (#E5E7EB / #EEEEEE) = sin actividad; amarillo (#F59E0B) = log registrado pero sin validación `validated`; verde (#22C55E / #4CAF50) = log con al menos una validación `validated`
-- **Miembros:** tabla de miembros activos con rol y fecha de registro; tabla de invitaciones pendientes con código en monospace; modal "+ Añadir miembro" que genera código de activación de 6 dígitos con botón copiar; botón eliminar miembro con confirmación
+- **Miembros:** tabla de miembros activos con selector de rol inline (Miembro/Administrador) excepto para el propio admin; tabla de invitaciones pendientes con código en monospace; modal "+ Añadir miembro" que genera código de activación de 6 dígitos con botón copiar; restricción: no se puede dejar el grupo sin administrador
 - **Hábitos:** tabla con categoría (punto de color), título, recurrencia, avatares de asignados y validadores, toggle activo/inactivo con actualización optimista; click en título abre modal de edición completo (campos + asignados + validadores precargados); modal "+ Nuevo hábito" con todos los campos de la app móvil (título, descripción, recurrencia, weekly_target, hora límite, fecha expiración, categoría, foto obligatoria, asignados, validadores)
 - **Categorías:** tabla de categorías personalizadas del grupo con botón eliminar; tabla de categorías predefinidas del sistema (solo lectura); modal "+ Nueva categoría" con selector de color (8 colores) y selector de icono (15 opciones en texto) con preview en tiempo real
 
