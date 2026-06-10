@@ -135,7 +135,13 @@
     "no_photo": "No photo attached",
     "reaction_label": "React (optional)",
     "comment_label": "Add a comment (optional)",
-    "comment_placeholder": "E.g: Great job, keep it up!"
+    "comment_placeholder": "E.g: Great job, keep it up!",
+    "tab_validate": "Validate",
+    "tab_expired": "Expired",
+    "expired_empty": "No expired habits pending",
+    "not_completed": "Not completed",
+    "not_validated_short": "Not validated",
+    "expired_on": "Expired on {{date}}"
   },
   "history": {
     "header_title": "History",

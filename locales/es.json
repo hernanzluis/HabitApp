@@ -135,7 +135,13 @@
     "no_photo": "Sin foto adjunta",
     "reaction_label": "Reacciona (opcional)",
     "comment_label": "Añade un comentario (opcional)",
-    "comment_placeholder": "Ej: ¡Muy bien, sigue así!"
+    "comment_placeholder": "Ej: ¡Muy bien, sigue así!",
+    "tab_validate": "Validar",
+    "tab_expired": "Caducados",
+    "expired_empty": "No hay hábitos caducados pendientes",
+    "not_completed": "No completado",
+    "not_validated_short": "Sin validar",
+    "expired_on": "Caducó el {{date}}"
   },
   "admin": {
     "header_title": "Administración",

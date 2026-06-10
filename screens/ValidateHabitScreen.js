@@ -152,12 +152,18 @@ export default function ValidateHabitScreen() {
   const navigation = useNavigation();
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
+  const [activeTab, setActiveTab] = useState('validate');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [items, setItems] = useState([]);
   const [allDone, setAllDone] = useState(false);
   const navTimeoutRef = useRef(null);
+
+  // ── Expired tab state ──────────────────────────────────────────────────
+  const [expiredLoading, setExpiredLoading] = useState(false);
+  const [expiredItems, setExpiredItems] = useState([]);
+  const [expiredError, setExpiredError] = useState('');
 
   useEffect(() => {
     return () => {
@@ -283,10 +289,96 @@ export default function ValidateHabitScreen() {
     }
   }, []);
 
+  const loadExpired = useCallback(async () => {
+    setExpiredLoading(true);
+    setExpiredError('');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, company_id, role')
+        .eq('id', user.id)
+        .single();
+      if (!profile?.company_id) { setExpiredItems([]); return; }
+
+      // Hábitos que el usuario valida
+      const { data: validatorRows } = await supabase
+        .from('habit_validators')
+        .select('habit_id')
+        .eq('user_id', user.id);
+      const validatorHabitIds = (validatorRows ?? []).map((v) => v.habit_id);
+      if (!validatorHabitIds.length) { setExpiredItems([]); return; }
+
+      const now = new Date().toISOString();
+
+      // Hábitos caducados (expires_at en el pasado, activos, que el usuario valida)
+      const { data: expiredHabits } = await supabase
+        .from('habits')
+        .select('id, title, expires_at, category_id, company_id')
+        .in('id', validatorHabitIds)
+        .eq('is_active', true)
+        .not('expires_at', 'is', null)
+        .lt('expires_at', now);
+
+      const filtered = (expiredHabits ?? []).filter((h) => h.company_id === profile.company_id);
+      if (!filtered.length) { setExpiredItems([]); return; }
+
+      const expiredHabitIds = filtered.map((h) => h.id);
+
+      // Miembros asignados + logs + categorías en paralelo
+      const [assignmentsRes, logsRes, catsRes] = await Promise.all([
+        supabase.from('habit_assignments').select('habit_id, user_id').in('habit_id', expiredHabitIds),
+        supabase.from('habit_logs')
+          .select('id, habit_id, user_id, status')
+          .in('habit_id', expiredHabitIds),
+        supabase.from('categories').select('id, name, color, icon').or(`company_id.is.null,company_id.eq.${profile.company_id}`),
+      ]);
+
+      const assignments = assignmentsRes.data ?? [];
+      const logs = logsRes.data ?? [];
+      const catsMap = new Map((catsRes.data ?? []).map((c) => [c.id, c]));
+
+      // Profiles de miembros asignados
+      const assignedUserIds = [...new Set(assignments.map((a) => a.user_id))];
+      const { data: profilesData } = assignedUserIds.length
+        ? await supabase.from('profiles').select('id, full_name, avatar_url').in('id', assignedUserIds)
+        : Promise.resolve({ data: [] });
+      const profilesMap = new Map((profilesData ?? []).map((p) => [p.id, p]));
+
+      // Build rows: habit × assigned member
+      const rows = [];
+      for (const habit of filtered) {
+        const category = habit.category_id ? (catsMap.get(habit.category_id) ?? null) : null;
+        const assigned = assignments.filter((a) => a.habit_id === habit.id);
+        for (const a of assigned) {
+          const memberLogs = logs.filter((l) => l.habit_id === habit.id && l.user_id === a.user_id);
+          const hasValidated = memberLogs.some((l) => l.status === 'validated');
+          if (hasValidated) continue; // correcto, no mostrar
+          const hasLog = memberLogs.length > 0;
+          rows.push({
+            key: `${habit.id}-${a.user_id}`,
+            habit: { ...habit, category },
+            member: profilesMap.get(a.user_id) ?? { id: a.user_id, full_name: null, avatar_url: null },
+            hasLog,
+          });
+        }
+      }
+
+      setExpiredItems(rows);
+    } catch (e) {
+      setExpiredError(e?.message || t('validate.error_load'));
+    } finally {
+      setExpiredLoading(false);
+    }
+  }, [t]);
+
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+      loadExpired();
+    }, [loadData, loadExpired])
   );
 
   const submitValidation = async (logId, voteStatus, comment, reaction) => {
@@ -324,7 +416,7 @@ export default function ValidateHabitScreen() {
     <ValidateCard item={item} onVote={submitValidation} t={t} locale={locale} />
   );
 
-  if (loading) {
+  if (loading && activeTab === 'validate') {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={BLUE} />
@@ -333,7 +425,7 @@ export default function ValidateHabitScreen() {
     );
   }
 
-  if (allDone) {
+  if (allDone && activeTab === 'validate') {
     return (
       <View style={styles.centered}>
         <Text style={styles.allDoneText}>{t('validate.all_done')}</Text>
@@ -343,28 +435,115 @@ export default function ValidateHabitScreen() {
 
   return (
     <View style={styles.container}>
-      {error ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
+      {/* ── Tab selector ─────────────────────────────────────────────────── */}
+      <View style={styles.tabUnderlineRow}>
+        {['validate', 'expired'].map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={styles.tabUnderlineItem}
+            onPress={() => setActiveTab(tab)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabUnderlineText, activeTab === tab && styles.tabUnderlineTextActive]}>
+              {tab === 'validate' ? t('validate.tab_validate') : t('validate.tab_expired')}
+            </Text>
+            {activeTab === tab ? <View style={styles.tabUnderlineIndicator} /> : null}
+          </TouchableOpacity>
+        ))}
+      </View>
 
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} tintColor={BLUE} />
-        }
-        ListEmptyComponent={
-          !error ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>{t('validate.empty')}</Text>
+      {/* ── Pestaña Validar ───────────────────────────────────────────────── */}
+      {activeTab === 'validate' ? (
+        <>
+          {error ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
-          ) : null
-        }
-      />
+          ) : null}
+          <FlatList
+            data={items}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} tintColor={BLUE} />
+            }
+            ListEmptyComponent={
+              !error ? (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyText}>{t('validate.empty')}</Text>
+                </View>
+              ) : null
+            }
+          />
+        </>
+      ) : (
+        /* ── Pestaña Caducados ─────────────────────────────────────────── */
+        <>
+          {expiredError ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{expiredError}</Text>
+            </View>
+          ) : null}
+          {expiredLoading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator size="large" color={BLUE} />
+            </View>
+          ) : (
+            <FlatList
+              data={expiredItems}
+              keyExtractor={(item) => item.key}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={() => loadExpired()} tintColor={BLUE} />
+              }
+              ListEmptyComponent={
+                !expiredError ? (
+                  <View style={styles.emptyCard}>
+                    <Text style={styles.emptyText}>{t('validate.expired_empty')}</Text>
+                  </View>
+                ) : null
+              }
+              renderItem={({ item }) => {
+                const name = item.member?.full_name || t('common.colleague');
+                const expiredDate = item.habit.expires_at
+                  ? new Date(item.habit.expires_at).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' })
+                  : '';
+                return (
+                  <View style={styles.expiredCard}>
+                    <View style={styles.row}>
+                      <View style={styles.avatarWrapper}>
+                        {item.member?.avatar_url ? (
+                          <Image source={{ uri: item.member.avatar_url }} style={styles.avatar} />
+                        ) : (
+                          <View style={styles.avatarFallback}>
+                            <Text style={styles.avatarFallbackText}>{name.charAt(0).toUpperCase()}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.info}>
+                        <Text style={styles.name}>{name}</Text>
+                        <View style={styles.expiredHabitRow}>
+                          {item.habit.category ? (
+                            <View style={[styles.expiredCatDot, { backgroundColor: item.habit.category.color }]} />
+                          ) : null}
+                          <Text style={styles.habitTitle}>{item.habit.title}</Text>
+                        </View>
+                        <Text style={styles.expiredDate}>{t('validate.expired_on', { date: expiredDate })}</Text>
+                      </View>
+                      <View style={[styles.expiredBadge, item.hasLog ? styles.expiredBadgeOrange : styles.expiredBadgeRed]}>
+                        <Text style={[styles.expiredBadgeText, item.hasLog ? styles.expiredBadgeTextOrange : styles.expiredBadgeTextRed]}>
+                          {item.hasLog ? t('validate.not_validated_short') : t('validate.not_completed')}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              }}
+            />
+          )}
+        </>
+      )}
     </View>
   );
 }
@@ -595,5 +774,22 @@ const styles = StyleSheet.create({
     color: TEXT,
     textAlignVertical: 'top',
   },
+  // Tab selector (same pattern as AdminScreen)
+  tabUnderlineRow: { flexDirection: 'row', backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
+  tabUnderlineItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  tabUnderlineText: { fontSize: 14, fontWeight: '500', color: GRAY },
+  tabUnderlineTextActive: { color: TEXT, fontWeight: '700' },
+  tabUnderlineIndicator: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: BLUE },
+  // Expired tab
+  expiredCard: { backgroundColor: WHITE, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 8 },
+  expiredHabitRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 6 },
+  expiredCatDot: { width: 8, height: 8, borderRadius: 4 },
+  expiredDate: { marginTop: 2, fontSize: 12, color: GRAY },
+  expiredBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, alignSelf: 'center', marginLeft: 8 },
+  expiredBadgeRed: { backgroundColor: '#fee2e2' },
+  expiredBadgeOrange: { backgroundColor: '#FEF3C7' },
+  expiredBadgeText: { fontSize: 11, fontWeight: '700' },
+  expiredBadgeTextRed: { color: '#b91c1c' },
+  expiredBadgeTextOrange: { color: '#92400E' },
 });
 
