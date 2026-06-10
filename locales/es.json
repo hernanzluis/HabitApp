@@ -141,7 +141,9 @@
     "expired_empty": "No hay hábitos caducados pendientes",
     "not_completed": "No completado",
     "not_validated_short": "Sin validar",
-    "expired_on": "Caducó el {{date}}"
+    "expired_on": "Caducó el {{date}}",
+    "delete_expired": "Eliminar hábito",
+    "delete_expired_confirm": "¿Eliminar este hábito caducado? Esta acción no se puede deshacer."
   },
   "admin": {
     "header_title": "Administración",

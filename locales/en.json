@@ -141,7 +141,9 @@
     "expired_empty": "No expired habits pending",
     "not_completed": "Not completed",
     "not_validated_short": "Not validated",
-    "expired_on": "Expired on {{date}}"
+    "expired_on": "Expired on {{date}}",
+    "delete_expired": "Delete habit",
+    "delete_expired_confirm": "Delete this expired habit? This action cannot be undone."
   },
   "history": {
     "header_title": "History",

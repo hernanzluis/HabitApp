@@ -52,6 +52,7 @@ const HEADER_OPTIONS = {
 function TabNavigator() {
   const { t } = useTranslation();
   const [pendingCount, setPendingCount] = useState(0);
+  const [expiredCount, setExpiredCount] = useState(0);
   const [companyName, setCompanyName] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [userAvatarUrl, setUserAvatarUrl] = useState(null);
@@ -115,6 +116,26 @@ function TabNavigator() {
 
       const alreadyVoted = new Set((myValidations ?? []).map((v) => v.habit_log_id));
       setPendingCount(pendingLogs.filter((l) => !alreadyVoted.has(l.id)).length);
+
+      // Expired habits: validator OR assigned
+      const [myAssignmentsRes] = await Promise.all([
+        supabase.from('habit_assignments').select('habit_id').eq('user_id', user.id),
+      ]);
+      const myAssignedIds = (myAssignmentsRes.data ?? []).map((a) => a.habit_id);
+      const allRelevantIds = [...new Set([...validatorHabitIds, ...myAssignedIds])];
+      if (allRelevantIds.length) {
+        const now = new Date().toISOString();
+        const { data: expiredHabits } = await supabase
+          .from('habits')
+          .select('id')
+          .in('id', allRelevantIds)
+          .eq('is_active', true)
+          .not('expires_at', 'is', null)
+          .lt('expires_at', now);
+        setExpiredCount((expiredHabits ?? []).length);
+      } else {
+        setExpiredCount(0);
+      }
     } catch {
       // non-critical
     }
@@ -198,7 +219,7 @@ function TabNavigator() {
         options={{
           title: t('nav.validate'),
           tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
-          tabBarButton: pendingCount === 0
+          tabBarButton: pendingCount === 0 && expiredCount === 0
             ? (props) => (
                 <TouchableOpacity
                   {...props}

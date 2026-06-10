@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -318,7 +319,7 @@ export default function ValidateHabitScreen() {
       // Hábitos caducados activos entre los relevantes
       const { data: expiredHabits } = await supabase
         .from('habits')
-        .select('id, title, expires_at, category_id, company_id')
+        .select('id, title, expires_at, recurrence, category_id, company_id')
         .in('id', allRelevantIds)
         .eq('is_active', true)
         .not('expires_at', 'is', null)
@@ -511,6 +512,29 @@ export default function ValidateHabitScreen() {
                 const expiredDate = item.habit.expires_at
                   ? new Date(item.habit.expires_at).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' })
                   : '';
+                const handleDeleteOnce = () => {
+                  Alert.alert(
+                    t('validate.delete_expired'),
+                    t('validate.delete_expired_confirm'),
+                    [
+                      { text: t('common.cancel'), style: 'cancel' },
+                      {
+                        text: t('validate.delete_expired'),
+                        style: 'destructive',
+                        onPress: async () => {
+                          const { error: delErr } = await supabase
+                            .from('habits')
+                            .delete()
+                            .eq('id', item.habit.id);
+                          if (!delErr) {
+                            setExpiredItems((prev) => prev.filter((r) => r.habit.id !== item.habit.id));
+                          }
+                        },
+                      },
+                    ]
+                  );
+                };
+
                 return (
                   <View style={styles.expiredCard}>
                     <View style={styles.row}>
@@ -539,6 +563,15 @@ export default function ValidateHabitScreen() {
                         </Text>
                       </View>
                     </View>
+                    {item.habit.recurrence === 'once' ? (
+                      <TouchableOpacity
+                        style={styles.deleteExpiredBtn}
+                        onPress={handleDeleteOnce}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.deleteExpiredText}>{t('validate.delete_expired')}</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 );
               }}
@@ -793,5 +826,7 @@ const styles = StyleSheet.create({
   expiredBadgeText: { fontSize: 11, fontWeight: '700' },
   expiredBadgeTextRed: { color: '#b91c1c' },
   expiredBadgeTextOrange: { color: '#92400E' },
+  deleteExpiredBtn: { marginTop: 12, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fee2e2', borderRadius: 4 },
+  deleteExpiredText: { color: '#b91c1c', fontSize: 13, fontWeight: '700' },
 });
 
