@@ -78,6 +78,53 @@ function calculateCompletionRate(logs) {
   return Math.min(100, Math.round((uniqueDays.size / totalDays) * 100));
 }
 
+function calculateWeeklyStreakForStats(logs, weeklyTarget) {
+  if (!logs.length) return 0;
+  const weekCountMap = {};
+  logs.forEach((l) => {
+    const key = getMondayKey(new Date(l.created_at));
+    weekCountMap[key] = (weekCountMap[key] || 0) + 1;
+  });
+  let streak = 0;
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  const dow = cursor.getDay();
+  cursor.setDate(cursor.getDate() - (dow === 0 ? 6 : dow - 1));
+  while (true) {
+    const key = toDateKey(cursor);
+    if ((weekCountMap[key] || 0) >= weeklyTarget) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 7);
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function calculateWeeklyBestStreak(logs, weeklyTarget) {
+  if (!logs.length) return 0;
+  const weekCountMap = {};
+  logs.forEach((l) => {
+    const key = getMondayKey(new Date(l.created_at));
+    weekCountMap[key] = (weekCountMap[key] || 0) + 1;
+  });
+  const qualifiedWeeks = Object.entries(weekCountMap)
+    .filter(([, count]) => count >= weeklyTarget)
+    .map(([key]) => {
+      const parts = key.split('-').map(Number);
+      return Math.floor(new Date(parts[0], parts[1], parts[2]).getTime() / (7 * 86400000));
+    })
+    .sort((a, b) => a - b);
+  let best = 0, cur = 0, prev = null;
+  for (const w of qualifiedWeeks) {
+    cur = prev !== null && w - prev === 1 ? cur + 1 : 1;
+    if (cur > best) best = cur;
+    prev = w;
+  }
+  return best;
+}
+
 // ── Calendario mensual ────────────────────────────────────────────────────
 function getMondayKey(date) {
   const d = new Date(date);
@@ -210,9 +257,10 @@ export default function HabitStatsScreen() {
         return;
       }
 
+      const target = habit?.weekly_target ?? 1;
       setStats({
-        streakCurrent:  calculateCurrentStreak(logs),
-        streakBest:     calculateBestStreak(logs),
+        streakCurrent:  isWeekly ? calculateWeeklyStreakForStats(logs, target) : calculateCurrentStreak(logs),
+        streakBest:     isWeekly ? calculateWeeklyBestStreak(logs, target)     : calculateBestStreak(logs),
         totalCompleted: logs.length,
         completionRate: calculateCompletionRate(logs),
       });
@@ -321,9 +369,14 @@ export default function HabitStatsScreen() {
 
       {/* ── Estadísticas ─────────────────────────────────────────────── */}
       <View style={styles.section}>
+        {isWeekly ? (
+          <Text style={styles.habitTypeLabel}>{t('stats.weekly_target_label', { count: habit?.weekly_target ?? 1 })}</Text>
+        ) : habit?.recurrence === 'once' ? (
+          <Text style={styles.habitTypeLabel}>{t('stats.once_label')}</Text>
+        ) : null}
         <View style={styles.statsGrid}>
-          <StatBox value={stats.streakCurrent} label={t('stats.current_streak')} />
-          <StatBox value={stats.streakBest}    label={t('stats.best_streak')} />
+          <StatBox value={stats.streakCurrent} label={isWeekly ? t('stats.current_streak_weeks') : t('stats.current_streak')} />
+          <StatBox value={stats.streakBest}    label={isWeekly ? t('stats.best_streak_weeks')    : t('stats.best_streak')} />
           <StatBox value={stats.totalCompleted} label={t('stats.total_completed')} />
           <StatBox value={`${stats.completionRate}%`} label={t('stats.completion_rate')} />
         </View>
@@ -462,6 +515,7 @@ const styles = StyleSheet.create({
   errorText: { color: '#b91c1c', fontSize: 13, fontWeight: '600' },
   // Sections
   section: { backgroundColor: WHITE, paddingHorizontal: 16, paddingBottom: 20, paddingTop: 16 },
+  habitTypeLabel: { fontSize: 12, color: GRAY, marginBottom: 10 },
   sectionSpaced: { marginTop: 8 },
   sectionTitle: { fontSize: 14, fontWeight: '800', color: TEXT, marginBottom: 14 },
   // Stats

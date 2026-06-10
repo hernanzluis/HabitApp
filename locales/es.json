@@ -255,6 +255,10 @@
     "legend_none": "Sin actividad",
     "legend_pending": "Pendiente",
     "legend_validated": "Validado",
+    "weekly_target_label": "{{count}} veces por semana",
+    "once_label": "Hábito único",
+    "current_streak_weeks": "Racha actual (sem.)",
+    "best_streak_weeks": "Mejor racha (sem.)",
     "error_load": "No se pudieron cargar las estadísticas."
   },
   "activity": {

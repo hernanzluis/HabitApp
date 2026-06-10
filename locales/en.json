@@ -255,6 +255,10 @@
     "legend_none": "No activity",
     "legend_pending": "Pending",
     "legend_validated": "Validated",
+    "weekly_target_label": "{{count}} times per week",
+    "once_label": "One-time habit",
+    "current_streak_weeks": "Current streak (wks)",
+    "best_streak_weeks": "Best streak (wks)",
     "error_load": "Could not load stats."
   },
   "activity": {
