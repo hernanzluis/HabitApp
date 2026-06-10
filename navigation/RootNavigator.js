@@ -118,9 +118,8 @@ function TabNavigator() {
       setPendingCount(pendingLogs.filter((l) => !alreadyVoted.has(l.id)).length);
 
       // Expired habits: validator OR assigned
-      const [myAssignmentsRes] = await Promise.all([
-        supabase.from('habit_assignments').select('habit_id').eq('user_id', user.id),
-      ]);
+      const myAssignmentsRes = await supabase
+        .from('habit_assignments').select('habit_id').eq('user_id', user.id);
       const myAssignedIds = (myAssignmentsRes.data ?? []).map((a) => a.habit_id);
       const allRelevantIds = [...new Set([...validatorHabitIds, ...myAssignedIds])];
       if (allRelevantIds.length) {
@@ -255,7 +254,7 @@ function AppStack() {
     <Stack.Navigator screenOptions={{ headerShown: false, headerBackTitle: '' }}>
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerBackTitle: '' }} />
       <Stack.Screen name="HabitDetail" component={HabitDetailScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
-      <Stack.Screen name="Admin" component={AdminScreen} options={{ headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="HabitStats" component={HabitStatsScreen} options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
     </Stack.Navigator>

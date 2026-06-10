@@ -401,7 +401,7 @@ export default function HomeScreen() {
         statusText = t('home.awaiting_validation');
         statusColor = '#F59E0B';
       }
-    } else if (item.weeklyGoalMet) {
+    } else if (item.weeklyGoalMet || item.monthlyGoalMet) {
       completedCardStyle = styles.habitCardValidated;
     }
 

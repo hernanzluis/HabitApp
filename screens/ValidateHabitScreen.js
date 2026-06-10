@@ -311,6 +311,8 @@ export default function ValidateHabitScreen() {
         supabase.from('habit_validators').select('habit_id').eq('user_id', user.id),
         supabase.from('habit_assignments').select('habit_id').eq('user_id', user.id),
       ]);
+      if (validatorRowsRes.error) throw validatorRowsRes.error;
+      if (myAssignmentsRes.error) throw myAssignmentsRes.error;
       const validatorHabitIds = (validatorRowsRes.data ?? []).map((v) => v.habit_id);
       const myAssignedHabitIds = (myAssignmentsRes.data ?? []).map((a) => a.habit_id);
       const allRelevantIds = [...new Set([...validatorHabitIds, ...myAssignedHabitIds])];
@@ -338,6 +340,9 @@ export default function ValidateHabitScreen() {
           .in('habit_id', expiredHabitIds),
         supabase.from('categories').select('id, name, color, icon').or(`company_id.is.null,company_id.eq.${profile.company_id}`),
       ]);
+      if (assignmentsRes.error) throw assignmentsRes.error;
+      if (logsRes.error) throw logsRes.error;
+      if (catsRes.error) throw catsRes.error;
 
       const assignments = assignmentsRes.data ?? [];
       const logs = logsRes.data ?? [];

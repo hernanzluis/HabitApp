@@ -129,11 +129,17 @@ function calculateWeeklyStreakForStats(logs, weeklyTarget) {
     const key = getMondayKey(new Date(l.created_at));
     weekCountMap[key] = (weekCountMap[key] || 0) + 1;
   });
-  let streak = 0;
+  // Periodo de gracia: si la semana actual no ha cumplido el objetivo,
+  // empezar a contar desde la semana anterior (igual que calculateMonthlyStreakForStats)
   const cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
   const dow = cursor.getDay();
-  cursor.setDate(cursor.getDate() - (dow === 0 ? 6 : dow - 1));
+  cursor.setDate(cursor.getDate() - (dow === 0 ? 6 : dow - 1)); // lunes de la semana actual
+  const currentWeekKey = toDateKey(cursor);
+  if ((weekCountMap[currentWeekKey] || 0) < weeklyTarget) {
+    cursor.setDate(cursor.getDate() - 7); // retroceder a la semana anterior
+  }
+  let streak = 0;
   while (true) {
     const key = toDateKey(cursor);
     if ((weekCountMap[key] || 0) >= weeklyTarget) {

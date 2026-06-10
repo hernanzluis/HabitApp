@@ -15,7 +15,8 @@
     "error_camera_permission": "We need permission to use the camera.",
     "error_gallery_permission": "We need permission to access your gallery.",
     "coming_soon": "Coming soon",
-    "close": "Close"
+    "close": "Close",
+    "error": "Error"
   },
   "errors": {
     "generic": "An error occurred. Please try again.",
@@ -83,7 +84,6 @@
     "expires": "Expires on {{date}}",
     "status_validated": "Validated",
     "status_rejected": "Rejected",
-    "status_pending": "Pending",
     "status_pending": "Pending",
     "awaiting_validation": "✓ Sent, awaiting validation",
     "due_before": "Before {{time}}",
