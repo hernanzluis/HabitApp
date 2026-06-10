@@ -303,21 +303,23 @@ export default function ValidateHabitScreen() {
         .single();
       if (!profile?.company_id) { setExpiredItems([]); return; }
 
-      // Hábitos que el usuario valida
-      const { data: validatorRows } = await supabase
-        .from('habit_validators')
-        .select('habit_id')
-        .eq('user_id', user.id);
-      const validatorHabitIds = (validatorRows ?? []).map((v) => v.habit_id);
-      if (!validatorHabitIds.length) { setExpiredItems([]); return; }
-
       const now = new Date().toISOString();
 
-      // Hábitos caducados (expires_at en el pasado, activos, que el usuario valida)
+      // Hábitos que el usuario valida + hábitos asignados al usuario — en paralelo
+      const [validatorRowsRes, myAssignmentsRes] = await Promise.all([
+        supabase.from('habit_validators').select('habit_id').eq('user_id', user.id),
+        supabase.from('habit_assignments').select('habit_id').eq('user_id', user.id),
+      ]);
+      const validatorHabitIds = (validatorRowsRes.data ?? []).map((v) => v.habit_id);
+      const myAssignedHabitIds = (myAssignmentsRes.data ?? []).map((a) => a.habit_id);
+      const allRelevantIds = [...new Set([...validatorHabitIds, ...myAssignedHabitIds])];
+      if (!allRelevantIds.length) { setExpiredItems([]); return; }
+
+      // Hábitos caducados activos entre los relevantes
       const { data: expiredHabits } = await supabase
         .from('habits')
         .select('id, title, expires_at, category_id, company_id')
-        .in('id', validatorHabitIds)
+        .in('id', allRelevantIds)
         .eq('is_active', true)
         .not('expires_at', 'is', null)
         .lt('expires_at', now);
