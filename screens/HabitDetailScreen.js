@@ -88,6 +88,7 @@ export default function HabitDetailScreen() {
   const [error, setError] = useState('');
   const [showCelebration, setShowCelebration] = useState(false);
   const [streak, setStreak] = useState(0);
+  const [achievedReward, setAchievedReward] = useState(null);
 
   const celebrateOpacity = useRef(new Animated.Value(0)).current;
   const flameScale = useRef(new Animated.Value(1)).current;
@@ -184,6 +185,11 @@ export default function HabitDetailScreen() {
 
       const calculatedStreak = calculateStreak(recentLogs ?? []);
       setStreak(calculatedStreak);
+
+      // Verificar si se alcanzó alguna recompensa con esta racha
+      const habitRewards = habit.rewards ?? [];
+      const justAchieved = habitRewards.find((r) => r.streak_target === calculatedStreak) ?? null;
+      setAchievedReward(justAchieved);
 
       // ── Mostrar celebración ───────────────────────────────────────────
       setShowCelebration(true);
@@ -305,7 +311,14 @@ export default function HabitDetailScreen() {
           )}
 
           <Text style={styles.celebrationHabitName} numberOfLines={2}>{habit.title}</Text>
-          <Text style={styles.celebrationWellDone}>{t('habit_detail.streak_well_done')}</Text>
+          {achievedReward ? (
+            <View style={styles.celebrationRewardBox}>
+              <Text style={styles.celebrationRewardEmoji}>🏆</Text>
+              <Text style={styles.celebrationRewardText}>{achievedReward.description}</Text>
+            </View>
+          ) : (
+            <Text style={styles.celebrationWellDone}>{t('habit_detail.streak_well_done')}</Text>
+          )}
         </Animated.View>
       ) : null}
     </View>
@@ -425,5 +438,23 @@ const styles = StyleSheet.create({
     color: WHITE,
     marginTop: 8,
     fontWeight: '600',
+  },
+  celebrationRewardBox: {
+    marginTop: 16,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  celebrationRewardEmoji: {
+    fontSize: 40,
+    marginBottom: 6,
+  },
+  celebrationRewardText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFD700',
+    textAlign: 'center',
   },
 });

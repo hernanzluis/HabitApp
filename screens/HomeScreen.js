@@ -29,6 +29,58 @@ const GRAY = '#666666';
 const ORANGE = '#f97316';
 
 
+// ── Streak helpers para recompensas ──────────────────────────────────────
+function toDateKey(d) {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+function getMondayKey(date) {
+  const d = new Date(date);
+  const dow = d.getDay();
+  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+  d.setHours(0, 0, 0, 0);
+  return toDateKey(d);
+}
+function calculateHabitStreak(habitLogs, recurrence, weeklyTarget, monthlyTarget) {
+  if (!habitLogs.length) return 0;
+  if (recurrence === 'daily' || recurrence === 'once') {
+    const logDays = new Set(habitLogs.map((l) => toDateKey(new Date(l.created_at))));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let cursor = new Date(today);
+    if (!logDays.has(toDateKey(today))) cursor.setDate(cursor.getDate() - 1);
+    let streak = 0;
+    while (logDays.has(toDateKey(cursor))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+    return streak;
+  }
+  if (recurrence === 'weekly_x') {
+    const wTarget = weeklyTarget || 1;
+    const weekCountMap = {};
+    habitLogs.forEach((l) => { const k = getMondayKey(new Date(l.created_at)); weekCountMap[k] = (weekCountMap[k] || 0) + 1; });
+    const cursor = new Date(); cursor.setHours(0, 0, 0, 0);
+    const dow = cursor.getDay();
+    cursor.setDate(cursor.getDate() - (dow === 0 ? 6 : dow - 1));
+    const curKey = toDateKey(cursor);
+    if ((weekCountMap[curKey] || 0) < wTarget) cursor.setDate(cursor.getDate() - 7);
+    let streak = 0;
+    while (true) { const k = toDateKey(cursor); if ((weekCountMap[k] || 0) >= wTarget) { streak++; cursor.setDate(cursor.getDate() - 7); } else break; }
+    return streak;
+  }
+  if (recurrence === 'monthly_x') {
+    const mTarget = monthlyTarget || 1;
+    let year = new Date().getFullYear();
+    let month = new Date().getMonth();
+    const curCount = habitLogs.filter((l) => { const d = new Date(l.created_at); return d >= new Date(year, month, 1) && d < new Date(year, month + 1, 1); }).length;
+    if (curCount < mTarget) { month--; if (month < 0) { month = 11; year--; } }
+    let streak = 0;
+    while (true) {
+      const count = habitLogs.filter((l) => { const d = new Date(l.created_at); return d >= new Date(year, month, 1) && d < new Date(year, month + 1, 1); }).length;
+      if (count < mTarget) break;
+      streak++; month--; if (month < 0) { month = 11; year--; }
+    }
+    return streak;
+  }
+  return 0;
+}
+
 function formatExpiry(dateStr) {
   const d = new Date(dateStr);
   const date = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -252,13 +304,16 @@ export default function HomeScreen() {
 
       const habitIds = active.map((h) => h.id);
 
-      const [logsResult, catsResult, validatorsResult] = await Promise.all([
+      const [logsResult, catsResult, validatorsResult, rewardsResult] = await Promise.all([
         habitIds.length > 0
           ? supabase.from('habit_logs').select('id, habit_id, created_at, habit_validations(habit_log_id, status, validator_id, comment, reaction)').eq('user_id', user.id).in('habit_id', habitIds)
           : Promise.resolve({ data: [], error: null }),
         supabase.from('categories').select('id, name, icon, color').or(`company_id.is.null,company_id.eq.${profileData.company_id}`),
         habitIds.length > 0
           ? supabase.from('habit_validators').select('habit_id, user_id, profiles(id, full_name, avatar_url)').in('habit_id', habitIds)
+          : Promise.resolve({ data: [], error: null }),
+        habitIds.length > 0
+          ? supabase.from('habit_rewards').select('habit_id, streak_target, description').in('habit_id', habitIds).order('streak_target')
           : Promise.resolve({ data: [], error: null }),
       ]);
       if (logsResult.error) throw logsResult.error;
@@ -268,6 +323,13 @@ export default function HomeScreen() {
       const cMap = {};
       (catsResult.data ?? []).forEach((c) => { cMap[c.id] = c; });
       setCategoriesMap(cMap);
+
+      // Rewards map: habitId → sorted array of rewards
+      const rewardsMap = {};
+      (rewardsResult.data ?? []).forEach((r) => {
+        if (!rewardsMap[r.habit_id]) rewardsMap[r.habit_id] = [];
+        rewardsMap[r.habit_id].push(r);
+      });
 
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
@@ -344,6 +406,12 @@ export default function HomeScreen() {
           const completedToday = doneToday.has(h.id);
           const logId = todayLogIdByHabit[h.id];
           const vCounts = (completedToday && logId && validationsMap[logId]) || null;
+          const habitLogsForStreak = logsData.filter((l) => l.habit_id === h.id);
+          const currentStreak = calculateHabitStreak(habitLogsForStreak, h.recurrence, h.weekly_target, h.monthly_target);
+          const habitRewardList = rewardsMap[h.id] ?? [];
+          const nextReward = habitRewardList.find((r) => r.streak_target > currentStreak) ?? null;
+          const lastAchievedReward = [...habitRewardList].reverse().find((r) => r.streak_target <= currentStreak) ?? null;
+
           return {
             ...h,
             completedToday,
@@ -355,6 +423,10 @@ export default function HomeScreen() {
             todayRejectedCount:  vCounts?.rejectedCount  ?? 0,
             todayValidations: (completedToday && logId) ? (todayValidationsPerLog[logId] ?? []) : [],
             validators: validatorsPerHabit[h.id] ?? [],
+            rewards: habitRewardList,
+            currentStreak,
+            nextReward,
+            lastAchievedReward,
           };
         });
 
@@ -439,6 +511,15 @@ export default function HomeScreen() {
           ) : null}
         </View>
         {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
+        {item.nextReward ? (
+          <Text style={styles.rewardNextText}>
+            {t('home.reward_next', { days: item.nextReward.streak_target - item.currentStreak, reward: item.nextReward.description })}
+          </Text>
+        ) : item.lastAchievedReward ? (
+          <Text style={styles.rewardAchievedText}>
+            {t('home.reward_achieved', { reward: item.lastAchievedReward.description })}
+          </Text>
+        ) : null}
         {item.recurrence === 'daily' && item.due_time ? (
           <Text style={[styles.dueTimeText, !item.completedToday && isDuePast(item.due_time) && styles.dueTimeUrgent]}>
             {t('home.due_before', { time: item.due_time.slice(0, 5) })}
@@ -763,6 +844,18 @@ const styles = StyleSheet.create({
     color: GRAY,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  rewardNextText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: BLUE,
+    fontWeight: '500',
+  },
+  rewardAchievedText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#2E7D32',
+    fontWeight: '600',
   },
   completeBtn: {
     marginTop: 14,

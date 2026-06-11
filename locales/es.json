@@ -89,6 +89,8 @@
     "due_before": "Antes de las {{time}}",
     "error_load": "No se pudieron cargar los datos. Revisa tu conexión.",
     "weekly_progress": "{{done}} de {{target}} veces esta semana",
+    "reward_next": "🎯 A {{days}} días de: {{reward}}",
+    "reward_achieved": "🏆 {{reward}} conseguida",
     "weekly_goal_met": "✓ Objetivo cumplido esta semana",
     "monthly_progress": "{{done}} de {{target}} veces este mes",
     "monthly_goal_met": "✓ Objetivo cumplido este mes",
@@ -215,7 +217,11 @@
     "cancel_invitation_confirm": "¿Eliminar este código de activación?",
     "family_welcome": "¡Bienvenido! Empieza añadiendo a los miembros de tu familia",
     "delete_member_title": "Eliminar miembro",
-    "delete_member_message": "¿Eliminar a {{name}} del grupo? Se eliminarán todos sus datos, hábitos y validaciones. Esta acción no se puede deshacer."
+    "delete_member_message": "¿Eliminar a {{name}} del grupo? Se eliminarán todos sus datos, hábitos y validaciones. Esta acción no se puede deshacer.",
+    "rewards_title": "Recompensas",
+    "add_reward": "+ Añadir recompensa",
+    "reward_days": "días de racha",
+    "reward_placeholder": "Ej: Cena en familia"
   },
   "history": {
     "header_title": "Historial",
@@ -274,7 +280,10 @@
     "best_streak_weeks": "Mejor racha (sem.)",
     "current_streak_months": "Racha actual (mes.)",
     "best_streak_months": "Mejor racha (mes.)",
-    "error_load": "No se pudieron cargar las estadísticas."
+    "error_load": "No se pudieron cargar las estadísticas.",
+    "rewards_title": "Recompensas",
+    "reward_achieved": "Conseguida con racha de {{days}} días",
+    "reward_pending": "A {{days}} días"
   },
   "activity": {
     "header_title": "Actividad del grupo",

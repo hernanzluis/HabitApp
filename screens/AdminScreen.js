@@ -147,6 +147,10 @@ export default function AdminScreen() {
   const [weeklyTarget, setWeeklyTarget] = useState(3);
   const [monthlyTarget, setMonthlyTarget] = useState(5);
   const [photoRequired, setPhotoRequired] = useState(true);
+  const [rewards, setRewards] = useState([]);
+  const [newRewardDays, setNewRewardDays] = useState('7');
+  const [newRewardDesc, setNewRewardDesc] = useState('');
+  const [showAddRewardForm, setShowAddRewardForm] = useState(false);
   const [savingHabit, setSavingHabit] = useState(false);
   const [modalError, setModalError] = useState('');
 
@@ -413,6 +417,10 @@ export default function AdminScreen() {
     setWeeklyTarget(3);
     setMonthlyTarget(5);
     setPhotoRequired(true);
+    setRewards([]);
+    setNewRewardDays('7');
+    setNewRewardDesc('');
+    setShowAddRewardForm(false);
     setModalError('');
     setCreateModalVisible(true);
   };
@@ -476,6 +484,13 @@ export default function AdminScreen() {
         if (validError) throw validError;
       }
 
+      if (rewards.length > 0) {
+        const { error: rewardError } = await supabase
+          .from('habit_rewards')
+          .insert(rewards.map((r) => ({ habit_id: newHabit.id, streak_target: r.streak_target, description: r.description })));
+        if (rewardError) throw rewardError;
+      }
+
       setCreateModalVisible(false);
       loadData();
     } catch (e) {
@@ -490,14 +505,19 @@ export default function AdminScreen() {
     setModalError('');
     let current, currentValidators;
     try {
-      const [assignResult, validResult] = await Promise.all([
+      const [assignResult, validResult, rewardsResult] = await Promise.all([
         supabase.from('habit_assignments').select('user_id').eq('habit_id', habit.id),
         supabase.from('habit_validators').select('user_id').eq('habit_id', habit.id),
+        supabase.from('habit_rewards').select('streak_target, description').eq('habit_id', habit.id).order('streak_target'),
       ]);
       if (assignResult.error) throw assignResult.error;
       if (validResult.error) throw validResult.error;
       current = assignResult.data;
       currentValidators = validResult.data;
+      setRewards(rewardsResult.data ?? []);
+      setNewRewardDays('7');
+      setNewRewardDesc('');
+      setShowAddRewardForm(false);
     } catch (e) {
       setError(e?.message || t('admin.error_load'));
       return;
@@ -570,6 +590,15 @@ export default function AdminScreen() {
           [...validatorIds].map((userId) => ({ habit_id: editingHabit.id, user_id: userId }))
         );
         if (validError) throw validError;
+      }
+
+      const { error: delRewardError } = await supabase.from('habit_rewards').delete().eq('habit_id', editingHabit.id);
+      if (delRewardError) throw delRewardError;
+      if (rewards.length > 0) {
+        const { error: rewardError } = await supabase.from('habit_rewards').insert(
+          rewards.map((r) => ({ habit_id: editingHabit.id, streak_target: r.streak_target, description: r.description }))
+        );
+        if (rewardError) throw rewardError;
       }
 
       setHabits((prev) => prev.map((h) =>
@@ -1492,6 +1521,59 @@ export default function AdminScreen() {
               <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{t('admin.validators_label')}</Text>
               {members.map(renderValidatorToggle)}
 
+              {/* Recompensas */}
+              <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{t('admin.rewards_title')}</Text>
+              {rewards.map((r, idx) => (
+                <View key={idx} style={styles.rewardRow}>
+                  <Text style={styles.rewardText}>🎯 {r.streak_target} {t('admin.reward_days')} → {r.description}</Text>
+                  <TouchableOpacity onPress={() => setRewards((prev) => prev.filter((_, i) => i !== idx))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.rewardRemove}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {showAddRewardForm ? (
+                <View style={styles.addRewardForm}>
+                  <View style={styles.addRewardInputRow}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                      value={newRewardDays}
+                      onChangeText={setNewRewardDays}
+                      keyboardType="numeric"
+                      placeholder="7"
+                      placeholderTextColor={GRAY}
+                      maxLength={3}
+                    />
+                    <Text style={styles.rewardDaysLabel}>{t('admin.reward_days')}</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.input, { marginTop: 8 }]}
+                    value={newRewardDesc}
+                    onChangeText={setNewRewardDesc}
+                    placeholder={t('admin.reward_placeholder')}
+                    placeholderTextColor={GRAY}
+                    maxLength={80}
+                  />
+                  <TouchableOpacity
+                    style={styles.addRewardConfirmBtn}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      const days = parseInt(newRewardDays, 10);
+                      if (!days || days < 1 || !newRewardDesc.trim()) return;
+                      setRewards((prev) => [...prev, { streak_target: days, description: newRewardDesc.trim() }].sort((a, b) => a.streak_target - b.streak_target));
+                      setNewRewardDays('7');
+                      setNewRewardDesc('');
+                      setShowAddRewardForm(false);
+                    }}
+                  >
+                    <Text style={styles.addRewardConfirmText}>{t('common.save')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.addRewardBtn} onPress={() => setShowAddRewardForm(true)} activeOpacity={0.8}>
+                  <Text style={styles.addRewardBtnText}>{t('admin.add_reward')}</Text>
+                </TouchableOpacity>
+              )}
+
               {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
 
               <TouchableOpacity
@@ -1640,6 +1722,59 @@ export default function AdminScreen() {
               {/* Validadores */}
               <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{t('admin.validators_label')}</Text>
               {members.map(renderValidatorToggle)}
+
+              {/* Recompensas */}
+              <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{t('admin.rewards_title')}</Text>
+              {rewards.map((r, idx) => (
+                <View key={idx} style={styles.rewardRow}>
+                  <Text style={styles.rewardText}>🎯 {r.streak_target} {t('admin.reward_days')} → {r.description}</Text>
+                  <TouchableOpacity onPress={() => setRewards((prev) => prev.filter((_, i) => i !== idx))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.rewardRemove}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {showAddRewardForm ? (
+                <View style={styles.addRewardForm}>
+                  <View style={styles.addRewardInputRow}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                      value={newRewardDays}
+                      onChangeText={setNewRewardDays}
+                      keyboardType="numeric"
+                      placeholder="7"
+                      placeholderTextColor={GRAY}
+                      maxLength={3}
+                    />
+                    <Text style={styles.rewardDaysLabel}>{t('admin.reward_days')}</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.input, { marginTop: 8 }]}
+                    value={newRewardDesc}
+                    onChangeText={setNewRewardDesc}
+                    placeholder={t('admin.reward_placeholder')}
+                    placeholderTextColor={GRAY}
+                    maxLength={80}
+                  />
+                  <TouchableOpacity
+                    style={styles.addRewardConfirmBtn}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      const days = parseInt(newRewardDays, 10);
+                      if (!days || days < 1 || !newRewardDesc.trim()) return;
+                      setRewards((prev) => [...prev, { streak_target: days, description: newRewardDesc.trim() }].sort((a, b) => a.streak_target - b.streak_target));
+                      setNewRewardDays('7');
+                      setNewRewardDesc('');
+                      setShowAddRewardForm(false);
+                    }}
+                  >
+                    <Text style={styles.addRewardConfirmText}>{t('common.save')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.addRewardBtn} onPress={() => setShowAddRewardForm(true)} activeOpacity={0.8}>
+                  <Text style={styles.addRewardBtnText}>{t('admin.add_reward')}</Text>
+                </TouchableOpacity>
+              )}
 
               {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
 
@@ -2106,4 +2241,15 @@ const styles = StyleSheet.create({
   familyStatusPendingText: { fontSize: 11, fontWeight: '700', color: '#F97316' },
   familyWelcomeBox: { alignItems: 'center', padding: 32, gap: 12, backgroundColor: WHITE },
   familyWelcomeText: { fontSize: 15, color: GRAY, fontWeight: '600', textAlign: 'center', lineHeight: 22 },
+  // Rewards section
+  rewardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#F9F9F9', borderRadius: 6, marginBottom: 6 },
+  rewardText: { flex: 1, fontSize: 13, color: TEXT },
+  rewardRemove: { fontSize: 20, color: GRAY, fontWeight: '600', paddingLeft: 12 },
+  addRewardBtn: { paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 6, marginTop: 4 },
+  addRewardBtnText: { fontSize: 13, color: BLUE, fontWeight: '600' },
+  addRewardForm: { backgroundColor: '#F9F9F9', borderRadius: 6, padding: 12, marginTop: 4 },
+  addRewardInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rewardDaysLabel: { fontSize: 13, color: GRAY },
+  addRewardConfirmBtn: { marginTop: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: BLUE, borderRadius: 6 },
+  addRewardConfirmText: { color: WHITE, fontWeight: '600', fontSize: 13 },
 });

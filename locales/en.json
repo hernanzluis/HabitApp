@@ -89,6 +89,8 @@
     "due_before": "Before {{time}}",
     "error_load": "Could not load data. Check your connection.",
     "weekly_progress": "{{done}} of {{target}} times this week",
+    "reward_next": "🎯 {{days}} days to: {{reward}}",
+    "reward_achieved": "🏆 {{reward}} achieved",
     "weekly_goal_met": "✓ Weekly goal met",
     "monthly_progress": "{{done}} of {{target}} times this month",
     "monthly_goal_met": "✓ Monthly goal met",
@@ -248,7 +250,11 @@
     "cancel_invitation_confirm": "Delete this activation code?",
     "family_welcome": "Welcome! Start by adding your family members",
     "delete_member_title": "Delete member",
-    "delete_member_message": "Delete {{name}} from the group? All their data, habits and validations will be deleted. This action cannot be undone."
+    "delete_member_message": "Delete {{name}} from the group? All their data, habits and validations will be deleted. This action cannot be undone.",
+    "rewards_title": "Rewards",
+    "add_reward": "+ Add reward",
+    "reward_days": "streak days",
+    "reward_placeholder": "E.g: Family dinner"
   },
   "nav": {
     "home": "Home",
@@ -274,7 +280,10 @@
     "best_streak_weeks": "Best streak (wks)",
     "current_streak_months": "Current streak (mo.)",
     "best_streak_months": "Best streak (mo.)",
-    "error_load": "Could not load stats."
+    "error_load": "Could not load stats.",
+    "rewards_title": "Rewards",
+    "reward_achieved": "Achieved with {{days}} day streak",
+    "reward_pending": "{{days}} days away"
   },
   "activity": {
     "header_title": "Group activity",

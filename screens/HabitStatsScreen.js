@@ -271,6 +271,7 @@ export default function HabitStatsScreen() {
   const [habitLogs, setHabitLogs] = useState([]);
   const [validatedLogIds, setValidatedLogIds] = useState(new Set());
   const [comments, setComments] = useState([]);
+  const [habitRewards, setHabitRewards] = useState([]);
 
   useEffect(() => {
     navigation.setOptions({
@@ -322,7 +323,7 @@ export default function HabitStatsScreen() {
 
       const logIds = logs.map((l) => l.id);
 
-      const [{ data: allValidated }, { data: valData }] = await Promise.all([
+      const [{ data: allValidated }, { data: valData }, { data: rewardsData }] = await Promise.all([
         supabase
           .from('habit_validations')
           .select('habit_log_id')
@@ -336,7 +337,13 @@ export default function HabitStatsScreen() {
           .not('comment', 'is', null)
           .order('created_at', { ascending: false })
           .limit(10),
+        supabase
+          .from('habit_rewards')
+          .select('streak_target, description')
+          .eq('habit_id', habit.id)
+          .order('streak_target'),
       ]);
+      setHabitRewards(rewardsData ?? []);
 
       setValidatedLogIds(new Set((allValidated ?? []).map((v) => v.habit_log_id)));
 
@@ -558,6 +565,29 @@ export default function HabitStatsScreen() {
         )}
       </View>
 
+      {/* ── Recompensas ──────────────────────────────────────────────────── */}
+      {habitRewards.length > 0 ? (
+        <View style={[styles.section, styles.sectionSpaced]}>
+          <Text style={styles.sectionTitle}>{t('stats.rewards_title')}</Text>
+          {habitRewards.map((r, idx) => {
+            const achieved = r.streak_target <= stats.streakCurrent;
+            return (
+              <View key={idx} style={[styles.rewardItem, achieved ? styles.rewardItemAchieved : styles.rewardItemPending]}>
+                <Text style={styles.rewardItemEmoji}>{achieved ? '🏆' : '🎯'}</Text>
+                <View style={styles.rewardItemBody}>
+                  <Text style={[styles.rewardItemDesc, achieved && styles.rewardItemDescAchieved]}>{r.description}</Text>
+                  <Text style={[styles.rewardItemMeta, achieved && styles.rewardItemMetaAchieved]}>
+                    {achieved
+                      ? t('stats.reward_achieved', { days: r.streak_target })
+                      : t('stats.reward_pending', { days: r.streak_target - stats.streakCurrent })}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
       <View style={styles.bottomPad} />
     </ScrollView>
   );
@@ -633,4 +663,14 @@ const styles = StyleSheet.create({
   commentDate: { fontSize: 11, color: GRAY },
   commentText: { fontSize: 13, color: GRAY, fontStyle: 'italic', lineHeight: 18 },
   bottomPad: { height: 32 },
+  // Rewards section
+  rewardItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, marginBottom: 8 },
+  rewardItemAchieved: { backgroundColor: '#F0FAF0' },
+  rewardItemPending: { backgroundColor: '#F9F9F9' },
+  rewardItemEmoji: { fontSize: 22 },
+  rewardItemBody: { flex: 1 },
+  rewardItemDesc: { fontSize: 14, fontWeight: '600', color: TEXT },
+  rewardItemDescAchieved: { color: '#2E7D32' },
+  rewardItemMeta: { fontSize: 12, color: GRAY, marginTop: 2 },
+  rewardItemMetaAchieved: { color: '#4CAF50' },
 });
