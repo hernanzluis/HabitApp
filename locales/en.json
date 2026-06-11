@@ -90,7 +90,7 @@
     "error_load": "Could not load data. Check your connection.",
     "weekly_progress": "{{done}} of {{target}} times this week",
     "reward_next": "🎯 {{days}} days to: {{reward}}",
-    "reward_next_times": "🎯 {{days}} days · ×{{times}} achieved",
+    "reward_next_times": "🎯 {{days}} days to: {{reward}} · ×{{times}} achieved",
     "reward_achieved": "🏆 {{reward}} achieved",
     "weekly_goal_met": "✓ Weekly goal met",
     "monthly_progress": "{{done}} of {{target}} times this month",

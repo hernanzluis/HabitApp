@@ -90,7 +90,7 @@
     "error_load": "No se pudieron cargar los datos. Revisa tu conexión.",
     "weekly_progress": "{{done}} de {{target}} veces esta semana",
     "reward_next": "🎯 A {{days}} días de: {{reward}}",
-    "reward_next_times": "🎯 A {{days}} días · ×{{times}} conseguida",
+    "reward_next_times": "🎯 A {{days}} días de: {{reward}} · ×{{times}} conseguida",
     "reward_achieved": "🏆 {{reward}} conseguida",
     "weekly_goal_met": "✓ Objetivo cumplido esta semana",
     "monthly_progress": "{{done}} de {{target}} veces este mes",

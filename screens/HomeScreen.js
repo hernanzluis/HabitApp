@@ -540,7 +540,7 @@ export default function HomeScreen() {
         {item.featuredReward ? (
           <Text style={styles.rewardNextText}>
             {item.featuredReward.timesAchieved > 0
-              ? t('home.reward_next_times', { days: item.featuredReward.daysToNext, times: item.featuredReward.timesAchieved })
+              ? t('home.reward_next_times', { days: item.featuredReward.daysToNext, times: item.featuredReward.timesAchieved, reward: item.featuredReward.description })
               : t('home.reward_next', { days: item.featuredReward.daysToNext, reward: item.featuredReward.description })}
           </Text>
         ) : null}
