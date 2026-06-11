@@ -272,6 +272,7 @@ export default function HabitStatsScreen() {
   const [validatedLogIds, setValidatedLogIds] = useState(new Set());
   const [comments, setComments] = useState([]);
   const [habitRewards, setHabitRewards] = useState([]);
+  const [totalForRewards, setTotalForRewards] = useState(0);
 
   useEffect(() => {
     navigation.setOptions({
@@ -305,6 +306,7 @@ export default function HabitStatsScreen() {
 
       if (!logs.length) {
         setStats({ streakCurrent: 0, streakBest: 0, totalCompleted: 0, completionRate: 0 });
+        setTotalForRewards(0);
         setComments([]);
         return;
       }
@@ -320,6 +322,23 @@ export default function HabitStatsScreen() {
         totalCompleted: logs.length,
         completionRate: calculateCompletionRate(logs),
       });
+
+      // Total histórico para recompensas recursivas
+      let computedTotalForRewards = 0;
+      if (isWeekly) {
+        const wTarget = habit?.weekly_target ?? 1;
+        const weekCountMap = {};
+        logs.forEach((l) => { const k = getMondayKey(new Date(l.created_at)); weekCountMap[k] = (weekCountMap[k] || 0) + 1; });
+        computedTotalForRewards = Object.values(weekCountMap).filter((c) => c >= wTarget).length;
+      } else if (isMonthly) {
+        const mTarget = habit?.monthly_target ?? 1;
+        const monthCountMap = {};
+        logs.forEach((l) => { const d = new Date(l.created_at); const k = `${d.getFullYear()}-${d.getMonth()}`; monthCountMap[k] = (monthCountMap[k] || 0) + 1; });
+        computedTotalForRewards = Object.values(monthCountMap).filter((c) => c >= mTarget).length;
+      } else {
+        computedTotalForRewards = new Set(logs.map((l) => toDateKey(new Date(l.created_at)))).size;
+      }
+      setTotalForRewards(computedTotalForRewards);
 
       const logIds = logs.map((l) => l.id);
 
@@ -570,16 +589,21 @@ export default function HabitStatsScreen() {
         <View style={[styles.section, styles.sectionSpaced]}>
           <Text style={styles.sectionTitle}>{t('stats.rewards_title')}</Text>
           {habitRewards.map((r, idx) => {
-            const achieved = r.streak_target <= stats.streakCurrent;
+            const timesAchieved = Math.floor(totalForRewards / r.streak_target);
+            const daysToNext = r.streak_target - (totalForRewards % r.streak_target);
+            const achieved = timesAchieved > 0;
             return (
               <View key={idx} style={[styles.rewardItem, achieved ? styles.rewardItemAchieved : styles.rewardItemPending]}>
                 <Text style={styles.rewardItemEmoji}>{achieved ? '🏆' : '🎯'}</Text>
                 <View style={styles.rewardItemBody}>
                   <Text style={[styles.rewardItemDesc, achieved && styles.rewardItemDescAchieved]}>{r.description}</Text>
-                  <Text style={[styles.rewardItemMeta, achieved && styles.rewardItemMetaAchieved]}>
-                    {achieved
-                      ? t('stats.reward_achieved', { days: r.streak_target })
-                      : t('stats.reward_pending', { days: r.streak_target - stats.streakCurrent })}
+                  {achieved ? (
+                    <Text style={[styles.rewardItemMeta, styles.rewardItemMetaAchieved]}>
+                      {t('stats.reward_times', { times: timesAchieved })}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.rewardItemMeta}>
+                    {t('stats.reward_pending', { days: daysToNext })}
                   </Text>
                 </View>
               </View>

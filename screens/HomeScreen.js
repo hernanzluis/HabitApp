@@ -40,6 +40,27 @@ function getMondayKey(date) {
   d.setHours(0, 0, 0, 0);
   return toDateKey(d);
 }
+// Total histórico de unidades completadas (no reinicia con rachas rotas)
+function calculateTotalCompleted(habitLogs, recurrence, weeklyTarget, monthlyTarget) {
+  if (!habitLogs.length) return 0;
+  if (recurrence === 'daily' || recurrence === 'once') {
+    return new Set(habitLogs.map((l) => toDateKey(new Date(l.created_at)))).size;
+  }
+  if (recurrence === 'weekly_x') {
+    const wTarget = weeklyTarget || 1;
+    const weekCountMap = {};
+    habitLogs.forEach((l) => { const k = getMondayKey(new Date(l.created_at)); weekCountMap[k] = (weekCountMap[k] || 0) + 1; });
+    return Object.values(weekCountMap).filter((c) => c >= wTarget).length;
+  }
+  if (recurrence === 'monthly_x') {
+    const mTarget = monthlyTarget || 1;
+    const monthCountMap = {};
+    habitLogs.forEach((l) => { const d = new Date(l.created_at); const k = `${d.getFullYear()}-${d.getMonth()}`; monthCountMap[k] = (monthCountMap[k] || 0) + 1; });
+    return Object.values(monthCountMap).filter((c) => c >= mTarget).length;
+  }
+  return 0;
+}
+
 function calculateHabitStreak(habitLogs, recurrence, weeklyTarget, monthlyTarget) {
   if (!habitLogs.length) return 0;
   if (recurrence === 'daily' || recurrence === 'once') {
@@ -407,10 +428,17 @@ export default function HomeScreen() {
           const logId = todayLogIdByHabit[h.id];
           const vCounts = (completedToday && logId && validationsMap[logId]) || null;
           const habitLogsForStreak = logsData.filter((l) => l.habit_id === h.id);
-          const currentStreak = calculateHabitStreak(habitLogsForStreak, h.recurrence, h.weekly_target, h.monthly_target);
-          const habitRewardList = rewardsMap[h.id] ?? [];
-          const nextReward = habitRewardList.find((r) => r.streak_target > currentStreak) ?? null;
-          const lastAchievedReward = [...habitRewardList].reverse().find((r) => r.streak_target <= currentStreak) ?? null;
+          const totalHistorical = calculateTotalCompleted(habitLogsForStreak, h.recurrence, h.weekly_target, h.monthly_target);
+          // Calcular datos recursivos para cada recompensa
+          const habitRewardList = (rewardsMap[h.id] ?? []).map((r) => ({
+            ...r,
+            timesAchieved: Math.floor(totalHistorical / r.streak_target),
+            daysToNext: r.streak_target - (totalHistorical % r.streak_target),
+          }));
+          // Recompensa a mostrar: la más próxima (menor daysToNext)
+          const featuredReward = habitRewardList.length > 0
+            ? habitRewardList.reduce((best, r) => (!best || r.daysToNext < best.daysToNext) ? r : best, null)
+            : null;
 
           return {
             ...h,
@@ -424,9 +452,7 @@ export default function HomeScreen() {
             todayValidations: (completedToday && logId) ? (todayValidationsPerLog[logId] ?? []) : [],
             validators: validatorsPerHabit[h.id] ?? [],
             rewards: habitRewardList,
-            currentStreak,
-            nextReward,
-            lastAchievedReward,
+            featuredReward,
           };
         });
 
@@ -511,13 +537,11 @@ export default function HomeScreen() {
           ) : null}
         </View>
         {item.description ? <Text style={styles.habitDescription}>{item.description}</Text> : null}
-        {item.nextReward ? (
+        {item.featuredReward ? (
           <Text style={styles.rewardNextText}>
-            {t('home.reward_next', { days: item.nextReward.streak_target - item.currentStreak, reward: item.nextReward.description })}
-          </Text>
-        ) : item.lastAchievedReward ? (
-          <Text style={styles.rewardAchievedText}>
-            {t('home.reward_achieved', { reward: item.lastAchievedReward.description })}
+            {item.featuredReward.timesAchieved > 0
+              ? t('home.reward_next_times', { days: item.featuredReward.daysToNext, times: item.featuredReward.timesAchieved })
+              : t('home.reward_next', { days: item.featuredReward.daysToNext, reward: item.featuredReward.description })}
           </Text>
         ) : null}
         {item.recurrence === 'daily' && item.due_time ? (

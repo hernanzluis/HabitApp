@@ -186,9 +186,12 @@ export default function HabitDetailScreen() {
       const calculatedStreak = calculateStreak(recentLogs ?? []);
       setStreak(calculatedStreak);
 
-      // Verificar si se alcanzó alguna recompensa con esta racha
+      // Verificar si se cruzó un nuevo múltiplo del streak_target (recompensas recursivas)
+      const newTotal = new Set((recentLogs ?? []).map((l) => toDateKey(new Date(l.created_at)))).size;
       const habitRewards = habit.rewards ?? [];
-      const justAchieved = habitRewards.find((r) => r.streak_target === calculatedStreak) ?? null;
+      const justAchieved = habitRewards.find((r) =>
+        Math.floor(newTotal / r.streak_target) > Math.floor((newTotal - 1) / r.streak_target)
+      ) ?? null;
       setAchievedReward(justAchieved);
 
       // ── Mostrar celebración ───────────────────────────────────────────
