@@ -194,3 +194,10 @@ function calculateTotalCompleted(habitLogs, recurrence, weeklyTarget, monthlyTar
 - Consultar docs versionadas de Expo v54 antes de escribir código nativo: https://docs.expo.dev/versions/v54.0.0/
 - Instrucciones siempre dentro de bloques de código con triple backtick (para que aparezca el botón de copiar), nunca como texto plano
 - Indicar siempre el repo destino al inicio del bloque de código: "Para Code (en HabitApp):" o "Para Code (en habitteam-web):"
+
+## 18. Forma de trabajo
+- Claude (asistente de diseño/producto) diseña/piensa los cambios y produce instrucciones para Claude Code
+- Cambios en código de la app/web: prompt en prosa para Claude Code (Code lee los ficheros, decide implementación, hace commit y push)
+- Cambios en Supabase (tablas, RLS, funciones, buckets): SQL directo que ejecuta Luis en el SQL Editor, nunca vía Code ni UI de Supabase
+- Tras cada funcionalidad implementada, se prueba manualmente antes de pasar al siguiente bloque (ej: cambiar `plan` de una company de test y verificar comportamiento)
+- Los prompts para Code siempre indican el repo destino: "Para Code (en HabitApp):" o "Para Code (en habitteam-web):"
