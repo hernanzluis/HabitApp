@@ -222,7 +222,9 @@
     "rewards_title": "Recompensas",
     "add_reward": "+ Añadir recompensa",
     "reward_days": "días de racha",
-    "reward_placeholder": "Ej: Cena en familia"
+    "reward_placeholder": "Ej: Cena en familia",
+    "limit_habits_reached": "Has alcanzado el límite de hábitos activos de tu plan actual",
+    "limit_members_reached": "Has alcanzado el límite de miembros de tu plan actual"
   },
   "history": {
     "header_title": "Historial",

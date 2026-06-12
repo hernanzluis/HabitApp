@@ -447,6 +447,14 @@ export default function AdminScreen() {
     setSavingHabit(true);
     setModalError('');
     try {
+      const { data: limitOk, error: limitErr } = await supabase.rpc('check_habit_limit', { p_company_id: companyId });
+      if (limitErr) throw limitErr;
+      if (limitOk === false) {
+        Alert.alert(t('admin.limit_habits_reached'));
+        setSavingHabit(false);
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
 
       const { data: newHabit, error: habitError } = await supabase
@@ -674,6 +682,14 @@ export default function AdminScreen() {
     if (!memberName.trim() || !memberEmail.trim() || !companyId) return;
     setGeneratingCode(true);
     try {
+      const { data: limitOk, error: limitErr } = await supabase.rpc('check_member_limit', { p_company_id: companyId });
+      if (limitErr) throw limitErr;
+      if (limitOk === false) {
+        Alert.alert(t('admin.limit_members_reached'));
+        setGeneratingCode(false);
+        return;
+      }
+
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const { error: insertError } = await supabase.from('activation_codes').insert({
         code,

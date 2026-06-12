@@ -255,7 +255,9 @@
     "rewards_title": "Rewards",
     "add_reward": "+ Add reward",
     "reward_days": "streak days",
-    "reward_placeholder": "E.g: Family dinner"
+    "reward_placeholder": "E.g: Family dinner",
+    "limit_habits_reached": "You've reached your plan's active habits limit",
+    "limit_members_reached": "You've reached your plan's members limit"
   },
   "nav": {
     "home": "Home",
