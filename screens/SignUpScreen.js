@@ -239,7 +239,13 @@ export default function SignUpScreen() {
         user_full_name: activationData.full_name,
         activation_code: activationCodeTrimmed,
       });
-      if (rpcError) throw rpcError;
+      if (rpcError) {
+        if (rpcError.message === 'limit_members_reached') {
+          setFormError(t('admin.limit_members_reached'));
+          return;
+        }
+        throw rpcError;
+      }
 
       await supabase
         .from('activation_codes')
