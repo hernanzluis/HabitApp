@@ -12,6 +12,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
+import usePlanInfo from '../lib/usePlanInfo';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -264,6 +265,17 @@ export default function HabitStatsScreen() {
     return d;
   });
 
+  const [companyId, setCompanyId] = useState(null);
+  const { historyDays } = usePlanInfo(companyId);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('profiles').select('company_id').eq('id', user.id).single()
+        .then(({ data }) => { if (data?.company_id) setCompanyId(data.company_id); });
+    });
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -302,7 +314,10 @@ export default function HabitStatsScreen() {
       if (logsError) throw logsError;
       const logs = logsData ?? [];
 
-      setHabitLogs(logs);
+      // historyDays filter: only for display (calendar + validations), NOT for streaks/rewards
+      const cutoff = historyDays != null ? new Date(Date.now() - historyDays * 86400000) : null;
+      const logsForDisplay = cutoff ? logs.filter((l) => new Date(l.created_at) >= cutoff) : logs;
+      setHabitLogs(logsForDisplay);
 
       if (!logs.length) {
         setStats({ streakCurrent: 0, streakBest: 0, totalCompleted: 0, completionRate: 0 });
@@ -340,7 +355,7 @@ export default function HabitStatsScreen() {
       }
       setTotalForRewards(computedTotalForRewards);
 
-      const logIds = logs.map((l) => l.id);
+      const logIds = logsForDisplay.map((l) => l.id);
 
       const [{ data: allValidated }, { data: valData }, { data: rewardsData }] = await Promise.all([
         supabase
@@ -386,7 +401,7 @@ export default function HabitStatsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [habit, userId, t]);
+  }, [habit, userId, t, historyDays]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

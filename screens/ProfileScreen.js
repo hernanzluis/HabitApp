@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LANG_STORAGE_KEY } from '../lib/i18n';
 import { supabase } from '../lib/supabase';
+import usePlanInfo from '../lib/usePlanInfo';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -145,6 +146,8 @@ export default function ProfileScreen() {
   const [editingGroupName, setEditingGroupName] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [groupNameSaving, setGroupNameSaving] = useState(false);
+
+  const { historyDays } = usePlanInfo(data?.companyId);
 
   const [historyLogs, setHistoryLogs] = useState([]);
   const [filterStatus, setFilterStatus] = useState('all');
@@ -303,7 +306,9 @@ export default function ProfileScreen() {
   );
 
   const filteredLogs = useMemo(() => {
+    const cutoff = historyDays != null ? new Date(Date.now() - historyDays * 86400000) : null;
     return historyLogs.filter((log) => {
+      if (cutoff && new Date(log.createdAt) < cutoff) return false;
       if (filterStatus !== 'all' && log.status !== filterStatus) return false;
       if (filterPeriod === 'week' && new Date(log.createdAt) < getWeekStart()) return false;
       if (filterPeriod === 'month') {
@@ -312,7 +317,7 @@ export default function ProfileScreen() {
       }
       return true;
     });
-  }, [historyLogs, filterStatus, filterPeriod]);
+  }, [historyLogs, filterStatus, filterPeriod, historyDays]);
 
   const uploadAvatar = async (asset) => {
     setAvatarUploading(true);
