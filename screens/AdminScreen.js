@@ -691,16 +691,16 @@ export default function AdminScreen() {
       }
 
       const code = Math.floor(100000 + Math.random() * 900000).toString();
-      const { error: insertError } = await supabase.from('activation_codes').insert({
+      const { data: insertedCode, error: insertError } = await supabase.from('activation_codes').insert({
         code,
         full_name: memberName.trim(),
         email: memberEmail.trim(),
         company_id: companyId,
-      });
+      }).select('id').single();
       if (insertError) throw insertError;
       setGeneratedCode(code);
       setPendingMembers((prev) => [
-        { id: code, full_name: memberName.trim(), email: memberEmail.trim(), code, created_at: new Date().toISOString() },
+        { id: insertedCode.id, full_name: memberName.trim(), email: memberEmail.trim(), code, created_at: new Date().toISOString() },
         ...prev,
       ]);
       // Marcar setup de familia como completado para no redirigir de nuevo al admin
