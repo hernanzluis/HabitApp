@@ -230,7 +230,7 @@ Registra un usuario en una empresa existente usando un código de activación pe
 
 **Race condition:** se usa el singleton `authFlags` (`lib/authFlags.js`) para bloquear el redirect automático de `onAuthStateChange` durante el flujo de activación. `skipNextRedirect = true` se pone antes del `signUp`; se resetea en cada path de error; al terminar se llama `activateSession(session)` que ejecuta `setSession` directamente en RootNavigator.
 
-### `handle_invited_user_registration`
+### `handle_invited_user_registration` _(posiblemente huérfana)_
 Registra un usuario en una empresa existente usando un código de invitación. Se llama desde la app tras `auth.signUp`.
 
 **Parámetros:**
@@ -243,6 +243,20 @@ Registra un usuario en una empresa existente usando un código de invitación. S
 1. Busca la invitación por `code` para obtener `company_id`
 2. INSERT en `profiles` con `role = 'user'` y el `company_id` de la invitación
 3. No marca la invitación como usada (diseño deliberado: el código es reutilizable)
+
+> **Nota:** no se encontró ninguna llamada real a esta RPC (`supabase.rpc('handle_invited_user_registration', ...)`) en el código actual — solo aparece mencionada en comentarios (`SignUpScreen.js`, `lib/authFlags.js`). Puede ser código server-side huérfano tras la introducción del flujo `activation_codes`, o documentación que quedó desactualizada. Verificar si la RPC sigue existiendo en Supabase y si conviene eliminarla.
+
+### `delete_member(member_id uuid)`
+Elimina un miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` (app) y `src/components/admin/Members.jsx` (web) desde el botón "Eliminar miembro".
+
+### `check_habit_limit(p_company_id)` → boolean
+Comprueba si el grupo puede crear un hábito activo más, según su plan. Usada en `screens/AdminScreen.js` (app) y `Habits.jsx` (web) antes del INSERT de un nuevo hábito. Detalle de planes y límites en [business.md](business.md).
+
+### `check_member_limit(p_company_id)` → boolean
+Comprueba si el grupo puede añadir un miembro más, según su plan. Usada en `screens/AdminScreen.js` (app) y `Members.jsx` (web) antes de generar un código de activación, y como red de seguridad server-side dentro de `handle_activation_registration`. Detalle en [business.md](business.md).
+
+### `get_company_plan_info(p_company_id)`
+Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` del grupo. Usada por el hook `lib/usePlanInfo.js`. Detalle en [business.md](business.md).
 
 ---
 

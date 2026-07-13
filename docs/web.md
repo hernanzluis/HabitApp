@@ -3,8 +3,18 @@
 **Repositorio web:** habitteam-web (proyecto separado, mismo Supabase) — https://github.com/hernanzluis/habitteam-web
 **Directorio local:** /Users/luishernanz/habitteam-web
 **Dominio:** habitteam.app (registrado en Namecheap)
-**Stack web:** React + React Router v6 + Tailwind CSS v3 + @supabase/supabase-js
+**Stack web:** React + React Router v7 + Tailwind CSS v3 + @supabase/supabase-js
 **Despliegue:** Vercel (gratuito), automático tras push a la rama principal
+
+## Stack tecnológico
+
+| Tecnología | Versión |
+|---|---|
+| React | ^19.2.6 |
+| React DOM | ^19.2.6 |
+| react-router-dom | ^7.16.0 |
+| tailwindcss | ^3.4.19 |
+| @supabase/supabase-js | — |
 
 ## Rutas
 
@@ -45,7 +55,9 @@ Entrada: `src/App.js` — `BrowserRouter` con `ScrollToTop`.
 
 ### `MemberDetail.jsx`
 
-Vista detallada de un miembro (`/admin/miembro/:userId`): perfil, calendario mensual navegable con tres estados de color, racha individual por hábito, últimas 3 fotos con lightbox, últimas 10 validaciones recibidas con validador/reaction/comentario.
+Vista detallada de un miembro (`/admin/miembro/:userId`): perfil, calendario mensual navegable con tres estados de color, racha individual por hábito, últimas 3 fotos con lightbox, últimas 10 validaciones recibidas con validador/reaction/comentario. También incluye una **sección de recompensas/rachas por hábito** (🏆 con `timesAchieved`), usando la misma tabla `habit_rewards` que la app móvil — ver [database.md](database.md).
+
+> **Nota i18n:** a diferencia de las páginas públicas (Home, Nav) y las legales, los componentes del panel admin (`Admin.jsx`, `Activity.jsx`, `Members.jsx`, `Habits.jsx`, `Categories.jsx`, `Acceder.jsx`, `MemberDetail.jsx`) usan strings en español **hardcodeados sin i18n** (`useTranslation()`). Ver [i18n.md](i18n.md).
 
 ### Código de colores (círculos y calendario)
 

@@ -31,8 +31,10 @@ Plataforma de hábitos compartidos con validación social entre miembros del gru
 | react-native-safe-area-context | ~5.6.0 |
 | react-native-screens | ~4.16.0 |
 | react-native-url-polyfill | ^3.0.0 |
-| @react-native-community/datetimepicker | incluido en Expo SDK |
-| i18next (i18n ES/EN) | — |
+| @react-native-community/datetimepicker | ^9.1.0 (dependencia explícita, no incluida en Expo SDK) |
+| expo-localization | ~17.0.9 |
+| react-i18next | ^17.0.8 |
+| i18next (i18n ES/EN) | ^26.3.0 |
 | Node.js | v20 |
 
 **Backend:** Supabase (PostgreSQL + Auth + Storage)
@@ -80,7 +82,9 @@ HabitApp/
 │   └── favicon.png
 ├── lib/
 │   ├── supabase.js             # Cliente Supabase (singleton)
-│   └── authFlags.js            # Singleton para coordinar activación y evitar race condition
+│   ├── authFlags.js            # Singleton para coordinar activación y evitar race condition
+│   ├── i18n.js                 # Configuración i18next + detección de idioma
+│   └── usePlanInfo.js          # Hook que envuelve la RPC get_company_plan_info
 ├── navigation/
 │   └── RootNavigator.js        # Navegación raíz + lógica de sesión + badge tab
 ├── screens/
@@ -90,8 +94,9 @@ HabitApp/
 │   ├── HomeScreen.js
 │   ├── HabitDetailScreen.js
 │   ├── ValidateHabitScreen.js
-│   ├── HistoryScreen.js
-│   ├── ActivityScreen.js
+│   ├── HistoryScreen.js        # Código muerto: no está importada en ninguna navegación (ver nota abajo)
+│   ├── RankingScreen.js        # Antes descrita como "ActivityScreen"; label del tab es "Actividad"
+│   ├── HabitStatsScreen.js
 │   ├── ProfileScreen.js
 │   └── AdminScreen.js
 ├── App.js                      # Punto de entrada (renderiza RootNavigator)
@@ -100,6 +105,8 @@ HabitApp/
 ├── package.json
 └── docs/                       # Documentación del proyecto (este directorio)
 ```
+
+> **Nota:** `screens/HistoryScreen.js` sigue presente en el repo con su lógica completa, pero no está importada ni enlazada desde ningún punto de la navegación actual (`RootNavigator.js` no la registra). Es código muerto — su funcionalidad de historial se integró en `ProfileScreen`. Ver [navigation.md](navigation.md).
 
 ---
 

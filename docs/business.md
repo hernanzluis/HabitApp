@@ -32,9 +32,8 @@ Valores actuales:
 | empresa | null | null | null | true |
 
 ### RPCs relacionadas
-- `check_habit_limit(p_company_id)` → boolean: comprueba si el grupo puede crear un hábito activo más
-- `check_member_limit(p_company_id)` → boolean: comprueba si el grupo puede añadir un miembro más
-- `get_company_plan_info(p_company_id)` → devuelve plan, history_days, advanced_stats, max_members, max_active_habits del grupo
+
+Ver detalle técnico (parámetros, dónde se llaman) en [database.md](database.md#funciones-sql-rpcs-security-definer): `check_habit_limit`, `check_member_limit`, `get_company_plan_info`.
 
 ### Campos añadidos a `companies`
 | Campo | Tipo | Default | Notas |
@@ -49,4 +48,5 @@ Valores actuales:
 - Crear hábito: `check_habit_limit` llamado en AdminScreen (app) y Habits.jsx (web) antes del INSERT
 - Generar código de activación: `check_member_limit` llamado en AdminScreen (app) y Members.jsx (web) antes de generar
 - Activar cuenta: `handle_activation_registration` llama a `check_member_limit` como red de seguridad server-side
-- `history_days` y `advanced_stats`: filtros de UI/queries en cliente usando hook `lib/usePlanInfo.js`
+- `history_days`: filtro de UI/queries en cliente usando hook `lib/usePlanInfo.js` (confirmado en uso real en `ProfileScreen.js` y `HabitStatsScreen.js`)
+- `advanced_stats`: el hook `lib/usePlanInfo.js` lo expone (`advancedStats`), pero no se encontró ningún consumo condicional real en ninguna pantalla todavía — está declarado pero pendiente de implementar

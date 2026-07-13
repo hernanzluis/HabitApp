@@ -146,21 +146,24 @@
 - **`MemberAvatar`** componente auxiliar con `onError` para mostrar inicial cuando el archivo no existe; `key={avatar_url}` fuerza remount al cambiar URL
 - Pull-to-refresh, estado vacío, manejo de errores por sección
 
-### `ActivityScreen` _(antes RankingScreen)_
-- Tab "Actividad" (icono `people-outline`), header "Actividad del grupo"
-- **Período:** semana actual — lunes 00:00:00 hasta hoy 23:59:59 (hora local)
-- **Cabecera:** "Semana del DD Mon al DD Mon"
-- **Queries:**
-  1. `profiles` → obtiene `company_id` del usuario actual
-  2. `profiles` → todos los miembros del grupo (`id, full_name, avatar_url`)
-  3. `habits` → hábitos activos del grupo (para obtener `activeHabitIds`)
-  4. `habit_assignments` → filtra por `activeHabitIds` y `userIds` → cuenta hábitos asignados por miembro
-  5. `habit_logs` → logs del período, por `activeHabitIds` y `userIds`
-  6. `habit_validations` → `status = 'validated'` para los log IDs del período
-- **Por miembro:** avatar + nombre a la izquierda; contadores `completados/asignados` y `validados` a la derecha
-- Sin ranking competitivo. Usuario actual destacado con fondo HIGHLIGHT, borde azul y etiqueta "Tú"
-- Ordenado por completados DESC (alfabético como desempate)
-- Pull-to-refresh, estado vacío
+### `RankingScreen` _(archivo real; tab "Actividad", icono `people-outline`)_
+
+Dos secciones, no una lista plana de miembros:
+
+**Sección "Tu actividad"** (`t('activity.your_activity')`):
+- Tarjetas **por hábito** (no por miembro), cada una con:
+  - Racha actual, con icono de llama 🔥
+  - "Week dots": 7 puntos (uno por día de la semana) con tres estados de color (validado / pendiente / sin actividad)
+  - Borde izquierdo coloreado con el color de la categoría del hábito (`habit.category.color`)
+  - Click en la tarjeta navega a `HabitStats` (`navigation.navigate('HabitStats', { habit, userId })`)
+
+**Sección "Tu familia"** (`t('activity.your_family')`):
+- Para el **admin**: detalle expandido por miembro y por hábito
+- Para usuarios **no admin**: tarjeta compacta por miembro con racha general y week dots (`calculateGeneralStreak`, `getGeneralWeekDots`)
+
+**Cálculo de rachas:** funciones `calculateStreak`, `calculateGeneralStreak`, `getWeekDots`, `getGeneralWeekDots`, `calculateWeeklyStreak`, `calculateMonthlyStreak` — cubren rachas diarias, semanales y mensuales, no solo diarias.
+
+Sin ranking competitivo ni orden por completados. No existe la tarjeta "usuario actual destacado con fondo HIGHLIGHT" — el color `#EEF3FB` no se usa en esta pantalla (ver [design.md](design.md)).
 
 ### `ProfileScreen`
 - **Queries:**
