@@ -57,6 +57,7 @@
   - `once`: si ya existe cualquier log para ese hábito → no se muestra
   - `daily`: si existe log de hoy → muestra tarjeta "Completado hoy" con check verde
   - `weekly_x`: muestra progreso semanal ("X/N esta semana"); si `weeklyCount >= weekly_target` → tarjeta completada con fondo verde
+  - `monthly_x`: igual que `weekly_x` pero por mes natural (día 1 al último día del mes actual); muestra progreso mensual ("X/N este mes"); si `monthlyCount >= monthly_target` → tarjeta completada con fondo verde
 - **Tarjeta completada:** fondo verde muy suave (#F0FAF0), borde izquierdo 3px verde (#2E7D32), icono check Ionicons + texto "Completado hoy" + contadores ✓ N / ✗ N de validaciones recibidas ese día (alineados a la derecha)
 - **Tarjeta pendiente:** botón "Completar" → navega a HabitDetailScreen
 - **Hora límite (`due_time`):** para hábitos `daily` con `due_time`, muestra "Antes de las HH:MM" en gris. Si la hora ya pasó y el hábito no está completado, se muestra en naranja
@@ -111,6 +112,8 @@
 
 ### `HabitStatsScreen`
 - Estadísticas de un hábito: racha actual/máxima, tasa de completado, calendario de actividad, últimas validaciones
+- **Racha y etiquetas según recurrencia:** para `weekly_x` la racha se cuenta en semanas (`current_streak_weeks`/`best_streak_weeks`) y para `monthly_x` en meses (`current_streak_months`/`best_streak_months`), usando `calculateWeeklyStreak`/`calculateMonthlyStreakForStats` y `calculateWeeklyBestStreak`/`calculateMonthlyBestStreak` respectivamente en vez del cálculo diario por defecto
+- Debajo del título, para `weekly_x`/`monthly_x` se muestra la etiqueta del objetivo ("X veces por semana"/"X veces por mes", con `habit.weekly_target`/`habit.monthly_target`)
 - **Sección "Recompensas"** al final: badge verde (🏆 conseguida ×N veces) + badge gris (🎯 a X días)
 
 ### `AdminScreen`
@@ -124,14 +127,15 @@
 - **Botón "Nuevo hábito":** abre modal de creación
 
 **Modal crear hábito:**
-- Campos: título (obligatorio), descripción opcional, recurrencia (pills Diario / X veces/semana / Una vez)
+- Campos: título (obligatorio), descripción opcional, recurrencia (pills Diario / Una vez / X veces por semana / X veces por mes)
 - Para `daily`: selector nativo de hora (`DateTimePicker` mode='time') para `due_time` opcional
 - Para `weekly_x`: stepper numérico (botones − y + con el número en el centro, rango 1–7) para `weekly_target`
+- Para `monthly_x`: mismo stepper que `weekly_x` pero con rango 1–28, para `monthly_target`
 - Para `once`: selector nativo de fecha + hora (`DateTimePicker` mode='date' y mode='time') para `expires_at` opcional
 - Toggle "Foto obligatoria" → guarda en `habits.photo_required` (default true)
 - Lista de miembros del grupo con checkboxes para asignar
 - **Sección Recompensas:** lista editable "🎯 X días → descripción" + formulario inline para añadir
-- Al guardar: INSERT en `habits` (con `weekly_target` si `recurrence = 'weekly_x'`) + INSERT en `habit_assignments` por cada miembro seleccionado
+- Al guardar: INSERT en `habits` (con `weekly_target` si `recurrence = 'weekly_x'`, o `monthly_target` si `recurrence = 'monthly_x'`) + INSERT en `habit_assignments` por cada miembro seleccionado
 
 **Modal editar asignaciones:** al pulsar "X asignado(s)" de un hábito → lista de miembros con estado actual → al guardar: DELETE todas asignaciones del hábito + INSERT nuevas
 
@@ -153,7 +157,8 @@ Dos secciones, no una lista plana de miembros:
 **Sección "Tu actividad"** (`t('activity.your_activity')`):
 - Tarjetas **por hábito** (no por miembro), cada una con:
   - Racha actual, con icono de llama 🔥
-  - "Week dots": 7 puntos (uno por día de la semana) con tres estados de color (validado / pendiente / sin actividad)
+  - Para `daily`/`weekly_x`: "Week dots" — 7 puntos (uno por día de la semana) con tres estados de color (validado / pendiente / sin actividad)
+  - Para `monthly_x`: en su lugar, `MonthlyTargetDots` — un punto por completado del mes hasta `monthly_target`, con el mismo esquema de tres colores
   - Borde izquierdo coloreado con el color de la categoría del hábito (`habit.category.color`)
   - Click en la tarjeta navega a `HabitStats` (`navigation.navigate('HabitStats', { habit, userId })`)
 

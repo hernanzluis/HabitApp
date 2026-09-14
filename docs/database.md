@@ -161,7 +161,7 @@ El admin genera un código desde la pestaña Familia de AdminScreen. El código 
 | created_at | timestamptz | now() | — |
 | — | UNIQUE | — | (team_id, user_id) — un usuario no puede estar dos veces en el mismo equipo |
 
-### `invitations`
+### `invitations` _(sin uso activo)_
 | Campo | Tipo | Default | Notas |
 |---|---|---|---|
 | id | uuid | gen_random_uuid() | PK |
@@ -169,6 +169,8 @@ El admin genera un código desde la pestaña Familia de AdminScreen. El código 
 | company_id | uuid | — | FK → companies(id) |
 | expires_at | timestamptz | null | Opcional, se valida en cliente |
 | created_at | timestamptz | now() | — |
+
+Ligada al RPC `handle_invited_user_registration`, que está discontinuada (ver sección de Funciones SQL). No hay ninguna llamada a `.from('invitations')` en el código actual de ninguno de los dos repos. Se mantiene documentada como su RPC, por si se retoma el flujo de invitación por código genérico en el futuro.
 
 ### Relaciones entre tablas
 ```
@@ -258,6 +260,12 @@ Comprueba si el grupo puede añadir un miembro más, según su plan. Usada en `s
 ### `get_company_plan_info(p_company_id)`
 Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` del grupo. Usada por el hook `lib/usePlanInfo.js`. Detalle en [business.md](business.md).
 
+### `delete_expired_habit(p_habit_id uuid)`
+Elimina un hábito 'once' ya caducado (SECURITY DEFINER, bypasea RLS). Usada en `screens/ValidateHabitScreen.js`, pestaña "caducados", desde el botón de borrar de cada tarjeta.
+
+### `update_member_avatar(member_id uuid, new_avatar_url text)`
+Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` cuando un admin cambia la foto de perfil de otro miembro. Ver nota en la política UPDATE de `profiles` más abajo: esta RPC existe para ese campo, pero `full_name`/`email`/`role` de otro miembro se actualizan con un UPDATE directo desde el cliente en el mismo flujo — inconsistente con pasar por RPC solo para el avatar; pendiente de aclarar si la política real de `profiles` ya contempla una excepción de admin.
+
 ---
 
 ## Políticas RLS
@@ -265,11 +273,12 @@ Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` de
 ### `profiles`
 - **SELECT:** `true` — cualquier usuario autenticado puede leer perfiles (necesario para mostrar nombres y avatares de compañeros)
 - **INSERT:** solo via funciones RPC (SECURITY DEFINER)
-- **UPDATE:** `auth.uid() = id` — solo el propio usuario puede actualizar su perfil
+- **UPDATE:** documentada como `auth.uid() = id` (solo el propio usuario), pero `screens/AdminScreen.js` hace un UPDATE directo de `full_name`/`email`/`role` de **otro** miembro (no del propio usuario) al editar desde el panel de admin, y la web (`Members.jsx`) hace lo mismo para `role`. O la política real en Supabase ya tiene una excepción para admins de la misma empresa que no está reflejada aquí, o esas llamadas dependen de una policy distinta de la documentada. **Pendiente de verificar el texto exacto de la política en el SQL Editor de Supabase y corregir esta nota.**
 
 ### `companies`
 - **SELECT:** `true` — lectura abierta para usuarios autenticados
 - **INSERT:** solo via funciones RPC (SECURITY DEFINER)
+- **UPDATE:** sin documentar. `screens/ProfileScreen.js` (`saveGroupName`) hace `UPDATE companies SET name = ...` para renombrar el grupo, gateado en el cliente a `role === 'admin'` pero sin garantía de que la policy en Supabase también lo exija. **Pendiente de verificar y documentar la política real.**
 
 ### `habits`
 - **SELECT:** `true` — lectura abierta (se filtra por company_id en el cliente)
@@ -277,12 +286,15 @@ Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` de
 - **DELETE:** usuarios con `role = 'admin'` de la misma empresa
 
 ### `habit_assignments`
-- **SELECT:** `true` — lectura abierta (necesario para HomeScreen y ActivityScreen)
+- **SELECT:** `true` — lectura abierta (necesario para HomeScreen y RankingScreen)
 - **INSERT:** `auth.uid() IS NOT NULL` — el admin inserta asignaciones al crear o editar un hábito
 - **DELETE:** usuarios con `role = 'admin'` de la misma empresa (para editar asignaciones)
 
+### `habit_validators`
+- Sin documentar. `screens/AdminScreen.js` y `habitteam-web/src/components/admin/Habits.jsx` hacen INSERT/DELETE directos desde el cliente al crear/editar un hábito. **Pendiente de verificar y documentar la política real en Supabase.**
+
 ### `habit_logs`
-- **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y ActivityScreen)
+- **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y RankingScreen)
 - **INSERT:** `auth.uid() IS NOT NULL` — cualquier usuario autenticado puede insertar su propio log
 - **UPDATE:** `auth.uid() IS NOT NULL` — cualquier autenticado puede actualizar (para validadores)
 
@@ -291,7 +303,16 @@ Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` de
 - **INSERT:** `auth.uid() = validator_id` — solo puedes insertar con tu propio validator_id
 - La constraint UNIQUE (habit_log_id, validator_id) a nivel de DB previene votos duplicados
 
-### `invitations`
+### `habit_rewards`
+- Sin documentar. Gestionada desde `screens/AdminScreen.js` y `Habits.jsx` (web) con INSERT/DELETE directos del cliente. **Pendiente de verificar y documentar la política real en Supabase.**
+
+### `categories`
+- Sin documentar. INSERT/DELETE directos desde el cliente en `screens/AdminScreen.js` y `habitteam-web/src/components/admin/Categories.jsx`. **Pendiente de verificar y documentar la política real en Supabase.**
+
+### `activation_codes`
+- Sin documentar, pese a ser la tabla que controla la activación de cuentas nuevas. INSERT/UPDATE/DELETE directos desde el cliente (`AdminScreen.js`, `Members.jsx`) además del uso server-side dentro de `handle_activation_registration`. **Pendiente de verificar y documentar la política real en Supabase — es el hueco de RLS más sensible de los detectados.**
+
+### `invitations` _(sin uso activo — ver nota en el esquema de tablas)_
 - **SELECT:** `true` — lectura abierta (necesario para validar el código antes de registrarse sin autenticación)
 - **INSERT:** usuarios con `role = 'admin'`
 
@@ -320,7 +341,7 @@ Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` de
 
 | Tabla | Campo(s) | Motivo |
 |---|---|---|
-| habit_logs | user_id | Filtrar logs por usuario (HomeScreen, ProfileScreen, ActivityScreen) |
+| habit_logs | user_id | Filtrar logs por usuario (HomeScreen, ProfileScreen, RankingScreen) |
 | habit_logs | habit_id | Filtrar logs por hábito |
 | habit_logs | created_at DESC | Ordenación por fecha en historial y actividad |
 | habit_logs | status | Filtrar por estado pendiente/validado en ValidateHabitScreen |

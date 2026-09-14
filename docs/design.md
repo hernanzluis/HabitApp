@@ -20,6 +20,7 @@ Estilo inspirado en LinkedIn: secciones de ancho completo con fondo blanco, sepa
 | — | #F9F9F9 | Fondo de la caja de nota en tarjetas (HabitStatsScreen, ValidateHabitScreen) |
 | YELLOW | #F59E0B | Constante definida en RankingScreen (estado intermedio en week dots) |
 | FLAME | #4CAF50 | Constante definida en RankingScreen para el icono de racha 🔥 (mismo valor que GREEN) |
+| — | #fee2e2 (fondo) / #b91c1c (texto) | Banner/caja de mensaje de error — reutilizado en AdminScreen, HabitStatsScreen, ProfileScreen, HomeScreen, HabitDetailScreen, ForgotPasswordScreen, HistoryScreen |
 
 ## Componentes UI
 

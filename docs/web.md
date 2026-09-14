@@ -97,20 +97,21 @@ Las tres siguen el mismo patrón: `<Nav />` arriba, breadcrumb "HabitTeam › {s
 
 Sin i18n, formulario simple (`email`, `password`). Flujo de `handleSubmit`:
 1. `supabase.auth.signInWithPassword({ email, password })` — si falla, error "Email o contraseña incorrectos".
-2. `profiles.select('role').eq('id', data.user.id).single()` — si falla o es null, error "No se pudo verificar tu perfil. Inténtalo de nuevo.".
+2. `profiles.select('role, company_id').eq('id', data.user.id).single()` — si falla o es null, error "No se pudo verificar tu perfil. Inténtalo de nuevo.".
 3. Si `profile.role !== 'admin'` → error "Solo los administradores pueden acceder desde la web", sin redirigir.
-4. Éxito → `window.location.href = '/admin'` (navegación dura del navegador, no `navigate()` de React Router — inconsistente con el resto del panel, que sí usa `navigate()`).
+4. `companies.select('plan').eq('id', profile.company_id).single()` — si `company.plan !== 'empresa'` → error "El panel web solo está disponible para el plan Empresa", sin redirigir.
+5. Éxito → `window.location.href = '/admin'` (navegación dura del navegador, no `navigate()` de React Router — inconsistente con el resto del panel, que sí usa `navigate()`).
 
 Sin formulario de registro; enlace "¿No tienes cuenta? Empieza gratis" → `/`.
 
 ### `Admin.jsx`
 
-**Verificación de sesión/rol** (`checkAuth`, en `useEffect`):
+**Verificación de sesión/rol/plan** (`checkAuth`, en `useEffect`):
 1. `supabase.auth.getUser()` — sin `authUser`, `navigate('/acceder')`.
 2. `profiles.select('id, full_name, role, company_id').eq('id', authUser.id).single()`.
 3. Si `!prof || prof.role !== 'admin'` → `navigate('/acceder')`.
-4. `companies.select('name').eq('id', prof.company_id).single()` → `companyName`.
-5. Guarda `profile` en estado, `checking = false`.
+4. `companies.select('name, plan').eq('id', prof.company_id).single()` → si `!company || company.plan !== 'empresa'` → `navigate('/acceder')`.
+5. Guarda `profile` y `companyName` en estado, `checking = false`.
 
 Mientras `checking` es `true` se muestra un loader de pantalla completa ("Verificando acceso...") y no se renderiza nada más.
 
@@ -225,12 +226,12 @@ Color por defecto de categoría nueva: `#4CAF50`. Modal con preview en vivo (ini
 
 ### `MemberDetail.jsx` (`/admin/miembro/:userId`)
 
-Mismo patrón de verificación de sesión/rol que `Admin.jsx`.
+Mismo patrón de verificación de sesión/rol/plan que `Admin.jsx` (`checkAuth` propio: sesión → `profiles.select('role, company_id')` con `role === 'admin'` → `companies.select('plan')` con `plan === 'empresa'`, cualquier fallo redirige a `/acceder`), ya que es una ruta de nivel superior con su propio guard independiente del de `Admin.jsx`.
 
 > **Seguridad implementada:** se comprueba que el `userId` de la URL pertenece a la empresa del admin logueado antes de mostrar cualquier dato; si no coincide, redirige a `/admin`.
 
 **Queries:**
-1. `profiles.select('id, full_name, email, avatar_url, created_at').eq('id', userId).single()`
+1. `profiles.select('id, full_name, email, avatar_url, created_at, company_id').eq('id', userId).single()`
 2. `habit_assignments.select('habit_id').eq('user_id', userId)`
 3. `habits.select('id, title, recurrence, weekly_target, category_id, expires_at').in('id', habitIds)`
 4. `categories.select('id, name, icon, color')` (todas, sin filtro, para enriquecer los hábitos)
@@ -279,7 +280,6 @@ Mismo esquema reutilizado en `Activity.jsx` (dots semanales) y `MemberDetail.jsx
 | Observación | Detalle |
 |---|---|
 | Navegación inconsistente tras login | `Acceder.jsx` usa `window.location.href = '/admin'` (recarga dura) mientras el resto del panel usa `navigate()` de React Router |
-| `MemberDetail.jsx` sin verificación de empresa | La ruta `/admin/miembro/:userId` no comprueba que el miembro pertenezca a la empresa del admin logueado — solo verifica que quien accede sea admin de *alguna* empresa. Cualquier admin autenticado podría ver el detalle de un miembro de otra empresa si conoce/adivina su `userId` |
 | Restricción "no dejar el grupo sin admin" solo en cliente | El chequeo en `Members.jsx` se hace contando `members` ya cargados en el estado local; no hay constraint equivalente a nivel de base de datos |
 | `check_habit_limit` solo en creación | Editar un hábito existente no vuelve a comprobar el límite de plan (tiene sentido: editar no aumenta el conteo de hábitos activos, salvo que se reactive uno inactivo vía el toggle, que tampoco pasa por esta RPC) |
 | Queries redundantes en `Habits.jsx` | Las queries de `habit_assignments` y `habit_validators` vuelven a pedir los ids de hábitos en vez de reutilizar los ya obtenidos en la query principal — dos round-trips de más |
@@ -288,4 +288,4 @@ Mismo esquema reutilizado en `Activity.jsx` (dots semanales) y `MemberDetail.jsx
 
 ## Estado actual
 
-En producción en habitteam.app. Landing page completa con banner de lista de espera, copy familiar y modelo de precios. Panel de administración en `/admin` con sección Actividad (dashboard del grupo con código de colores gris/amarillo/verde), detalle de miembro con calendario mensual navegable, y gestión de miembros, hábitos y categorías. Login funcional con Supabase Auth restringido a admins. Despliegue en Vercel, dominio en Namecheap.
+En producción en habitteam.app. Landing page completa con banner de lista de espera, copy familiar y modelo de precios. Panel de administración en `/admin` con sección Actividad (dashboard del grupo con código de colores gris/amarillo/verde), detalle de miembro con calendario mensual navegable, y gestión de miembros, hábitos y categorías. Login funcional con Supabase Auth restringido a admins de grupos con plan Empresa (`Acceder.jsx`, `Admin.jsx` y `MemberDetail.jsx` comprueban `company.plan === 'empresa'` de forma independiente cada uno). Despliegue en Vercel, dominio en Namecheap.

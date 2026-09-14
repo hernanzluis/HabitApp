@@ -145,8 +145,7 @@ HabitApp/
 - **SplashScreen animada** con logo de la app
 - **Mejora de estadísticas en ProfileScreen:** racha actual (días consecutivos con hábito completado), gráfico de actividad mensual
 - **Hábitos personales:** tipo 'personal', visibles solo para el usuario, sin validación
-- **Perfil de miembro:** al pulsar un nombre en ValidateHabit o ActivityScreen, ver su perfil público (foto, stats, hábitos validados)
-- **Edición de perfil completo:** campo de grupo en ProfileScreen (actualmente solo lectura)
+- **Perfil de miembro:** al pulsar un nombre en ValidateHabit o RankingScreen, ver su perfil público (foto, stats, hábitos validados)
 - **Modo oscuro**
 - **Múltiples grupos por usuario:** tabla group_members (usuario → grupo N:N), selector de grupo activo tras login, filtrado de toda la app por grupo activo seleccionado.
 
@@ -158,6 +157,8 @@ Ya implementado (histórico):
 - ~~Onboarding guiado para admin nuevo~~ ✅ Resuelto con redirección directa a AdminScreen pestaña Familia
 - ~~Foto opcional por hábito: campo `photo_required` en `habits`~~ ✅
 - ~~Reacciones rápidas en validación: fila de emojis (👏 ❤️ 💪 😊 🌟)~~ ✅
+- ~~Edición de perfil completo: campo de grupo en ProfileScreen~~ ✅ (`saveGroupName` en `ProfileScreen.js`, solo admins)
+- ~~Hábitos con objetivo mensual: tipo de recurrencia `monthly_x`~~ ✅ (ver [navigation.md](navigation.md))
 
 ---
 
