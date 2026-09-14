@@ -1,5 +1,6 @@
 {
   "expo": {
+    "entryPoint": "./index.js",
     "name": "HabitTeam",
     "slug": "HabitApp",
     "version": "1.0.0",
@@ -13,14 +14,22 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.luishernanz.habitteam",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.luishernanz.habitteam",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,6 +43,12 @@
           "cameraPermission": "HabitTeam necesita acceder a la cámara para tomar fotos de tus hábitos."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "61d6f633-3451-424f-84b5-e802e6b579d1"
+      }
+    },
+    "owner": "hernanz.luis"
   }
 }
