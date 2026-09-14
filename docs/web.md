@@ -225,7 +225,9 @@ Color por defecto de categoría nueva: `#4CAF50`. Modal con preview en vivo (ini
 
 ### `MemberDetail.jsx` (`/admin/miembro/:userId`)
 
-Mismo patrón de verificación de sesión/rol que `Admin.jsx`. **No comprueba que el `userId` de la ruta pertenezca a la misma empresa que el admin logueado** — no hay cross-check de `company_id` en este fichero.
+Mismo patrón de verificación de sesión/rol que `Admin.jsx`.
+
+> **Seguridad implementada:** se comprueba que el `userId` de la URL pertenece a la empresa del admin logueado antes de mostrar cualquier dato; si no coincide, redirige a `/admin`.
 
 **Queries:**
 1. `profiles.select('id, full_name, email, avatar_url, created_at').eq('id', userId).single()`

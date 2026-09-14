@@ -230,8 +230,8 @@ Registra un usuario en una empresa existente usando un código de activación pe
 
 **Race condition:** se usa el singleton `authFlags` (`lib/authFlags.js`) para bloquear el redirect automático de `onAuthStateChange` durante el flujo de activación. `skipNextRedirect = true` se pone antes del `signUp`; se resetea en cada path de error; al terminar se llama `activateSession(session)` que ejecuta `setSession` directamente en RootNavigator.
 
-### `handle_invited_user_registration` _(posiblemente huérfana)_
-Registra un usuario en una empresa existente usando un código de invitación. Se llama desde la app tras `auth.signUp`.
+### `handle_invited_user_registration` _(discontinuada)_
+Registra un usuario en una empresa existente usando un código de invitación.
 
 **Parámetros:**
 - `user_id` uuid
@@ -244,7 +244,7 @@ Registra un usuario en una empresa existente usando un código de invitación. S
 2. INSERT en `profiles` con `role = 'user'` y el `company_id` de la invitación
 3. No marca la invitación como usada (diseño deliberado: el código es reutilizable)
 
-> **Nota:** no se encontró ninguna llamada real a esta RPC (`supabase.rpc('handle_invited_user_registration', ...)`) en el código actual — solo aparece mencionada en comentarios (`SignUpScreen.js`, `lib/authFlags.js`). Puede ser código server-side huérfano tras la introducción del flujo `activation_codes`, o documentación que quedó desactualizada. Verificar si la RPC sigue existiendo en Supabase y si conviene eliminarla.
+> **Discontinuada:** no se invoca en ningún punto del código actual (solo aparece mencionada en comentarios en `SignUpScreen.js` y `lib/authFlags.js`) y no tiene uso previsto a corto plazo. Se mantiene documentada por si se retoma en el futuro.
 
 ### `delete_member(member_id uuid)`
 Elimina un miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` (app) y `src/components/admin/Members.jsx` (web) desde el botón "Eliminar miembro".

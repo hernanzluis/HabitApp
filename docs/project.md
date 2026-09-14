@@ -163,8 +163,10 @@ Ya implementado (histórico):
 
 ## Usuarios de prueba
 
-| Email | Rol | Empresa |
-|---|---|---|
-| hernanz.luis@gmail.com | admin | — |
+| Email | Rol | Empresa | Company ID | Plan actual |
+|---|---|---|---|---|
+| hernanz.luis@gmail.com | admin | Familia Hernanz | 6b7ee546-846f-484b-b72c-a4ce4ba50ef1 | empresa |
 
 > Las contraseñas no se almacenan en este documento. La confirmación de email está desactivada en el proyecto de Supabase de desarrollo.
+>
+> El plan 'empresa' se asignó manualmente para permitir el acceso al panel admin web durante el desarrollo. En producción, los grupos nuevos arrancan en plan 'familiar' por defecto.
