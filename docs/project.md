@@ -17,22 +17,24 @@ Plataforma de hábitos compartidos con validación social entre miembros del gru
 
 | Tecnología | Versión |
 |---|---|
-| Expo SDK | ~54.0.33 |
-| React | 19.1.0 |
-| React Native | 0.81.5 |
+| Expo SDK | ^57.0.0 (subido desde ~54.0.33 el 2026-09-16) |
+| React | 19.2.3 |
+| React Native | 0.86.3 |
 | @supabase/supabase-js | ^2.106.2 |
 | @react-navigation/native | ^7.2.5 |
 | @react-navigation/native-stack | ^7.16.0 |
 | @react-navigation/bottom-tabs | ^7.16.2 |
-| expo-image-picker | ~17.0.11 |
-| expo-status-bar | ~3.0.9 |
-| @expo/vector-icons (Ionicons) | incluido en Expo SDK |
+| expo-image-picker | ~57.0.18 |
+| expo-status-bar | ~57.0.1 |
+| @expo/vector-icons (Ionicons) | ^15.0.2 — **dependencia explícita desde SDK 57** (hasta SDK 55 venía incluida dentro de `expo`; desde SDK 56 `expo` ya no la trae, hay que declararla y añadir `expo-font`) |
+| expo-font | ~57.0.4 (peer dependency requerida por `@expo/vector-icons`) |
+| expo-splash-screen | ~57.0.9 (config plugin; sustituye a la clave `splash` de `app.json`, eliminada del schema en SDK 55+) |
 | @react-native-async-storage/async-storage | 2.2.0 |
-| react-native-safe-area-context | ~5.6.0 |
-| react-native-screens | ~4.16.0 |
+| react-native-safe-area-context | ~5.7.0 |
+| react-native-screens | ~4.26.0 |
 | react-native-url-polyfill | ^3.0.0 |
 | @react-native-community/datetimepicker | ^9.1.0 (dependencia explícita, no incluida en Expo SDK) |
-| expo-localization | ~17.0.9 |
+| expo-localization | ~57.0.2 |
 | react-i18next | ^17.0.8 |
 | i18next (i18n ES/EN) | ^26.3.0 |
 | Node.js | v20 |
@@ -40,6 +42,17 @@ Plataforma de hábitos compartidos con validación social entre miembros del gru
 **Backend:** Supabase (PostgreSQL + Auth + Storage)
 **Repositorio:** https://github.com/hernanzluis/HabitApp
 **Directorio local:** /Users/luishernanz/HabitApp
+
+### Migración Expo SDK 54 → 57 (2026-09-16)
+
+Necesaria porque Expo Go en el store ya solo soporta la última versión de SDK (57), y no se puede fijar una versión antigua en el propio Expo Go. Hecha con `npx expo install expo@^57.0.0 && npx expo install --fix` en un único salto (sin pasar por 55/56 una a una) — se investigaron los breaking changes reales de las tres versiones intermedias antes de decidirlo: sin `expo-router` (no se usa en este proyecto) el único breaking change de fondo era `@expo/vector-icons` dejando de venir incluido con `expo` desde SDK 56.
+
+Cambios de configuración además de las versiones de `package.json`:
+- `@expo/vector-icons` pasó a ser dependencia explícita (antes venía anidada dentro de `node_modules/expo`); requiere `expo-font` como peer dependency.
+- `app.json`: eliminadas `entryPoint`, `newArchEnabled` (New Architecture ya obligatoria desde SDK 55, no configurable) y `android.edgeToEdgeEnabled` (edge-to-edge ya obligatorio) — las tres son ahora propiedades inválidas según el schema de `expo-doctor`.
+- `app.json`: la clave `splash` de nivel superior (eliminada del schema en SDK 55+) se migró al plugin `expo-splash-screen` con los mismos valores (`image`, `resizeMode`, `backgroundColor`) — mismo comportamiento visual, solo cambia el mecanismo de configuración.
+- Verificado con `npx expo-doctor` (21/21 checks) y forzando la compilación real del bundle (`curl .../index.bundle?platform=ios`, 1198 módulos, sin errores) antes de probar en Expo Go.
+- Pendiente de probar en dispositivo real por Luis tras este cambio.
 
 ### Configuración de entorno (Supabase)
 
@@ -134,7 +147,7 @@ HabitApp/
 
 - Prefiere código sin comentarios salvo que el "por qué" sea no obvio
 - No añadir funcionalidades extra no solicitadas ni abstracciones prematuras
-- Consultar siempre la documentación versionada de Expo antes de escribir código nativo: https://docs.expo.dev/versions/v54.0.0/
+- Consultar siempre la documentación versionada de Expo antes de escribir código nativo: https://docs.expo.dev/versions/v57.0.0/
 
 ---
 

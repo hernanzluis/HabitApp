@@ -1,18 +1,11 @@
 {
   "expo": {
-    "entryPoint": "./index.js",
     "name": "HabitTeam",
     "slug": "HabitApp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.luishernanz.habitteam",
@@ -26,7 +19,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
@@ -41,6 +33,16 @@
         {
           "photosPermission": "HabitTeam necesita acceder a tus fotos para subir pruebas de hábitos.",
           "cameraPermission": "HabitTeam necesita acceder a la cámara para tomar fotos de tus hábitos."
+        }
+      ],
+      "expo-status-bar",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
         }
       ]
     ],
