@@ -60,6 +60,7 @@ alta ni asumen cómo se comporta una política, la comprueban.
 ```bash
 node tests/test-01-alta.js       # Fase 1: alta de admin y de miembro
 node tests/test-02-habitos.js    # Fase 2: hábitos, asignación, validadores
+node tests/test-03-rachas.js     # Fase 3: rachas y recompensas
 ```
 
 Cada script, en este orden:
@@ -114,6 +115,31 @@ endurecieron en la auditoría de seguridad de este mismo proyecto.
 | 7 | Un admin de OTRA empresa no puede asignar a nadie a un hábito ajeno (rechazado por RLS) | Confirma el aislamiento multi-tenant (`company_id = my_company_id()`) en `habit_assignments` |
 | 8 | Nada en la base de datos impide que el mismo usuario sea asignado Y validador del mismo hábito a la vez | Ver hallazgo en el punto 7 — es una regla solo de UI, no de datos |
 
+### Fase 3 — `test-03-rachas.js` (18 tests)
+
+Rachas (`calculateStreak`) y recompensas recursivas/históricas, sobre
+**réplicas locales** de las funciones reales — no se pueden `require()`
+directamente porque viven en pantallas de React Native (`HabitDetailScreen.js`,
+`HomeScreen.js`) que importan módulos de RN/Expo que no corren en Node plano.
+Mismo patrón ya usado en la Fase 1 (`adminNeedsFamilySetup`). Si esas pantallas
+cambian su lógica de cálculo, hay que actualizar las réplicas de
+`test-03-rachas.js` a mano — no hay forma de que un cambio ahí se detecte solo.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 1 | Racha diaria: 3 días consecutivos (hoy, ayer, anteayer) => racha=3 | Caso base de `calculateStreak` (`HabitDetailScreen.js:41-77`) |
+| 2 | Racha diaria con un hueco (día 1 hecho, día 2 saltado, día 3=hoy) => racha=**1**, no 3 ni 2 | El enunciado original pedía "no asumir el valor tras la rotura, comprobarlo" — trazando el algoritmo a mano: el hueco corta la cuenta justo al llegar a él, así que solo cuenta el tramo pegado a hoy |
+| 3 | `weekly_x` (target=3): semana en curso sin cumplir aún (ignorada por el periodo de gracia) + 2 semanas completas que cumplen + 1 semana más atrás que no cumple => racha=2 | Cubre a la vez "cumplir mantiene", "no llegar rompe" **y** el periodo de gracia real (ver punto 7) — antes eran ideas separadas, aquí es un único escenario coherente |
+| 4 | `monthly_x` (target=2): análogo a nivel mes => racha=2 | Mismo patrón que el test 3, a nivel mensual |
+| 6 | Construir racha=3 sin insertar ningún voto en `habit_validations`, confirmar que `calculateStreak` la cuenta igual (racha=3) | La racha sube al completar (INSERT en `habit_logs`), no al validar — confirmado que no hay ninguna dependencia oculta de `habit_validations` |
+| 7 | Recompensa simple: total=3, `streak_target=3` => `floor(3/3)=1` conseguida | "Conseguida" es cálculo de cliente puro, sin persistencia — ver punto 7 |
+| 8 (×2 aserciones) | Total=6, `streak_target=3` => conseguida ×2 | Confirma la recursividad de la fórmula (`floor(total/target)`, no solo "¿se llegó alguna vez?") |
+| 9 (×4 aserciones) | Construir total=3 (conseguida ×1), "romper" la racha actual con un hueco de varios días, construir 3 días más => total=6, conseguida ×2 — Y la racha ACTUAL sigue siendo solo 3 | Confirma que `calculateTotalCompleted` (histórico, para recompensas) y `calculateStreak` (racha actual, para el contador visible) son cosas **distintas** — el histórico no se resetea aunque la racha sí |
+| 10 (×3 aserciones) | Dos recompensas en el mismo hábito (`target=3` y `target=7`) con total=5: solo la de `target=3` está conseguida | Confirma que cada recompensa se evalúa independientemente contra el mismo total, no hay ningún orden ni exclusión entre ellas |
+| 11 (×2 aserciones) | `featuredReward` (`HomeScreen.js:398-401`): con total=2, dos recompensas `target=2` (ya conseguida, `daysToNext=2`) y `target=3` (sin conseguir, `daysToNext=1`) — gana la de **target=3**, la mayor y sin conseguir | Caso contraintuitivo real, deliberadamente puesto bajo test — ver punto 7 |
+
+**Eliminado del plan original:** el test 5 ("periodo de gracia en `once`") no existe como tal — ver punto 6. Su comprobación real (semana/mes en curso) quedó plegada en los tests 3 y 4.
+
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
 `TEST_PREFIX = 'zztest-'` (en `test-helpers.js`) marca **todo** dato que crean
@@ -161,6 +187,25 @@ ningún error. No hay nada que testear en el backend porque el backend no
 impone esta regla — si en el futuro se decide que sí debería hacerlo, sería un
 cambio de RLS/constraint, no un test que falta.
 
+### "Periodo de gracia en `once`" (Fase 3) — no existe, era un malentendido
+
+El plan original de la Fase 3 pedía un test 5 para el "periodo de gracia" de
+los hábitos `once`. Se buscó explícitamente en todo el código ("gracia"/
+"grace") antes de escribir nada: el único periodo de gracia real está en
+`calculateStreak`/`calculateWeeklyStreakForStats` para **`weekly_x`/
+`monthly_x`** (si la semana/mes actual, aún en curso, no ha cumplido el
+objetivo todavía, la racha no se rompe de inmediato — se retrocede a evaluar
+desde el periodo anterior). Los hábitos `once` se tratan **idénticos a
+`daily`** en `calculateStreak`/`calculateTotalCompleted` (mismo bloque de
+código, comentario `// daily / once`), sin ningún concepto de gracia propio.
+
+El origen probable de la confusión: la frase "sin periodo de gracia" aparece
+en `navigation.md`, pero describiendo el **borrado de cuenta** (`delete_own_
+account`, Fase de eliminación de cuenta de esta misma sesión) — una
+funcionalidad completamente distinta, sin ninguna relación con rachas ni con
+hábitos `once`. El test 5 se eliminó del plan; el periodo de gracia real (el
+de `weekly_x`/`monthly_x`) sí quedó cubierto, dentro de los tests 3 y 4.
+
 ## 7. Hallazgos de esta fase
 
 ### Fase 1 — "admin sin miembros" no es la condición real
@@ -206,3 +251,53 @@ que lo impida — solo hay `UNIQUE (habit_id, user_id)` por separado en cada
 tabla (`habit_assignments_habit_id_user_id_key`,
 `habit_validators_habit_id_user_id_key`), nada que las relacione entre sí. Es
 puramente una regla de UI. El test 8 de la Fase 2 lo deja explícito.
+
+### Fase 3 — `calculateHabitStreak` de `HomeScreen.js` ya no existe
+
+**Se esperaba** (el plan original de la Fase 3 lo pedía explícitamente):
+revisar y testear `calculateHabitStreak` en `HomeScreen.js`.
+
+**Se encontró:** esa función se eliminó de `HomeScreen.js` como código muerto
+confirmado (nunca se llamaba desde ningún sitio) durante la tarea de
+eliminación de cuenta de esta misma sesión, en la que también se corrigió
+`HabitDetailScreen.js` (antes ignoraba `weekly_x`/`monthly_x` y calculaba
+siempre como si el hábito fuera diario). La lógica real, ya corregida, vive
+ahora en `HabitDetailScreen.js`: `calculateStreak` (líneas 41-77) y
+`calculateTotalCompleted` (líneas 82-98) — son las que testea
+`test-03-rachas.js`. Es exactamente el tipo de desajuste que ningún enunciado
+escrito de antemano puede prever por sí solo: parar a comprobar el código real
+antes de escribir el test evitó testear una función fantasma.
+
+### Fase 3 — "conseguida" es cálculo de cliente puro, sin persistencia
+
+**Se esperaba:** confirmar si "recompensa conseguida" es un cálculo en
+cliente o si hay algo persistido en base de datos (la sospecha de partida era
+que no, dado que no aparecía ninguna columna tipo `times_achieved` en el
+esquema).
+
+**Se encontró:** confirmado — `habit_rewards` solo tiene `id, habit_id,
+streak_target, description` (`database.md`). La fórmula `timesAchieved =
+Math.floor(total/streak_target)` está duplicada tal cual en tres sitios
+(`HomeScreen.js`, `HabitStatsScreen.js`, y la variante "justo conseguida" de
+`HabitDetailScreen.js`), y de nuevo en la web (`MemberDetail.jsx`). No hay
+ningún estado guardado que un test pueda leer — `test-03-rachas.js` (tests 7
+a 11) replica la misma fórmula y comprueba que da el resultado esperado sobre
+logs reales insertados en la base de datos, que es lo único verificable aquí.
+
+### Fase 3 — `featuredReward` no elige por `streak_target` menor, sino por `daysToNext` menor
+
+**Se esperaba:** que "la recompensa que se muestra" en el listado de hábitos
+fuera la de `streak_target` más bajo entre las que aún no se han conseguido —
+la lectura intuitiva de "la próxima recompensa a alcanzar".
+
+**Se encontró:** en `HomeScreen.js:398-401` (comentario propio del código:
+*"Recompensa a mostrar: la más próxima (menor daysToNext)"*), el criterio real
+es el `daysToNext` mínimo entre **todas** las recompensas del hábito,
+conseguidas o no — no hay ningún filtro que excluya las ya conseguidas. Esto
+puede dar resultados contraintuitivos: con total=2, una recompensa de
+`target=2` (ya conseguida, `daysToNext = 2 - (2 % 2) = 2`) pierde frente a una
+de `target=3` (sin conseguir, `daysToNext = 3 - (2 % 3) = 1`) — gana el target
+**mayor**, pese a estar sin conseguir, precisamente porque el aritmético modular
+no es monótono con el tamaño del target. El test 11 de la Fase 3 deja este
+caso explícito para que no vuelva a asumirse "target menor = se muestra
+antes" sin comprobarlo.

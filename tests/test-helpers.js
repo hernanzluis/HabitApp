@@ -169,6 +169,34 @@ async function advanceHabitLog({ habitId, userId, daysAgo, validated = false }) 
   return data.id;
 }
 
+// Varios advanceHabitLog() en una sola llamada, uno por cada valor de
+// daysAgoList. Se pasa una lista explícita (no un simple "N días") para poder
+// expresar tanto rachas consecutivas ([0,1,2]) como con huecos ([0,2], salta
+// el día 1) con la misma función — el criterio de qué cuenta como "racha" o
+// "hueco" lo decide calculateStreak (en HabitDetailScreen.js), no esta función.
+async function buildStreak({ habitId, userId, daysAgoList, validated = false }) {
+  const ids = [];
+  for (const daysAgo of daysAgoList) {
+    ids.push(await advanceHabitLog({ habitId, userId, daysAgo, validated }));
+  }
+  return ids;
+}
+
+// INSERT en habit_rewards.
+async function createReward({ habitId, streakTarget, description }) {
+  const { data, error } = await supabaseAdmin
+    .from('habit_rewards')
+    .insert({ habit_id: habitId, streak_target: streakTarget, description })
+    .select('id')
+    .single();
+  if (error) {
+    throw new Error(
+      `createReward: fallo insertando habit_reward (habit ${habitId}, target ${streakTarget}): ${error.message}`
+    );
+  }
+  return data.id;
+}
+
 // Borra en cascada TODO lo que tenga email o company.name con el prefijo de
 // test. Rechaza (lanza) si algo que va a usar como origen del borrado NO
 // tiene el prefijo — es la única red de seguridad contra borrar datos reales,
@@ -339,6 +367,8 @@ module.exports = {
   createTestCompanyAndAdmin,
   joinAsTestMember,
   advanceHabitLog,
+  buildStreak,
+  createReward,
   getClientForUser,
   cleanupTestData,
   assertEqual,
