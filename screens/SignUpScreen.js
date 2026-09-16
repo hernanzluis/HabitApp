@@ -117,6 +117,12 @@ export default function SignUpScreen() {
 
     setLoading(true);
     let registered = false;
+
+    // Bloqueamos el redirect automático de onAuthStateChange para que
+    // handle_new_user_registration termine antes de mostrar el AppStack
+    // (mismo problema de carrera que el flujo "activate", ver authFlags.js).
+    authFlags.skipNextRedirect = true;
+
     try {
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: emailTrimmed,
@@ -124,6 +130,7 @@ export default function SignUpScreen() {
       });
 
       if (signUpError) {
+        authFlags.skipNextRedirect = false;
         const userError = normalizeAuthError(signUpError.message);
         if (/email/i.test(String(signUpError.message)) || /registered|duplicate/i.test(userError)) {
           setErrors((prev) => ({ ...prev, email: userError }));
@@ -135,6 +142,7 @@ export default function SignUpScreen() {
 
       const user = authData?.user;
       if (!user?.id) {
+        authFlags.skipNextRedirect = false;
         setFormError(t('signup.error_no_user'));
         return;
       }
@@ -147,11 +155,17 @@ export default function SignUpScreen() {
       });
       if (rpcError) throw rpcError;
 
+      // Todo OK: obtenemos la sesión activa y navegamos al AppStack manualmente.
+      const { data: { session } } = await supabase.auth.getSession();
+      activateSession(session);
       registered = true;
     } catch (e) {
       setFormError(e?.message || t('signup.error_generic'));
     } finally {
-      if (!registered) setLoading(false);
+      if (!registered) {
+        authFlags.skipNextRedirect = false; // garantiza reset aunque haya crash o return temprano
+        setLoading(false);
+      }
     }
   };
 
@@ -168,16 +182,12 @@ export default function SignUpScreen() {
 
     setLoading(true);
     try {
-      const now = new Date().toISOString();
-      const { data: record, error } = await supabase
-        .from('activation_codes')
-        .select('email, full_name, company_id')
-        .eq('code', activationCodeTrimmed)
-        .eq('used', false)
-        .or(`expires_at.is.null,expires_at.gt.${now}`)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc('check_activation_code', {
+        p_code: activationCodeTrimmed,
+      });
 
       if (error) throw error;
+      const record = data?.[0] ?? null;
 
       if (!record) {
         setErrors((prev) => ({ ...prev, activationCode: t('signup.code_invalid') }));
@@ -247,10 +257,15 @@ export default function SignUpScreen() {
         throw rpcError;
       }
 
-      await supabase
+      const { error: markUsedError } = await supabase
         .from('activation_codes')
         .update({ used: true })
         .eq('code', activationCodeTrimmed);
+      if (markUsedError) {
+        // No bloqueamos el registro (la cuenta ya se creó vía RPC): solo avisamos
+        // para no dejar pasar en silencio un código que podría quedar reutilizable.
+        console.warn('No se pudo marcar el código de activación como usado:', markUsedError.message);
+      }
 
       // Todo OK: obtenemos la sesión activa y navegamos al AppStack manualmente.
       const { data: { session } } = await supabase.auth.getSession();

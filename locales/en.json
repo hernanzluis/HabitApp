@@ -16,7 +16,8 @@
     "error_gallery_permission": "We need permission to access your gallery.",
     "coming_soon": "Coming soon",
     "close": "Close",
-    "error": "Error"
+    "error": "Error",
+    "you": "You"
   },
   "errors": {
     "generic": "An error occurred. Please try again.",

@@ -35,7 +35,7 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
     try {
       const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(emailTrimmed);
-      if (supabaseError) { setError(supabaseError.message || t('forgot.error_send')); return; }
+      if (supabaseError) { setError(t('forgot.error_send')); return; }
       setSent(true);
     } catch {
       setError(t('forgot.error_network'));

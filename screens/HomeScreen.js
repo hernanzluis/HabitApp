@@ -61,46 +61,6 @@ function calculateTotalCompleted(habitLogs, recurrence, weeklyTarget, monthlyTar
   return 0;
 }
 
-function calculateHabitStreak(habitLogs, recurrence, weeklyTarget, monthlyTarget) {
-  if (!habitLogs.length) return 0;
-  if (recurrence === 'daily' || recurrence === 'once') {
-    const logDays = new Set(habitLogs.map((l) => toDateKey(new Date(l.created_at))));
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    let cursor = new Date(today);
-    if (!logDays.has(toDateKey(today))) cursor.setDate(cursor.getDate() - 1);
-    let streak = 0;
-    while (logDays.has(toDateKey(cursor))) { streak++; cursor.setDate(cursor.getDate() - 1); }
-    return streak;
-  }
-  if (recurrence === 'weekly_x') {
-    const wTarget = weeklyTarget || 1;
-    const weekCountMap = {};
-    habitLogs.forEach((l) => { const k = getMondayKey(new Date(l.created_at)); weekCountMap[k] = (weekCountMap[k] || 0) + 1; });
-    const cursor = new Date(); cursor.setHours(0, 0, 0, 0);
-    const dow = cursor.getDay();
-    cursor.setDate(cursor.getDate() - (dow === 0 ? 6 : dow - 1));
-    const curKey = toDateKey(cursor);
-    if ((weekCountMap[curKey] || 0) < wTarget) cursor.setDate(cursor.getDate() - 7);
-    let streak = 0;
-    while (true) { const k = toDateKey(cursor); if ((weekCountMap[k] || 0) >= wTarget) { streak++; cursor.setDate(cursor.getDate() - 7); } else break; }
-    return streak;
-  }
-  if (recurrence === 'monthly_x') {
-    const mTarget = monthlyTarget || 1;
-    let year = new Date().getFullYear();
-    let month = new Date().getMonth();
-    const curCount = habitLogs.filter((l) => { const d = new Date(l.created_at); return d >= new Date(year, month, 1) && d < new Date(year, month + 1, 1); }).length;
-    if (curCount < mTarget) { month--; if (month < 0) { month = 11; year--; } }
-    let streak = 0;
-    while (true) {
-      const count = habitLogs.filter((l) => { const d = new Date(l.created_at); return d >= new Date(year, month, 1) && d < new Date(year, month + 1, 1); }).length;
-      if (count < mTarget) break;
-      streak++; month--; if (month < 0) { month = 11; year--; }
-    }
-    return streak;
-  }
-  return 0;
-}
 
 function formatExpiry(dateStr) {
   const d = new Date(dateStr);

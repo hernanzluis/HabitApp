@@ -41,7 +41,7 @@
   - **"Crear un grupo familiar"** → flujo `create`
   - **"Activar mi cuenta"** → flujo `activate`
 - **Flujo `create`:** campos nombre completo, email, contraseña, confirmar contraseña, nombre del grupo → llama a RPC `handle_new_user_registration` → `onAuthStateChange` navega al AppStack automáticamente
-- **Flujo `activate` — paso 1 (código):** campo numérico de 6 dígitos → consulta `activation_codes` WHERE `code = X AND used = false AND (expires_at IS NULL OR expires_at > now())` → si no existe muestra error inline; si existe guarda `{ email, full_name, company_id }` y avanza al paso 2
+- **Flujo `activate` — paso 1 (código):** campo numérico de 6 dígitos → RPC `check_activation_code(p_code)` (antes era un SELECT directo sobre `activation_codes`, cambiado en la auditoría de RLS de 2026-09-16 porque la policy SELECT quedó restringida a admins; ver [database.md](database.md#check_activation_codep_code-text--email-full_name-company_id)) → si no devuelve fila muestra error inline; si existe guarda `{ email, full_name, company_id }` y avanza al paso 2
 - **Flujo `activate` — paso 2 (contraseña):** email no editable (proviene del código), campos contraseña y confirmar contraseña → `auth.signUp` → RPC `handle_activation_registration` → UPDATE `activation_codes SET used = true` → `activateSession()` navega al AppStack
 - Validación inline por campo antes de enviar en ambos flujos
 

@@ -27,10 +27,42 @@ const GREEN = '#4CAF50';
 function toDateKey(d) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
+function getMondayKey(date) {
+  const d = new Date(date);
+  const dow = d.getDay();
+  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+  d.setHours(0, 0, 0, 0);
+  return toDateKey(d);
+}
 
-// Misma lógica que calculateStreak en RankingScreen.
-// Dado que acabamos de insertar el log de hoy, today siempre está en el Set.
-function calculateStreak(logs) {
+// Racha de unidades consecutivas completadas, acorde a la recurrencia del hábito
+// (mismo criterio que calculateTotalCompleted/RankingScreen/HabitStatsScreen).
+// Dado que acabamos de insertar el log de hoy, la unidad actual siempre cuenta.
+function calculateStreak(logs, recurrence, weeklyTarget, monthlyTarget) {
+  if (!logs.length) return 0;
+  if (recurrence === 'weekly_x') {
+    const wTarget = weeklyTarget || 1;
+    const weekCountMap = {};
+    logs.forEach((l) => { const k = getMondayKey(new Date(l.created_at)); weekCountMap[k] = (weekCountMap[k] || 0) + 1; });
+    const cursor = new Date(); cursor.setHours(0, 0, 0, 0);
+    const dow = cursor.getDay();
+    cursor.setDate(cursor.getDate() - (dow === 0 ? 6 : dow - 1));
+    if ((weekCountMap[toDateKey(cursor)] || 0) < wTarget) cursor.setDate(cursor.getDate() - 7);
+    let streak = 0;
+    while ((weekCountMap[toDateKey(cursor)] || 0) >= wTarget) { streak++; cursor.setDate(cursor.getDate() - 7); }
+    return streak;
+  }
+  if (recurrence === 'monthly_x') {
+    const mTarget = monthlyTarget || 1;
+    let year = new Date().getFullYear();
+    let month = new Date().getMonth();
+    const countFor = (y, m) => logs.filter((l) => { const d = new Date(l.created_at); return d >= new Date(y, m, 1) && d < new Date(y, m + 1, 1); }).length;
+    if (countFor(year, month) < mTarget) { month--; if (month < 0) { month = 11; year--; } }
+    let streak = 0;
+    while (countFor(year, month) >= mTarget) { streak++; month--; if (month < 0) { month = 11; year--; } }
+    return streak;
+  }
+  // daily / once
   const logDays = new Set(logs.map((l) => toDateKey(new Date(l.created_at))));
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -42,6 +74,27 @@ function calculateStreak(logs) {
     cursor.setDate(cursor.getDate() - 1);
   }
   return streak;
+}
+
+// Total histórico de unidades completadas, acorde a la recurrencia (nunca se resetea).
+// Misma lógica que calculateTotalCompleted en HomeScreen — usada aquí para detectar
+// si se acaba de cruzar un múltiplo de streak_target (recompensas recursivas).
+function calculateTotalCompleted(logs, recurrence, weeklyTarget, monthlyTarget) {
+  if (!logs.length) return 0;
+  if (recurrence === 'weekly_x') {
+    const wTarget = weeklyTarget || 1;
+    const weekCountMap = {};
+    logs.forEach((l) => { const k = getMondayKey(new Date(l.created_at)); weekCountMap[k] = (weekCountMap[k] || 0) + 1; });
+    return Object.values(weekCountMap).filter((c) => c >= wTarget).length;
+  }
+  if (recurrence === 'monthly_x') {
+    const mTarget = monthlyTarget || 1;
+    const monthCountMap = {};
+    logs.forEach((l) => { const d = new Date(l.created_at); const k = `${d.getFullYear()}-${d.getMonth()}`; monthCountMap[k] = (monthCountMap[k] || 0) + 1; });
+    return Object.values(monthCountMap).filter((c) => c >= mTarget).length;
+  }
+  // daily / once
+  return new Set(logs.map((l) => toDateKey(new Date(l.created_at)))).size;
 }
 
 function getFileExtension(mimeType, uri) {
@@ -183,11 +236,21 @@ export default function HabitDetailScreen() {
         .order('created_at', { ascending: false })
         .limit(90);
 
-      const calculatedStreak = calculateStreak(recentLogs ?? []);
+      const calculatedStreak = calculateStreak(
+        recentLogs ?? [],
+        habit.recurrence,
+        habit.weekly_target,
+        habit.monthly_target
+      );
       setStreak(calculatedStreak);
 
       // Verificar si se cruzó un nuevo múltiplo del streak_target (recompensas recursivas)
-      const newTotal = new Set((recentLogs ?? []).map((l) => toDateKey(new Date(l.created_at)))).size;
+      const newTotal = calculateTotalCompleted(
+        recentLogs ?? [],
+        habit.recurrence,
+        habit.weekly_target,
+        habit.monthly_target
+      );
       const habitRewards = habit.rewards ?? [];
       const justAchieved = habitRewards.find((r) =>
         Math.floor(newTotal / r.streak_target) > Math.floor((newTotal - 1) / r.streak_target)

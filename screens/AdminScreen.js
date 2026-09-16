@@ -181,7 +181,7 @@ export default function AdminScreen() {
   const [editMemberName, setEditMemberName] = useState('');
   const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberAvatarUrl, setEditMemberAvatarUrl] = useState(null);
-  const [editMemberRole, setEditMemberRole] = useState('user');
+  const [editMemberRole, setEditMemberRole] = useState('usuario');
   const [savingMember, setSavingMember] = useState(false);
   const [memberModalError, setMemberModalError] = useState('');
 
@@ -718,7 +718,7 @@ export default function AdminScreen() {
     setEditMemberName(member.full_name || '');
     setEditMemberEmail(member.email || '');
     setEditMemberAvatarUrl(member.avatar_url || null);
-    setEditMemberRole(member.role || 'user');
+    setEditMemberRole(member.role || 'usuario');
     setMemberModalError('');
     setEditMemberVisible(true);
   };
@@ -758,7 +758,7 @@ export default function AdminScreen() {
       setEditMemberAvatarUrl(avatarWithBust);
       setMembers((prev) => prev.map((m) => m.id === editingMember.id ? { ...m, avatar_url: avatarWithBust } : m));
     } catch (e) {
-      Alert.alert('Error', e?.message || t('profile.error_avatar'));
+      Alert.alert(t('common.error'), e?.message || t('profile.error_avatar'));
     }
   };
 
@@ -1059,7 +1059,7 @@ export default function AdminScreen() {
                           </View>
                           {isMe ? (
                             <View style={[styles.familyStatusActive, { backgroundColor: '#E8E8E8' }]}>
-                              <Text style={[styles.familyStatusActiveText, { color: GRAY }]}>Tú</Text>
+                              <Text style={[styles.familyStatusActiveText, { color: GRAY }]}>{t('common.you')}</Text>
                             </View>
                           ) : (
                             <View style={styles.familyStatusActive}>
@@ -1860,17 +1860,17 @@ export default function AdminScreen() {
                     <Text style={styles.inputLabel}>{t('admin.role_label')}</Text>
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       <TouchableOpacity
-                        onPress={() => setEditMemberRole('user')}
+                        onPress={() => setEditMemberRole('usuario')}
                         activeOpacity={0.8}
                         style={{
                           flex: 1,
                           paddingVertical: 10,
                           borderRadius: 8,
                           alignItems: 'center',
-                          backgroundColor: editMemberRole === 'user' ? BLUE : '#F0F0F0',
+                          backgroundColor: editMemberRole === 'usuario' ? BLUE : '#F0F0F0',
                         }}
                       >
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: editMemberRole === 'user' ? WHITE : GRAY }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: editMemberRole === 'usuario' ? WHITE : GRAY }}>
                           {t('admin.role_member')}
                         </Text>
                       </TouchableOpacity>

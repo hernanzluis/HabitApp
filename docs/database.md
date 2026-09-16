@@ -15,7 +15,7 @@ Supabase (PostgreSQL + Auth + Storage). RLS activado en todas las tablas.
 | email | text | — | Email del usuario |
 | full_name | text | — | Nombre completo |
 | company_id | uuid | null | FK → companies(id) |
-| role | text | 'user' | 'admin' o 'user' |
+| role | text | — | 'admin' o 'usuario' (sin default a nivel de columna; lo fija cada RPC de alta) |
 | avatar_url | text | null | URL pública en Storage bucket avatars |
 | created_at | timestamptz | now() | — |
 
@@ -27,6 +27,11 @@ Supabase (PostgreSQL + Auth + Storage). RLS activado en todas las tablas.
 | logo_url | text | null | No implementado todavía |
 | admin_id | uuid | — | FK → profiles(id) |
 | created_at | timestamptz | now() | — |
+| plan | text | 'familiar' | 'familiar', 'plus' o 'empresa' — ver [business.md](business.md#campos-añadidos-a-companies) |
+| subscription_status | text | 'active' | 'active', 'past_due', 'canceled', 'trialing' |
+| stripe_customer_id | text | null | Pendiente de integración Stripe |
+| stripe_subscription_id | text | null | Pendiente de integración Stripe |
+| plan_renews_at | timestamptz | null | Pendiente de integración Stripe |
 
 ### `habits`
 | Campo | Tipo | Default | Notas |
@@ -138,10 +143,21 @@ Las categorías con `company_id = null` son predefinidas del sistema y no se pue
 | email | text | — | Email del miembro invitado |
 | full_name | text | — | Nombre completo del miembro invitado |
 | used | boolean | false | Se marca `true` tras activar la cuenta |
-| expires_at | timestamptz | null | Opcional; si está en el pasado el código no es válido |
+| expires_at | timestamptz | now() + 30 días | Si está en el pasado el código no es válido (corregido default, antes documentado como `null`) |
 | created_at | timestamptz | now() | — |
 
 El admin genera un código desde la pestaña Familia de AdminScreen. El código se comparte con el miembro, quien lo introduce en SignUpScreen para activar su cuenta sin necesidad de código de invitación genérico.
+
+### `plan_limits`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| plan | text | — | PK — 'familiar', 'plus', 'empresa' |
+| max_members | integer | null | null = sin límite |
+| max_active_habits | integer | null | null = sin límite |
+| history_days | integer | null | null = sin límite |
+| advanced_stats | boolean | false | — |
+
+Tabla de solo lectura vía RPC (`get_company_plan_info`, `SECURITY DEFINER`); no tiene ninguna policy RLS propia (ni falta le hace, ningún cliente la consulta directamente). Detalle completo de valores y enforcement en [business.md](business.md#límites-por-plan-plan_limits).
 
 ### `teams` _(creada, sin uso todavía)_
 | Campo | Tipo | Default | Notas |
@@ -167,6 +183,7 @@ El admin genera un código desde la pestaña Familia de AdminScreen. El código 
 | id | uuid | gen_random_uuid() | PK |
 | code | text | — | Código único, reutilizable |
 | company_id | uuid | — | FK → companies(id) |
+| created_by | uuid | — | FK → profiles(id) — no listado antes en esta tabla, corregido en la auditoría 2026-09-16 |
 | expires_at | timestamptz | null | Opcional, se valida en cliente |
 | created_at | timestamptz | now() | — |
 
@@ -224,13 +241,17 @@ Registra un usuario en una empresa existente usando un código de activación pe
 - `activation_code` text
 
 **Lógica:**
-1. Busca el código en `activation_codes` donde `code = activation_code` y `used = false`
-2. Si no existe, lanza excepción "Código de activación inválido o ya usado"
+1. Busca el código en `activation_codes` donde `code = activation_code`, `used = false` y no expirado (`expires_at IS NULL OR expires_at > now()`)
+2. Si no existe, lanza excepción "Código de activación inválido o expirado"
 3. Obtiene `company_id` del registro del código
-4. INSERT en `profiles` con `role = 'user'` y el `company_id` obtenido
-5. El cliente marca el código como `used = true` tras la llamada (UPDATE en `activation_codes`)
+4. Comprueba `check_member_limit(company_id)`; si no hay hueco, lanza excepción `limit_members_reached` (red de seguridad server-side, ver [business.md](business.md#enforcement))
+5. INSERT en `profiles` con `role = 'usuario'` y el `company_id` obtenido
+6. El cliente marca el código como `used = true` tras la llamada (UPDATE en `activation_codes`) — ver `check_activation_code` más abajo para el paso previo de validación del código antes del login
 
-**Race condition:** se usa el singleton `authFlags` (`lib/authFlags.js`) para bloquear el redirect automático de `onAuthStateChange` durante el flujo de activación. `skipNextRedirect = true` se pone antes del `signUp`; se resetea en cada path de error; al terminar se llama `activateSession(session)` que ejecuta `setSession` directamente en RootNavigator.
+**Race condition:** se usa el singleton `authFlags` (`lib/authFlags.js`) para bloquear el redirect automático de `onAuthStateChange` durante el flujo de activación. `skipNextRedirect = true` se pone antes del `signUp`; se resetea en cada path de error; al terminar se llama `activateSession(session)` que ejecuta `setSession` directamente en RootNavigator. El mismo patrón se aplicó también al flujo "crear grupo" (`onSignUp`), que tenía la misma condición de carrera sin protección (corregido en la auditoría de 2026-09-16).
+
+### `check_activation_code(p_code text)` → `email, full_name, company_id`
+**Pendiente de aplicar vía SQL Editor (auditoría 2026-09-16).** RPC `SECURITY DEFINER` que sustituye al SELECT directo sobre `activation_codes` que hacía `SignUpScreen.js` (paso 1 del flujo "activate", antes de que el usuario tenga sesión). Necesaria porque la policy SELECT de `activation_codes` quedó restringida a `is_admin() AND company_id = my_company_id()` tras la auditoría de RLS, y un visitante sin sesión no puede validar así su código de 6 dígitos. Devuelve el código si existe, no está usado y no ha expirado; null/vacío en caso contrario. Llamada desde `SignUpScreen.js` (`onCheckCode`).
 
 ### `handle_invited_user_registration` _(discontinuada)_
 Registra un usuario en una empresa existente usando un código de invitación.
@@ -243,7 +264,7 @@ Registra un usuario en una empresa existente usando un código de invitación.
 
 **Lógica:**
 1. Busca la invitación por `code` para obtener `company_id`
-2. INSERT en `profiles` con `role = 'user'` y el `company_id` de la invitación
+2. INSERT en `profiles` con `role = 'usuario'` y el `company_id` de la invitación
 3. No marca la invitación como usada (diseño deliberado: el código es reutilizable)
 
 > **Discontinuada:** no se invoca en ningún punto del código actual (solo aparece mencionada en comentarios en `SignUpScreen.js` y `lib/authFlags.js`) y no tiene uso previsto a corto plazo. Se mantiene documentada por si se retoma en el futuro.
@@ -282,13 +303,14 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 
 ### `habits`
 - **SELECT:** `true` — lectura abierta (se filtra por company_id en el cliente)
-- **INSERT:** usuarios autenticados con `role = 'admin'`
-- **DELETE:** usuarios con `role = 'admin'` de la misma empresa
+- **INSERT:** ⚠️ la policy real es `with_check: true` (cualquier autenticado, sin comprobar rol ni empresa) — **no** `role = 'admin'` como se documentaba antes. Detectado en la auditoría de 2026-09-16, fix pendiente de aplicar (ver `fix_rls_round2.sql`)
+- **UPDATE:** ⚠️ la policy real es `qual/with_check: true` (cualquier autenticado puede modificar cualquier hábito de cualquier empresa) pese a llamarse "admins can update habits". Fix pendiente
+- **DELETE:** usuarios con `role = 'admin'` de la misma empresa — esta sí está bien acotada
 
 ### `habit_assignments`
 - **SELECT:** `true` — lectura abierta (necesario para HomeScreen y RankingScreen)
-- **INSERT:** `auth.uid() IS NOT NULL` — el admin inserta asignaciones al crear o editar un hábito
-- **DELETE:** usuarios con `role = 'admin'` de la misma empresa (para editar asignaciones)
+- **INSERT:** `auth.uid() IS NOT NULL` — cualquier autenticado (no solo el admin); documentado así intencionalmente, aunque sin acotar a hábitos de la propia empresa. Fix pendiente para acotar por empresa
+- **DELETE:** ⚠️ la policy real es solo `auth.uid() IS NOT NULL` (llamada "Delete admin" pero sin comprobar rol ni empresa) — **no** "role='admin' de la misma empresa" como se documentaba antes. Fix pendiente
 
 ### `habit_validators`
 - **SELECT:** `true` — lectura abierta
@@ -296,8 +318,8 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 
 ### `habit_logs`
 - **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y RankingScreen)
-- **INSERT:** `auth.uid() IS NOT NULL` — cualquier usuario autenticado puede insertar su propio log
-- **UPDATE:** `auth.uid() IS NOT NULL` — cualquier autenticado puede actualizar (para validadores)
+- **INSERT:** ⚠️ la policy real es `with_check: true`, sin siquiera `auth.uid() IS NOT NULL` — un `user_id` arbitrario podría insertarse logs a nombre de otro usuario. El cliente (`HabitDetailScreen.js`) siempre inserta con `user_id: user.id`, pero RLS no lo obliga. Fix pendiente
+- **UPDATE:** ⚠️ la policy real es `qual/with_check: true`, tampoco comprueba `auth.uid()`. En la práctica no la usa ningún flujo actual del cliente (la validación social escribe en `habit_validations`, no toca `status` de `habit_logs` directamente — `validated_by`/`validated_at`/`status` son en la práctica legado, ver más abajo). Fix pendiente
 
 ### `habit_validations`
 - **SELECT:** `true` — lectura abierta
@@ -322,8 +344,15 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 Corregido en 2026-09-16 tras auditoría de RLS — helpers `my_company_id()` e `is_admin()` (SECURITY DEFINER, `search_path` fijado) añadidos para evitar recursión al comprobar la empresa/rol del usuario desde las propias políticas de `profiles`.
 
 ### `invitations` _(sin uso activo — ver nota en el esquema de tablas)_
-- **SELECT:** `true` — lectura abierta (necesario para validar el código antes de registrarse sin autenticación)
-- **INSERT:** usuarios con `role = 'admin'`
+- **SELECT:** `true`, roles `anon, authenticated` — lectura abierta (pensada para validar el código sin sesión, aunque el flujo real está discontinuado)
+- **INSERT:** ⚠️ la policy real es `with_check: true` (cualquier autenticado, sin comprobar rol) — **no** `role = 'admin'` como se documentaba. Sin impacto práctico hoy porque ningún código del cliente escribe en esta tabla, pero sigue expuesta vía la API de Supabase. Fix pendiente
+- **UPDATE:** no documentada anteriormente; la policy real es `qual: true` (cualquier autenticado puede modificar cualquier invitación). Fix pendiente
+
+### `teams` / `team_members` _(creadas, sin uso activo en el código — ver nota en el esquema de tablas)_
+- `teams` SELECT/UPDATE: `auth.uid() = created_by` (razonable); INSERT: `with_check: true` (cualquiera, incluso sin sesión, según la policy real) — fix pendiente
+- `team_members` SELECT: `true`; INSERT/DELETE: `qual/with_check: true`, llamadas "admins can..." pero sin comprobar rol ni empresa — fix pendiente
+
+Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verificado en la auditoría de 2026-09-16), por lo que el riesgo es solo latente (explotable llamando a la API de Supabase directamente, no a través de la app).
 
 ---
 
@@ -332,15 +361,15 @@ Corregido en 2026-09-16 tras auditoría de RLS — helpers `my_company_id()` e `
 ### Bucket: `habit-photos`
 - **Tipo:** público
 - **Uso:** fotos de prueba de hábitos completados
-- **Path:** `{user_id}/{habit_id}/{timestamp}.{ext}`
-- **Política INSERT:** `auth.uid() IS NOT NULL`
+- **Path:** `{user_id}/{habit_id}/{timestamp}.{ext}` — convención del cliente, **no forzada por RLS**
+- **Política INSERT (real):** `bucket_id = 'habit-photos' AND auth.uid() IS NOT NULL` — no comprueba que el primer segmento del path sea el propio `auth.uid()`, así que cualquier autenticado puede subir un archivo al path de OTRO usuario. Fix pendiente (auditoría 2026-09-16, ver `fix_rls_round2.sql`): acotar con `(storage.foldername(name))[1] = auth.uid()::text`
 - **Política SELECT:** pública (URLs públicas)
 
 ### Bucket: `avatars`
 - **Tipo:** público
 - **Uso:** fotos de perfil de usuarios
-- **Path:** `{user_id}/avatar.jpg`
-- **Política INSERT:** `auth.uid() IS NOT NULL` con upsert permitido (sobreescribe al actualizar)
+- **Path:** `{user_id}/avatar.jpg` — convención del cliente, **no forzada por RLS**
+- **Política INSERT/UPDATE (real):** `bucket_id = 'avatars' AND auth.uid() IS NOT NULL`, mismo problema que `habit-photos` — cualquier autenticado puede sobreescribir el avatar de otro usuario. Existe además una policy "admins can upload any avatar" (`role = 'admin'`) para cubrir `update_member_avatar`, pero sin acotar a que el destino sea de la misma empresa que el admin. Fix pendiente
 - **Política SELECT:** pública (URLs públicas)
 - **Nota:** la URL limpia se guarda en `profiles.avatar_url`; en el cliente se añade `?t=Date.now()` para cache-busting inmediato tras la subida
 
