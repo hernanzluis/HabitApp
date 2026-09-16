@@ -30,5 +30,8 @@
     "react-native-screens": "~4.26.0",
     "react-native-url-polyfill": "^3.0.0"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "ws": "^8.21.3"
+  }
 }
