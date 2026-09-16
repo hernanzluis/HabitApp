@@ -13,6 +13,11 @@ const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
 const SUPABASE_URL = 'https://uvsngemnftpysjvxslhu.supabase.co';
+// Misma anon key pública que lib/supabase.js — no es un secreto, es la que usa
+// cualquier cliente de la app. Se usa aquí para autenticarse COMO un usuario de
+// test concreto y así poder probar el comportamiento real de RLS (el cliente
+// con la Service Role Key lo salta por completo y no sirve para esto).
+const SUPABASE_ANON_KEY = 'sb_publishable_5szIB7W3P5G6XFFYyFjAfw_TwpKNFnp';
 
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
@@ -283,6 +288,24 @@ async function cleanupTestData() {
   return { deleted: true, companiesDeleted: companyIds.length, usersDeleted: userIds.length };
 }
 
+// Crea un cliente autenticado COMO un usuario de test concreto (email/password
+// devueltos por createTestUser/joinAsTestMember), usando la anon key real —
+// para probar el comportamiento REAL de RLS desde el punto de vista de ese
+// usuario. El cliente con la Service Role Key nunca sirve para esto: la salta
+// por completo, así que "funciona" con él no dice nada sobre lo que puede
+// hacer un usuario real de la app.
+async function getClientForUser(email, password) {
+  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { transport: WebSocket },
+  });
+  const { error } = await client.auth.signInWithPassword({ email, password });
+  if (error) {
+    throw new Error(`getClientForUser: no se pudo autenticar como ${email}: ${error.message}`);
+  }
+  return client;
+}
+
 function assertEqual(actual, expected, message) {
   const pass = JSON.stringify(actual) === JSON.stringify(expected);
   if (pass) {
@@ -295,6 +318,20 @@ function assertEqual(actual, expected, message) {
   return pass;
 }
 
+// Para los casos "esto debería fallar por RLS" — pásale el `error` que
+// devuelve la llamada de supabase-js. pass = hubo error (RLS rechazó).
+function assertRejected(error, message) {
+  const pass = !!error;
+  if (pass) {
+    console.log(`  ✓ ${message} (rechazado correctamente: ${error.message})`);
+  } else {
+    console.error(`  ✗ ${message}`);
+    console.error('      esperado: la operación debía ser rechazada (RLS)');
+    console.error('      obtenido: no hubo error — la operación tuvo éxito');
+  }
+  return pass;
+}
+
 module.exports = {
   TEST_PREFIX,
   supabaseAdmin,
@@ -302,6 +339,8 @@ module.exports = {
   createTestCompanyAndAdmin,
   joinAsTestMember,
   advanceHabitLog,
+  getClientForUser,
   cleanupTestData,
   assertEqual,
+  assertRejected,
 };
