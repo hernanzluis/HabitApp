@@ -251,7 +251,7 @@ Registra un usuario en una empresa existente usando un código de activación pe
 **Race condition:** se usa el singleton `authFlags` (`lib/authFlags.js`) para bloquear el redirect automático de `onAuthStateChange` durante el flujo de activación. `skipNextRedirect = true` se pone antes del `signUp`; se resetea en cada path de error; al terminar se llama `activateSession(session)` que ejecuta `setSession` directamente en RootNavigator. El mismo patrón se aplicó también al flujo "crear grupo" (`onSignUp`), que tenía la misma condición de carrera sin protección (corregido en la auditoría de 2026-09-16).
 
 ### `check_activation_code(p_code text)` → `email, full_name, company_id`
-**Pendiente de aplicar vía SQL Editor (auditoría 2026-09-16).** RPC `SECURITY DEFINER` que sustituye al SELECT directo sobre `activation_codes` que hacía `SignUpScreen.js` (paso 1 del flujo "activate", antes de que el usuario tenga sesión). Necesaria porque la policy SELECT de `activation_codes` quedó restringida a `is_admin() AND company_id = my_company_id()` tras la auditoría de RLS, y un visitante sin sesión no puede validar así su código de 6 dígitos. Devuelve el código si existe, no está usado y no ha expirado; null/vacío en caso contrario. Llamada desde `SignUpScreen.js` (`onCheckCode`).
+RPC `SECURITY DEFINER` que sustituye al SELECT directo sobre `activation_codes` que hacía `SignUpScreen.js` (paso 1 del flujo "activate", antes de que el usuario tenga sesión). Necesaria porque la policy SELECT de `activation_codes` quedó restringida a `is_admin() AND company_id = my_company_id()` tras la auditoría de RLS, y un visitante sin sesión no puede validar así su código de 6 dígitos. Devuelve el código si existe, no está usado y no ha expirado; ninguna fila en caso contrario. `EXECUTE` concedido a `anon` y `authenticated`. Llamada desde `SignUpScreen.js` (`onCheckCode`).
 
 ### `handle_invited_user_registration` _(discontinuada)_
 Registra un usuario en una empresa existente usando un código de invitación.
@@ -303,14 +303,14 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 
 ### `habits`
 - **SELECT:** `true` — lectura abierta (se filtra por company_id en el cliente)
-- **INSERT:** ⚠️ la policy real es `with_check: true` (cualquier autenticado, sin comprobar rol ni empresa) — **no** `role = 'admin'` como se documentaba antes. Detectado en la auditoría de 2026-09-16, fix pendiente de aplicar (ver `fix_rls_round2.sql`)
-- **UPDATE:** ⚠️ la policy real es `qual/with_check: true` (cualquier autenticado puede modificar cualquier hábito de cualquier empresa) pese a llamarse "admins can update habits". Fix pendiente
-- **DELETE:** usuarios con `role = 'admin'` de la misma empresa — esta sí está bien acotada
+- **INSERT:** `is_admin() AND company_id = my_company_id()`
+- **UPDATE:** `is_admin() AND company_id = my_company_id()`
+- **DELETE:** usuarios con `role = 'admin'` de la misma empresa
 
 ### `habit_assignments`
 - **SELECT:** `true` — lectura abierta (necesario para HomeScreen y RankingScreen)
-- **INSERT:** `auth.uid() IS NOT NULL` — cualquier autenticado (no solo el admin); documentado así intencionalmente, aunque sin acotar a hábitos de la propia empresa. Fix pendiente para acotar por empresa
-- **DELETE:** ⚠️ la policy real es solo `auth.uid() IS NOT NULL` (llamada "Delete admin" pero sin comprobar rol ni empresa) — **no** "role='admin' de la misma empresa" como se documentaba antes. Fix pendiente
+- **INSERT:** cualquier autenticado (no solo el admin, intencional), acotado a que el hábito referenciado sea de tu propia empresa (`EXISTS (... habits h WHERE h.id = habit_id AND h.company_id = my_company_id())`)
+- **DELETE:** `is_admin()` y el hábito referenciado pertenece a la empresa del admin
 
 ### `habit_validators`
 - **SELECT:** `true` — lectura abierta
@@ -318,8 +318,8 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 
 ### `habit_logs`
 - **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y RankingScreen)
-- **INSERT:** ⚠️ la policy real es `with_check: true`, sin siquiera `auth.uid() IS NOT NULL` — un `user_id` arbitrario podría insertarse logs a nombre de otro usuario. El cliente (`HabitDetailScreen.js`) siempre inserta con `user_id: user.id`, pero RLS no lo obliga. Fix pendiente
-- **UPDATE:** ⚠️ la policy real es `qual/with_check: true`, tampoco comprueba `auth.uid()`. En la práctica no la usa ningún flujo actual del cliente (la validación social escribe en `habit_validations`, no toca `status` de `habit_logs` directamente — `validated_by`/`validated_at`/`status` son en la práctica legado, ver más abajo). Fix pendiente
+- **INSERT:** `user_id = auth.uid()` y el hábito referenciado es de tu propia empresa — evita insertar logs a nombre de otro usuario
+- **UPDATE:** el propio dueño del log, un validador asignado a ese hábito (`habit_validators`), o un admin de la empresa del hábito. En la práctica no la usa ningún flujo actual del cliente (la validación social escribe en `habit_validations`, no toca `status` de `habit_logs` directamente — `validated_by`/`validated_at`/`status` son en la práctica legado, ver más abajo)
 
 ### `habit_validations`
 - **SELECT:** `true` — lectura abierta
@@ -345,14 +345,14 @@ Corregido en 2026-09-16 tras auditoría de RLS — helpers `my_company_id()` e `
 
 ### `invitations` _(sin uso activo — ver nota en el esquema de tablas)_
 - **SELECT:** `true`, roles `anon, authenticated` — lectura abierta (pensada para validar el código sin sesión, aunque el flujo real está discontinuado)
-- **INSERT:** ⚠️ la policy real es `with_check: true` (cualquier autenticado, sin comprobar rol) — **no** `role = 'admin'` como se documentaba. Sin impacto práctico hoy porque ningún código del cliente escribe en esta tabla, pero sigue expuesta vía la API de Supabase. Fix pendiente
-- **UPDATE:** no documentada anteriormente; la policy real es `qual: true` (cualquier autenticado puede modificar cualquier invitación). Fix pendiente
+- **INSERT:** `is_admin() AND company_id = my_company_id()`
+- **UPDATE:** `is_admin() AND company_id = my_company_id()`
 
 ### `teams` / `team_members` _(creadas, sin uso activo en el código — ver nota en el esquema de tablas)_
-- `teams` SELECT/UPDATE: `auth.uid() = created_by` (razonable); INSERT: `with_check: true` (cualquiera, incluso sin sesión, según la policy real) — fix pendiente
-- `team_members` SELECT: `true`; INSERT/DELETE: `qual/with_check: true`, llamadas "admins can..." pero sin comprobar rol ni empresa — fix pendiente
+- `teams` SELECT/UPDATE: `auth.uid() = created_by`; INSERT: `is_admin() AND company_id = my_company_id()`
+- `team_members` SELECT: `true`; INSERT/DELETE: `is_admin()` y el equipo referenciado pertenece a la empresa del admin
 
-Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verificado en la auditoría de 2026-09-16), por lo que el riesgo es solo latente (explotable llamando a la API de Supabase directamente, no a través de la app).
+Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verificado en la auditoría de 2026-09-16).
 
 ---
 
@@ -361,15 +361,15 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 ### Bucket: `habit-photos`
 - **Tipo:** público
 - **Uso:** fotos de prueba de hábitos completados
-- **Path:** `{user_id}/{habit_id}/{timestamp}.{ext}` — convención del cliente, **no forzada por RLS**
-- **Política INSERT (real):** `bucket_id = 'habit-photos' AND auth.uid() IS NOT NULL` — no comprueba que el primer segmento del path sea el propio `auth.uid()`, así que cualquier autenticado puede subir un archivo al path de OTRO usuario. Fix pendiente (auditoría 2026-09-16, ver `fix_rls_round2.sql`): acotar con `(storage.foldername(name))[1] = auth.uid()::text`
+- **Path:** `{user_id}/{habit_id}/{timestamp}.{ext}`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
+- **Política INSERT:** `bucket_id = 'habit-photos' AND (storage.foldername(name))[1] = auth.uid()::text` — solo puedes subir a tu propio path
 - **Política SELECT:** pública (URLs públicas)
 
 ### Bucket: `avatars`
 - **Tipo:** público
 - **Uso:** fotos de perfil de usuarios
-- **Path:** `{user_id}/avatar.jpg` — convención del cliente, **no forzada por RLS**
-- **Política INSERT/UPDATE (real):** `bucket_id = 'avatars' AND auth.uid() IS NOT NULL`, mismo problema que `habit-photos` — cualquier autenticado puede sobreescribir el avatar de otro usuario. Existe además una policy "admins can upload any avatar" (`role = 'admin'`) para cubrir `update_member_avatar`, pero sin acotar a que el destino sea de la misma empresa que el admin. Fix pendiente
+- **Path:** `{user_id}/avatar.jpg`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
+- **Política INSERT/UPDATE:** solo tu propio path; además, `admins can upload avatar for own company member` permite a un admin subir el avatar de otro miembro (para `update_member_avatar`) siempre que ese miembro sea de su misma empresa (`profiles.company_id = my_company_id()`)
 - **Política SELECT:** pública (URLs públicas)
 - **Nota:** la URL limpia se guarda en `profiles.avatar_url`; en el cliente se añade `?t=Date.now()` para cache-busting inmediato tras la subida
 
