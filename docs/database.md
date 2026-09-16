@@ -271,14 +271,14 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 ## Políticas RLS
 
 ### `profiles`
-- **SELECT:** `true` — cualquier usuario autenticado puede leer perfiles (necesario para mostrar nombres y avatares de compañeros)
-- **INSERT:** solo via funciones RPC (SECURITY DEFINER)
-- **UPDATE:** documentada como `auth.uid() = id` (solo el propio usuario), pero `screens/AdminScreen.js` hace un UPDATE directo de `full_name`/`email`/`role` de **otro** miembro (no del propio usuario) al editar desde el panel de admin, y la web (`Members.jsx`) hace lo mismo para `role`. O la política real en Supabase ya tiene una excepción para admins de la misma empresa que no está reflejada aquí, o esas llamadas dependen de una policy distinta de la documentada. **Pendiente de verificar el texto exacto de la política en el SQL Editor de Supabase y corregir esta nota.**
+- **SELECT:** `id = auth.uid() OR company_id = my_company_id()` — el propio perfil o el de un compañero de la misma empresa
+- **INSERT:** solo via funciones RPC (SECURITY DEFINER) — no existe policy de INSERT directo
+- **UPDATE:** `auth.uid() = id` (propio usuario) o `is_admin() AND company_id = my_company_id()` (admin editando a un miembro de su misma empresa — cubre el UPDATE directo de `full_name`/`email`/`role` que hacen `AdminScreen.js` y `Members.jsx`)
 
 ### `companies`
-- **SELECT:** `true` — lectura abierta para usuarios autenticados
-- **INSERT:** solo via funciones RPC (SECURITY DEFINER)
-- **UPDATE:** sin documentar. `screens/ProfileScreen.js` (`saveGroupName`) hace `UPDATE companies SET name = ...` para renombrar el grupo, gateado en el cliente a `role === 'admin'` pero sin garantía de que la policy en Supabase también lo exija. **Pendiente de verificar y documentar la política real.**
+- **SELECT:** `id = my_company_id()` — solo tu propia empresa
+- **INSERT:** solo via funciones RPC (SECURITY DEFINER) — no existe policy de INSERT directo
+- **UPDATE:** `is_admin() AND id = my_company_id()` — cubre el rename de grupo en `screens/ProfileScreen.js` (`saveGroupName`)
 
 ### `habits`
 - **SELECT:** `true` — lectura abierta (se filtra por company_id en el cliente)
@@ -291,7 +291,8 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 - **DELETE:** usuarios con `role = 'admin'` de la misma empresa (para editar asignaciones)
 
 ### `habit_validators`
-- Sin documentar. `screens/AdminScreen.js` y `habitteam-web/src/components/admin/Habits.jsx` hacen INSERT/DELETE directos desde el cliente al crear/editar un hábito. **Pendiente de verificar y documentar la política real en Supabase.**
+- **SELECT:** `true` — lectura abierta
+- **INSERT/DELETE:** `is_admin()` y el hábito referenciado pertenece a la empresa del admin (`EXISTS (... habits h WHERE h.id = habit_id AND h.company_id = my_company_id())`) — cubre los INSERT/DELETE directos de `AdminScreen.js` y `Habits.jsx` (web)
 
 ### `habit_logs`
 - **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y RankingScreen)
@@ -304,13 +305,21 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 - La constraint UNIQUE (habit_log_id, validator_id) a nivel de DB previene votos duplicados
 
 ### `habit_rewards`
-- Sin documentar. Gestionada desde `screens/AdminScreen.js` y `Habits.jsx` (web) con INSERT/DELETE directos del cliente. **Pendiente de verificar y documentar la política real en Supabase.**
+- **SELECT:** `true` — lectura abierta
+- **INSERT/UPDATE/DELETE:** `is_admin()` y el hábito referenciado pertenece a la empresa del admin — cubre los INSERT/DELETE directos de `AdminScreen.js` y `Habits.jsx` (web)
 
 ### `categories`
-- Sin documentar. INSERT/DELETE directos desde el cliente en `screens/AdminScreen.js` y `habitteam-web/src/components/admin/Categories.jsx`. **Pendiente de verificar y documentar la política real en Supabase.**
+- **SELECT:** `true` — lectura abierta (predefinidas del sistema + las de todas las empresas; se filtra por `company_id` en el cliente)
+- **INSERT:** `is_admin() AND company_id = my_company_id()` — solo puede crear categorías para su propia empresa
+- **DELETE:** `is_admin() AND company_id = my_company_id()` — las predefinidas (`company_id IS NULL`) nunca cumplen la condición, así que no se pueden borrar
 
 ### `activation_codes`
-- Sin documentar, pese a ser la tabla que controla la activación de cuentas nuevas. INSERT/UPDATE/DELETE directos desde el cliente (`AdminScreen.js`, `Members.jsx`) además del uso server-side dentro de `handle_activation_registration`. **Pendiente de verificar y documentar la política real en Supabase — es el hueco de RLS más sensible de los detectados.**
+- **SELECT:** `is_admin() AND company_id = my_company_id()` — solo el admin ve los códigos de su propia empresa (el signup con código pasa por el RPC `handle_activation_registration`, que bypasea RLS, así que el cliente no necesita SELECT abierto)
+- **INSERT:** `is_admin() AND company_id = my_company_id()`
+- **UPDATE:** dos policies — `is_admin() AND company_id = my_company_id()` (el admin edita/cancela códigos de su empresa), o `auth.uid() IS NOT NULL AND used = false` con `WITH CHECK (used = true)` (el usuario recién registrado marca su propio código como usado justo tras `auth.signUp`)
+- **DELETE:** `is_admin()` y `company_id` coincide con el del admin
+
+Corregido en 2026-09-16 tras auditoría de RLS — helpers `my_company_id()` e `is_admin()` (SECURITY DEFINER, `search_path` fijado) añadidos para evitar recursión al comprobar la empresa/rol del usuario desde las propias políticas de `profiles`.
 
 ### `invitations` _(sin uso activo — ver nota en el esquema de tablas)_
 - **SELECT:** `true` — lectura abierta (necesario para validar el código antes de registrarse sin autenticación)
