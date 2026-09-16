@@ -258,7 +258,14 @@
     "filter_week": "Esta semana",
     "filter_month": "Este mes",
     "filter_all_time": "Todo",
-    "history_empty": "No hay registros con estos filtros"
+    "history_empty": "No hay registros con estos filtros",
+    "delete_account": "Eliminar mi cuenta",
+    "delete_account_warning_title": "Eliminar tu cuenta",
+    "delete_account_warning_message": "Se eliminarán permanentemente tu perfil, tus hábitos, fotos, validaciones y todo tu historial. Esta acción no se puede deshacer.",
+    "delete_account_confirm_title": "¿Seguro que quieres continuar?",
+    "delete_account_confirm_message": "Esta es tu última oportunidad para cancelar. Al confirmar, tu cuenta se eliminará de inmediato.",
+    "delete_account_confirm_button": "Sí, eliminar mi cuenta",
+    "error_delete_account": "No se pudo eliminar la cuenta. Inténtalo de nuevo."
   },
   "nav": {
     "home": "Inicio",

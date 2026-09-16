@@ -134,6 +134,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
@@ -442,6 +443,71 @@ export default function ProfileScreen() {
     }
   };
 
+  // Borrado best-effort de los ficheros del usuario en Storage. Nunca bloquea
+  // el borrado de la cuenta: si falla, la cuenta se elimina igual.
+  const deleteAllUserStorageFiles = async (userId) => {
+    try {
+      await supabase.storage.from('avatars').remove([`${userId}/avatar.jpg`]);
+    } catch {}
+
+    try {
+      const { data: habitFolders } = await supabase.storage.from('habit-photos').list(userId);
+      const filePaths = [];
+      for (const folder of habitFolders ?? []) {
+        const { data: files } = await supabase.storage
+          .from('habit-photos')
+          .list(`${userId}/${folder.name}`);
+        (files ?? []).forEach((f) => filePaths.push(`${userId}/${folder.name}/${f.name}`));
+      }
+      if (filePaths.length) await supabase.storage.from('habit-photos').remove(filePaths);
+    } catch {}
+  };
+
+  const runAccountDeletion = async () => {
+    setDeletingAccount(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) await deleteAllUserStorageFiles(user.id);
+
+      const { error: rpcError } = await supabase.rpc('delete_own_account');
+      if (rpcError) throw rpcError;
+
+      await supabase.auth.signOut();
+    } catch (e) {
+      setDeletingAccount(false);
+      Alert.alert(t('common.error'), e?.message || t('profile.error_delete_account'));
+    }
+  };
+
+  const onDeleteAccount = () => {
+    if (deletingAccount) return;
+    Alert.alert(
+      t('profile.delete_account_warning_title'),
+      t('profile.delete_account_warning_message'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('profile.delete_account'),
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              t('profile.delete_account_confirm_title'),
+              t('profile.delete_account_confirm_message'),
+              [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                  text: t('profile.delete_account_confirm_button'),
+                  style: 'destructive',
+                  onPress: runAccountDeletion,
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -683,6 +749,19 @@ export default function ProfileScreen() {
             <ActivityIndicator color="#CC0000" />
           ) : (
             <Text style={styles.logoutText}>{t('profile.logout')}</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.deleteAccountBtn}
+          onPress={onDeleteAccount}
+          disabled={deletingAccount}
+          activeOpacity={0.7}
+        >
+          {deletingAccount ? (
+            <ActivityIndicator color="#CC0000" />
+          ) : (
+            <Text style={styles.deleteAccountText}>{t('profile.delete_account')}</Text>
           )}
         </TouchableOpacity>
 
@@ -932,6 +1011,17 @@ const styles = StyleSheet.create({
     color: '#CC0000',
     fontSize: 15,
     fontWeight: '600',
+  },
+  deleteAccountBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  deleteAccountText: {
+    color: '#CC0000',
+    fontSize: 13,
+    fontWeight: '500',
+    opacity: 0.7,
   },
   // Historial
   historySection: {

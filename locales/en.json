@@ -180,7 +180,14 @@
     "filter_week": "This week",
     "filter_month": "This month",
     "filter_all_time": "All time",
-    "history_empty": "No records match these filters"
+    "history_empty": "No records match these filters",
+    "delete_account": "Delete my account",
+    "delete_account_warning_title": "Delete your account",
+    "delete_account_warning_message": "Your profile, habits, photos, validations and your entire history will be permanently deleted. This action cannot be undone.",
+    "delete_account_confirm_title": "Are you sure you want to continue?",
+    "delete_account_confirm_message": "This is your last chance to cancel. Your account will be deleted immediately once confirmed.",
+    "delete_account_confirm_button": "Yes, delete my account",
+    "error_delete_account": "Couldn't delete your account. Please try again."
   },
   "admin": {
     "header_title": "Administration",

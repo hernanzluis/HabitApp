@@ -303,7 +303,14 @@ Registra un usuario en una empresa existente usando un código de invitación.
 > **Discontinuada:** no se invoca en ningún punto del código actual (solo aparece mencionada en comentarios en `SignUpScreen.js` y `lib/authFlags.js`) y no tiene uso previsto a corto plazo. Se mantiene documentada por si se retoma en el futuro.
 
 ### `delete_member(member_id uuid)`
-Elimina un miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` (app) y `src/components/admin/Members.jsx` (web) desde el botón "Eliminar miembro".
+Elimina un miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` (app) y `src/components/admin/Members.jsx` (web) desde el botón "Eliminar miembro". Borra `profiles` (el `ON DELETE CASCADE` de las FKs limpia `habit_logs`, `habit_assignments`, `habit_validators`, `habit_validations`, `team_members` propios) y después `auth.users`, todo dentro de la misma función — transaccional por construcción: si cualquier paso falla, Postgres deshace todo lo anterior, no puede quedar a medias. No limpia Storage (avatar/fotos de hábito quedan huérfanas).
+
+### `delete_own_account()`
+Permite a un usuario eliminar su propia cuenta (requisito de revisión de Apple, guideline 5.1.1v). Mismo patrón que `delete_member` (`SECURITY DEFINER`, `DELETE FROM profiles` + `DELETE FROM auth.users` en una sola función, transaccional), pero **sin parámetros**: opera exclusivamente sobre `auth.uid()`, así que no existe ningún id que pueda no coincidir con quien llama — más seguro que replicar la firma `member_id uuid` de `delete_member` y comprobar la igualdad a mano. Llamada desde `screens/ProfileScreen.js` (`runAccountDeletion`), tras dos `Alert.alert` de confirmación consecutivos y un borrado best-effort de los ficheros del usuario en `avatars`/`habit-photos` (Storage no se limpia dentro de la función, igual que en `delete_member`, así que se hace desde el cliente antes de llamar a la RPC). Tras el éxito, el cliente hace `supabase.auth.signOut()`; `RootNavigator` gestiona la redirección a Login vía `onAuthStateChange`, sin lógica de navegación adicional.
+
+Corrigió dos FKs que antes eran `ON DELETE NO ACTION` (`habit_logs.validated_by`, `invitations.created_by`) a `SET NULL` — con `NO ACTION`, borrar el perfil de un usuario referenciado ahí habría fallado con un error de Postgres sin manejar, tanto aquí como en `delete_member` (afectaba a ambos, no solo al nuevo flujo).
+
+**Limitación conocida, aceptada deliberadamente:** si el único admin de un grupo elimina su cuenta, el grupo queda sin ningún admin (nadie puede volver a gestionar miembros/hábitos). No se bloquea el borrado por esto — Apple exige poder eliminar la cuenta sin trabas. `companies.admin_id` y `habits.created_by` no son FKs reales en la base de datos (solo referencias lógicas documentadas, ningún código las lee) y quedan con un valor obsoleto tras el borrado, sin impacto funcional.
 
 ### `check_habit_limit(p_company_id)` → boolean
 Comprueba si el grupo puede crear un hábito activo más, según su plan. Usada en `screens/AdminScreen.js` (app) y `Habits.jsx` (web) antes del INSERT de un nuevo hábito. Detalle de planes y límites en [business.md](business.md).
@@ -396,6 +403,7 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 - **Uso:** fotos de prueba de hábitos completados
 - **Path:** `{user_id}/{habit_id}/{timestamp}.{ext}`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
 - **Política INSERT:** `bucket_id = 'habit-photos' AND (storage.foldername(name))[1] = auth.uid()::text` — solo puedes subir a tu propio path
+- **Política DELETE:** mismo criterio (propio path) — usada por `ProfileScreen.deleteAllUserStorageFiles` al eliminar la propia cuenta
 - **Política SELECT:** pública (URLs públicas)
 
 ### Bucket: `avatars`
@@ -403,6 +411,7 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 - **Uso:** fotos de perfil de usuarios
 - **Path:** `{user_id}/avatar.jpg`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
 - **Política INSERT/UPDATE:** solo tu propio path; además, `admins can upload avatar for own company member` permite a un admin subir el avatar de otro miembro (para `update_member_avatar`) siempre que ese miembro sea de su misma empresa (`profiles.company_id = my_company_id()`)
+- **Política DELETE:** propio path — usada por `ProfileScreen.deleteAllUserStorageFiles` al eliminar la propia cuenta
 - **Política SELECT:** pública (URLs públicas)
 - **Nota:** la URL limpia se guarda en `profiles.avatar_url`; en el cliente se añade `?t=Date.now()` para cache-busting inmediato tras la subida
 

@@ -182,4 +182,5 @@ Sin ranking competitivo ni orden por completados. No existe la tarjeta "usuario 
 - Estadísticas: hábitos completados, hábitos validados, validaciones hechas a otros miembros
 - Historial filtrable, selector de idioma
 - Cerrar sesión: `supabase.auth.signOut()` → `onAuthStateChange` navega a AuthStack automáticamente
+- **Eliminar mi cuenta** (debajo de "Cerrar sesión", requisito de revisión de Apple): dos `Alert.alert` de confirmación consecutivos (primero explica qué se borra, segundo es la confirmación final e irreversible) → borrado best-effort de los ficheros propios en Storage (`avatars`/`habit-photos`) → RPC `delete_own_account` (borra `profiles`, cascada a hábitos/validaciones propias, y `auth.users`) → `supabase.auth.signOut()`. Sin periodo de gracia, sin anonimización: inmediato y permanente. Detalle técnico completo en [database.md](database.md#delete_own_account).
 - Tiene TabBar manual (no usa el nativo porque la pantalla es modal/stack)
