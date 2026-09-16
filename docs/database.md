@@ -157,7 +157,7 @@ El admin genera un código desde la pestaña Familia de AdminScreen. El código 
 | ip_address | text | — | De `request.headers.x-forwarded-for`, puede ser `null` fuera de PostgREST |
 | attempted_at | timestamptz | now() | — |
 
-**Pendiente de aplicar vía SQL Editor, en producción.** Solo la usa `check_activation_code` (capa 2 de rate limiting, por IP — ver más abajo). RLS activado sin policies, igual que `plan_limits`: ningún cliente la lee ni escribe directamente. Filas de más de 1 hora se autolimpian en cada llamada a la función.
+Solo la usa `check_activation_code` (capa 2 de rate limiting, por IP — ver más abajo). RLS activado sin policies, igual que `plan_limits`: ningún cliente la lee ni escribe directamente. Filas de más de 1 hora se autolimpian en cada llamada a la función.
 
 ### `plan_limits`
 | Campo | Tipo | Default | Notas |
@@ -274,7 +274,7 @@ RPC `SECURITY DEFINER` que sustituye al SELECT directo sobre `activation_codes` 
 
 Protege contra reintentos repetidos sobre UN código concreto ya existente pero muerto (usado/expirado). Un código genuinamente válido y no usado siempre tiene éxito y resetea el contador — nunca puede acumular 5 fallos por sí mismo.
 
-**Capa 2, por IP (`activation_attempts`, pendiente de aplicar vía SQL Editor en producción):** cubre justo el hueco de la capa 1 — un atacante probando códigos de 6 dígitos al azar que no coinciden con ninguna fila real, donde no hay ningún `activation_codes.id` al que enganchar un contador.
+**Capa 2, por IP (`activation_attempts`):** cubre justo el hueco de la capa 1 — un atacante probando códigos de 6 dígitos al azar que no coinciden con ninguna fila real, donde no hay ningún `activation_codes.id` al que enganchar un contador.
 1. Al inicio de la función, antes de tocar `activation_codes`: obtiene la IP del cliente con `current_setting('request.headers', true)::json->>'x-forwarded-for'`.
 2. Borra intentos de esa IP en `activation_attempts` de más de 1 hora (limpieza, evita que la tabla crezca sin límite).
 3. Cuenta los intentos de esa IP en los últimos 15 minutos. Si son ≥5, `RAISE EXCEPTION` con el mismo mensaje de bloqueo — **sin insertar** un intento nuevo, para no alargar la ventana indefinidamente mientras el atacante sigue llamando.
