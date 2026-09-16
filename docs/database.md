@@ -145,10 +145,19 @@ Las categorías con `company_id = null` son predefinidas del sistema y no se pue
 | used | boolean | false | Se marca `true` tras activar la cuenta |
 | expires_at | timestamptz | now() + 30 días | Si está en el pasado el código no es válido (corregido default, antes documentado como `null`) |
 | created_at | timestamptz | now() | — |
-| failed_attempts | integer | 0 | **Pendiente de aplicar vía SQL Editor.** Intentos fallidos consecutivos contra este código concreto (rate limiting, ver `check_activation_code`) |
-| locked_until | timestamptz | null | **Pendiente de aplicar.** Si está en el futuro, el código rechaza cualquier intento hasta esa fecha, sin tocar `failed_attempts` |
+| failed_attempts | integer | 0 | Intentos fallidos consecutivos contra este código concreto (rate limiting, ver `check_activation_code`) |
+| locked_until | timestamptz | null | Si está en el futuro, el código rechaza cualquier intento hasta esa fecha, sin tocar `failed_attempts` |
 
 El admin genera un código desde la pestaña Familia de AdminScreen. El código se comparte con el miembro, quien lo introduce en SignUpScreen para activar su cuenta sin necesidad de código de invitación genérico.
+
+### `activation_attempts`
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| ip_address | text | — | De `request.headers.x-forwarded-for`, puede ser `null` fuera de PostgREST |
+| attempted_at | timestamptz | now() | — |
+
+**Pendiente de aplicar vía SQL Editor, en producción.** Solo la usa `check_activation_code` (capa 2 de rate limiting, por IP — ver más abajo). RLS activado sin policies, igual que `plan_limits`: ningún cliente la lee ni escribe directamente. Filas de más de 1 hora se autolimpian en cada llamada a la función.
 
 ### `plan_limits`
 | Campo | Tipo | Default | Notas |
@@ -255,13 +264,27 @@ Registra un usuario en una empresa existente usando un código de activación pe
 ### `check_activation_code(p_code text)` → `email, full_name, company_id`
 RPC `SECURITY DEFINER` que sustituye al SELECT directo sobre `activation_codes` que hacía `SignUpScreen.js` (paso 1 del flujo "activate", antes de que el usuario tenga sesión). Necesaria porque la policy SELECT de `activation_codes` quedó restringida a `is_admin() AND company_id = my_company_id()` tras la auditoría de RLS, y un visitante sin sesión no puede validar así su código de 6 dígitos. Devuelve el código si existe, no está usado y no ha expirado; ninguna fila en caso contrario. `EXECUTE` concedido a `anon` y `authenticated`. Llamada desde `SignUpScreen.js` (`onCheckCode`).
 
-**Rate limiting (pendiente de aplicar vía SQL Editor, en el proyecto de producción):**
-1. Busca la fila por `code = p_code` (match exacto, `code` es único). Si no existe ninguna fila con ese valor, no hay nada que limitar — se devuelve vacío igual que hoy.
-2. Si `locked_until` de esa fila está en el futuro, rechaza inmediatamente con `RAISE EXCEPTION 'Código bloqueado temporalmente, inténtalo de nuevo en unos minutos'` — sin tocar `failed_attempts` ni revelar cuántos intentos quedan. Este mensaje llega al cliente vía `error.message` de Supabase y ya tiene dónde mostrarse: `SignUpScreen.onCheckCode` hace `if (error) throw error`, capturado por el `catch` que llama a `setFormError(e?.message ...)` — el mismo mecanismo que usa `handle_activation_registration` para `limit_members_reached`. No ha hecho falta tocar la pantalla.
+**Rate limiting — dos capas complementarias:**
+
+**Capa 1, por código (aplicada en Supabase):**
+1. Busca la fila por `code = p_code` (match exacto, `code` es único). Si no existe ninguna fila con ese valor, no hay nada que limitar por esta capa — se devuelve vacío igual que hoy (la capa 2 de abajo sí cuenta este intento).
+2. Si `locked_until` de esa fila está en el futuro, rechaza inmediatamente con `RAISE EXCEPTION 'Código bloqueado temporalmente, inténtalo de nuevo en unos minutos'` — sin tocar `failed_attempts` ni revelar cuántos intentos quedan.
 3. Si la fila existe pero no es válida ahora mismo (`used = true` o expirada), cuenta como intento fallido: `failed_attempts += 1`; al llegar a 5, `locked_until = now() + 15 minutos`.
 4. Si la fila es válida (`used = false` y no expirada), resetea `failed_attempts = 0` y `locked_until = null`, y devuelve los datos — flujo normal.
 
-⚠️ **Matiz importante:** el límite es por fila (`activation_codes.id`), identificada por coincidencia exacta de `code`. Un código genuinamente válido y no usado siempre tiene éxito y resetea el contador en cada llamada — nunca puede acumular 5 fallos por sí mismo. Los fallos solo se acumulan contra una fila que YA existe pero está usada o expirada (alguien reintentando un código muerto), o quedan bloqueados si se alcanza el límite antes de que el código pase a usarse. Esto no protege contra un atacante probando códigos de 6 dígitos al azar que no coinciden con ninguna fila (no hay fila contra la que contar el intento) — para eso haría falta identificar el intento por algo independiente del propio código (ej. email), lo que requeriría cambiar el flujo de `SignUpScreen` para pedirlo antes del código.
+Protege contra reintentos repetidos sobre UN código concreto ya existente pero muerto (usado/expirado). Un código genuinamente válido y no usado siempre tiene éxito y resetea el contador — nunca puede acumular 5 fallos por sí mismo.
+
+**Capa 2, por IP (`activation_attempts`, pendiente de aplicar vía SQL Editor en producción):** cubre justo el hueco de la capa 1 — un atacante probando códigos de 6 dígitos al azar que no coinciden con ninguna fila real, donde no hay ningún `activation_codes.id` al que enganchar un contador.
+1. Al inicio de la función, antes de tocar `activation_codes`: obtiene la IP del cliente con `current_setting('request.headers', true)::json->>'x-forwarded-for'`.
+2. Borra intentos de esa IP en `activation_attempts` de más de 1 hora (limpieza, evita que la tabla crezca sin límite).
+3. Cuenta los intentos de esa IP en los últimos 15 minutos. Si son ≥5, `RAISE EXCEPTION` con el mismo mensaje de bloqueo — **sin insertar** un intento nuevo, para no alargar la ventana indefinidamente mientras el atacante sigue llamando.
+4. Si no, inserta una fila nueva (`ip_address`, `attempted_at = now()`) y continúa con la lógica normal (incluida la capa 1). No se borran los intentos de esa IP aunque el código resulte válido — el límite es por IP y ventana de tiempo, no depende de si acertó.
+
+`activation_attempts` tiene RLS activado sin policies (igual que `plan_limits`): solo la toca esta función `SECURITY DEFINER`, ningún cliente puede leerla/escribirla directamente.
+
+Ambos mensajes de bloqueo llegan al cliente vía `error.message` de Supabase y ya tienen dónde mostrarse: `SignUpScreen.onCheckCode` hace `if (error) throw error`, capturado por el `catch` que llama a `setFormError(e?.message ...)` — el mismo mecanismo que usa `handle_activation_registration` para `limit_members_reached`. No ha hecho falta tocar la pantalla en ninguna de las dos capas.
+
+⚠️ Si `x-forwarded-for` llegara vacío (no debería pasar en tráfico real vía Supabase, pero sí al probar la función directamente en el SQL Editor sin pasar por PostgREST), `v_ip` es `NULL` y `ip_address = NULL` nunca iguala nada en SQL — ese tráfico quedaría sin límite por IP. Para probarlo en el SQL Editor hay que fijar `request.headers` manualmente con `select set_config('request.headers', '{"x-forwarded-for":"1.2.3.4"}', true)` antes de llamar a la función.
 
 ### `handle_invited_user_registration` _(discontinuada)_
 Registra un usuario en una empresa existente usando un código de invitación.
