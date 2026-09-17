@@ -236,7 +236,7 @@ siguen siendo los mismos que cuando se documentaron.
 | 5 | En plan `'empresa'` (`max_active_habits=NULL`), crear más hábitos que el límite de `'familiar'` no bloquea nada | Confirma que el límite es de verdad `NULL`/sin restricción, no asumido |
 | 6 (×3 aserciones) | `history_days`: la query real a `habit_logs` trae TODOS los logs sin filtro; el recorte por fecha replicado da el resultado esperado; con `historyDays=null` (planes plus/empresa) no recorta nada | `history_days` es filtro de cliente puro (igual que `photo_required` en la Fase 2), pero aquí se decidió testear la fórmula replicada en vez de dejarlo como hueco — ver punto 7 |
 
-### Fase 6 — `test-06-borrado.js` (21 tests)
+### Fase 6 — `test-06-borrado.js` (25 tests)
 
 Borrado de cuenta (`delete_own_account`). Incluye la implementación y
 verificación de una decisión de producto nueva: bloquear el borrado si eres
@@ -248,7 +248,7 @@ el único admin de tu grupo (antes no existía ningún chequeo de esto).
 | 2 (×8 aserciones) | Un miembro normal se borra: su `profile`, `auth.user`, `habit_logs`, `habit_assignments` y `habit_validators` desaparecen — el admin y los hábitos de la company quedan intactos | Confirma la cascada real (vía FK, no borrado manual tabla a tabla) y que no afecta a nadie más de la company |
 | 3 (×4 aserciones) | Con DOS admins, uno se borra → funciona; el admin restante conserva "control total" verificado con acciones reales (crear un hábito, renombrar la company), no solo comprobando que su fila sigue existiendo | El chequeo de "único admin" no bloquea de más — deja borrarse a cualquier admin mientras quede al menos otro |
 | 4 | Cero filas residuales del usuario borrado en ninguna tabla relacionada (`habit_logs`, `habit_assignments`, `habit_validators`, `habit_validations`, `team_members`, `invitations`, `profiles`), ni siquiera con el campo nulificado | Confirma la decisión de producto de `project.md`: borrado real, sin anonimización |
-| 5 (×4 aserciones) | Un hábito con un único validador que se borra a sí mismo: el hábito se queda con **0 validadores**, pero sigue existiendo | Comportamiento real documentado tal cual, sin juzgar si es correcto — ver hallazgo en el punto 7 |
+| 5 (×8 aserciones) | Un hábito con un único validador que se borra a sí mismo se queda con 0 validadores — **RESUELTO en la misma fase**: el admin de la empresa cae como validador de fallback (ve el log como pendiente, y el INSERT real de la validación funciona), un admin de OTRA empresa no lo ve ni puede validarlo | Ver hallazgo en el punto 7 — incluye el cierre de un hueco de RLS preexistente en `habit_validations` que no tenía relación directa con el borrado de cuenta |
 
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
@@ -591,10 +591,30 @@ se toca), pero **nadie puede validar sus fotos** hasta que un admin entre y
 asigne un validador nuevo manualmente desde `AdminScreen.js`/`Habits.jsx`
 (no hay ninguna notificación ni aviso automático de que esto ha pasado). No
 hay ninguna protección equivalente a la de "único admin" — borrarse como
-único validador nunca se rechaza. Queda documentado como comportamiento real
-confirmado (test 5 de la Fase 6); si se decide que merece una protección
-similar (avisar al admin, o impedir el borrado, o reasignar automáticamente),
-es una decisión de producto pendiente, no algo que se haya resuelto aquí.
+único validador nunca se rechaza.
+
+**RESUELTO (misma fase, decisión de producto siguiente):** en vez de impedir
+el borrado o avisar, se optó por un fallback de validador — si un hábito
+tiene 0 filas en `habit_validators`, el admin de esa empresa lo ve como
+pendiente de validar en `ValidateHabitScreen.js`, sin insertar nada en
+`habit_validators` (es una regla de consulta, no una asignación explícita).
+Implementado en el cliente (`ValidateHabitScreen.js`, 2 queries adicionales
+solo cuando `role='admin'`, mismo patrón "trae ancho, filtra en JS" que ya
+usa el resto de la app — no se creó una función/vista nueva en Supabase por
+no ser una lógica lo bastante compleja como para justificarlo).
+
+Al revisar si "arreglar solo la pantalla" bastaba, se encontró que **no**:
+la policy INSERT de `habit_validations` era `WITH CHECK (auth.uid() =
+validator_id)` — sin más. Nunca comprobó pertenencia a `habit_validators`
+NI a la empresa; cualquier autenticado de cualquier empresa podía insertar
+una validación sobre el log de cualquier otra. Es un hueco de RLS
+preexistente, sin relación directa con el borrado de cuenta, expuesto al
+diseñar este fallback. Corregido en el mismo SQL que añade la regla:
+ahora exige `company_id` propio Y (ser validador explícito O ser admin
+con 0 validadores explícitos para ese hábito). Verificado con los 4 casos
+del test 5 extendido (5e-5h): el admin ve y puede validar el log de
+fallback; un admin de otra empresa no lo ve y, además, ya no puede
+insertarlo tampoco (antes sí podía).
 
 ---
 
@@ -610,8 +630,8 @@ para quien llegue a este documento por primera vez:
 | 3 | `test-03-rachas.js` | 18 | Rachas y recompensas (`calculateStreak`/`calculateTotalCompleted`, recursividad, `featuredReward`) |
 | 4 | `test-04-permisos.js` | 12 | Permisos de `profiles` y aislamiento entre empresas |
 | 5 | `test-05-limites.js` | 11 | Límites de plan (`plan_limits`, `check_member_limit`, `check_habit_limit`, `history_days`) |
-| 6 | `test-06-borrado.js` | 21 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar |
-| **Total** | **6 ficheros** | **80** | |
+| 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
+| **Total** | **6 ficheros** | **84** | |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos
@@ -621,6 +641,7 @@ verificados contra la base de datos real antes de darlos por buenos):
 2. **Escalada de privilegios en `profiles`** (🔴 crítico, 2026-09-17) — cualquier usuario autenticado podía autoascenderse a admin o saltar a otra empresa con un simple `UPDATE` sobre su propia fila; sin trigger ni grant que lo impidiera. Ver la sección destacada al principio de este documento.
 3. **`delete_own_account()` bloquea el borrado del único admin** de un grupo (Fase 6) — antes el grupo podía quedarse sin ningún admin para siempre.
 4. **Dos FKs corregidas de `NO ACTION` a `SET NULL`** (`habit_logs.validated_by`, `invitations.created_by`) — antes podían bloquear con un error crudo de Postgres el borrado de cualquier perfil referenciado ahí, tanto en `delete_member` como en `delete_own_account`.
+5. **Aislamiento multi-tenant cerrado en `habit_validations` INSERT** (Fase 6, tras cerrar el catálogo) — la policy nunca comprobó empresa ni pertenencia a `habit_validators`; cualquier autenticado de cualquier empresa podía validar el log de cualquier otra. Cerrado en el mismo cambio que añade el fallback de validador (admin de la empresa cuando un hábito se queda sin ninguno).
 
 **Hallazgos documentados, sin fix aplicado** (por ser diseño intencional ya
 aceptado, decisión de producto pendiente, o fuera del alcance de estos
@@ -633,8 +654,9 @@ es cálculo de cliente puro sin persistencia (Fase 3); `featuredReward` no
 elige por `streak_target` menor sino por `daysToNext` menor (Fase 3);
 `habits` SELECT es de lectura abierta entre empresas por diseño (Fase 4);
 `check_habit_limit` no tiene backstop de servidor — **decisión de producto
-pendiente** (Fase 5); `history_days` es filtro de cliente puro (Fase 5); un
-hábito puede quedarse sin ningún validador (Fase 6).
+pendiente** (Fase 5); `history_days` es filtro de cliente puro (Fase 5). Un
+hábito que se queda sin ningún validador (Fase 6) ya no está en esta lista:
+se resolvió con el fallback de validador (ver fix nº 5 arriba).
 
 **Huecos conocidos, no testeados aquí**: `authFlags.skipNextRedirect`
 (timing de cliente, Fase 1), `photo_required` (Fase 2), panel de

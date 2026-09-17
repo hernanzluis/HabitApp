@@ -194,7 +194,7 @@ export default function ValidateHabitScreen() {
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, company_id')
+        .select('id, company_id, role')
         .eq('id', user.id)
         .single();
 
@@ -210,7 +210,32 @@ export default function ValidateHabitScreen() {
         .select('habit_id')
         .eq('user_id', user.id);
       if (validatorError) throw validatorError;
-      const validatorHabitIds = (validatorHabits ?? []).map((v) => v.habit_id);
+      let validatorHabitIds = (validatorHabits ?? []).map((v) => v.habit_id);
+
+      // Fallback: el admin ve también como pendientes los hábitos de su propia
+      // empresa que se hayan quedado sin NINGÚN validador explícito (p. ej. el
+      // único validador que tenían se eliminó la cuenta) — sin insertar nada
+      // en habit_validators, es una regla de consulta.
+      if (profile.role === 'admin') {
+        const { data: companyHabits, error: companyHabitsError } = await supabase
+          .from('habits')
+          .select('id')
+          .eq('company_id', profile.company_id);
+        if (companyHabitsError) throw companyHabitsError;
+        const companyHabitIds = (companyHabits ?? []).map((h) => h.id);
+
+        if (companyHabitIds.length) {
+          const { data: validatorsForCompanyHabits, error: validatorsForCompanyHabitsError } = await supabase
+            .from('habit_validators')
+            .select('habit_id')
+            .in('habit_id', companyHabitIds);
+          if (validatorsForCompanyHabitsError) throw validatorsForCompanyHabitsError;
+          const habitsWithValidator = new Set((validatorsForCompanyHabits ?? []).map((v) => v.habit_id));
+          const habitsWithoutValidator = companyHabitIds.filter((id) => !habitsWithValidator.has(id));
+          validatorHabitIds = [...new Set([...validatorHabitIds, ...habitsWithoutValidator])];
+        }
+      }
+
       if (!validatorHabitIds.length) {
         setItems([]);
         return;

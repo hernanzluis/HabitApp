@@ -19,12 +19,38 @@ const {
   resetActivationRateLimit,
   cleanupTestData,
   assertEqual,
+  assertRejected,
 } = require('./test-helpers');
 
 const results = [];
 function check(actual, expected, message) {
   const pass = assertEqual(actual, expected, message);
   results.push({ pass, message });
+}
+function checkRejected(error, message) {
+  const pass = assertRejected(error, message);
+  results.push({ pass, message });
+}
+
+// Réplica de la query real de ValidateHabitScreen.js (incluido el fallback de
+// admin añadido para cerrar el hallazgo del test 5) — mismo patrón ya usado
+// para adminNeedsFamilySetup en la Fase 1: no se puede `require()` la pantalla
+// directamente por ser código de React Native.
+async function getPendingHabitIdsForUser(userId, companyId, role) {
+  const { data: validatorHabits } = await supabaseAdmin.from('habit_validators').select('habit_id').eq('user_id', userId);
+  let validatorHabitIds = (validatorHabits ?? []).map((v) => v.habit_id);
+
+  if (role === 'admin') {
+    const { data: companyHabits } = await supabaseAdmin.from('habits').select('id').eq('company_id', companyId);
+    const companyHabitIds = (companyHabits ?? []).map((h) => h.id);
+    if (companyHabitIds.length) {
+      const { data: validatorsForCompanyHabits } = await supabaseAdmin.from('habit_validators').select('habit_id').in('habit_id', companyHabitIds);
+      const habitsWithValidator = new Set((validatorsForCompanyHabits ?? []).map((v) => v.habit_id));
+      const habitsWithoutValidator = companyHabitIds.filter((id) => !habitsWithValidator.has(id));
+      validatorHabitIds = [...new Set([...validatorHabitIds, ...habitsWithoutValidator])];
+    }
+  }
+  return validatorHabitIds;
 }
 
 async function createTestHabit(admin, overrides = {}) {
@@ -196,6 +222,9 @@ async function run() {
     const habitT5 = await createTestHabit(adminT5);
     await supabaseAdmin.from('habit_assignments').insert({ habit_id: habitT5, user_id: assignedT5.userId });
     await supabaseAdmin.from('habit_validators').insert({ habit_id: habitT5, user_id: memberT5.userId }); // único validador
+    const { data: pendingLogT5 } = await supabaseAdmin
+      .from('habit_logs').insert({ habit_id: habitT5, user_id: assignedT5.userId, status: 'pending' })
+      .select('id').single();
 
     const { count: validatorsBefore } = await supabaseAdmin.from('habit_validators').select('id', { count: 'exact', head: true }).eq('habit_id', habitT5);
     check(validatorsBefore, 1, 'Test 5a: el hábito parte de exactamente 1 validador');
@@ -205,10 +234,32 @@ async function run() {
     check(delT5Err, null, 'Test 5b: el único validador puede borrarse sin ningún bloqueo (no existe protección equivalente a la de "único admin")');
 
     const { count: validatorsAfter } = await supabaseAdmin.from('habit_validators').select('id', { count: 'exact', head: true }).eq('habit_id', habitT5);
-    check(validatorsAfter, 0, 'Test 5c: COMPORTAMIENTO REAL ENCONTRADO — el hábito se queda sin ningún validador (huérfano de validación); el asignado seguirá completándolo pero nadie podrá validar sus logs hasta que un admin asigne un validador nuevo manualmente');
+    check(validatorsAfter, 0, 'Test 5c: el hábito se queda sin ningún validador explícito — RESUELTO: el admin de la empresa cae como validador de fallback (ver 5e-5h)');
 
     const { count: habitStillExistsT5 } = await supabaseAdmin.from('habits').select('id', { count: 'exact', head: true }).eq('id', habitT5);
     check(habitStillExistsT5, 1, 'Test 5d: el hábito en sí sigue existiendo (no se borra por quedarse sin validadores)');
+
+    // ---- Resolución del hallazgo: el admin cae como validador de fallback ----
+    const pendingForAdminT5 = await getPendingHabitIdsForUser(adminT5.userId, adminT5.companyId, 'admin');
+    check(pendingForAdminT5.includes(habitT5), true, 'Test 5e: el admin de la empresa ahora ve este hábito como pendiente de validar (fallback por 0 validadores), sin que se haya insertado nada en habit_validators');
+
+    const clientAdminT5 = await getClientForUser(adminT5.email, adminT5.password);
+    const { error: adminValidateErr } = await clientAdminT5.from('habit_validations').insert({
+      habit_log_id: pendingLogT5.id, validator_id: adminT5.userId, status: 'validated',
+    });
+    check(adminValidateErr, null, 'Test 5f: el admin puede insertar de verdad la validación (no solo que la pantalla se lo muestre) — RLS ya lo permitía antes de este fix, no hizo falta tocarlo para este caso');
+
+    // ---- Aislamiento: un admin de OTRA empresa no ve ni puede validar ----
+    await resetActivationRateLimit();
+    const adminOtherT5 = await createTestCompanyAndAdmin(`${TEST_PREFIX}CompanyT5Other-${Date.now()}`);
+    const pendingForOtherAdminT5 = await getPendingHabitIdsForUser(adminOtherT5.userId, adminOtherT5.companyId, 'admin');
+    check(pendingForOtherAdminT5.includes(habitT5), false, 'Test 5g: un admin de OTRA empresa NO ve este hábito como pendiente (el fallback está acotado a company_id, igual que el resto de la suite)');
+
+    const clientAdminOtherT5 = await getClientForUser(adminOtherT5.email, adminOtherT5.password);
+    const { error: otherAdminValidateErr } = await clientAdminOtherT5.from('habit_validations').insert({
+      habit_log_id: pendingLogT5.id, validator_id: adminOtherT5.userId, status: 'validated',
+    });
+    checkRejected(otherAdminValidateErr, 'Test 5h: un admin de OTRA empresa NO puede insertar la validación — este SÍ era un hueco real de RLS (antes cualquier autenticado de cualquier empresa podía), cerrado en el mismo fix que añade el fallback');
   } finally {
     console.log('\nLimpieza final...');
     await cleanupTestData();
