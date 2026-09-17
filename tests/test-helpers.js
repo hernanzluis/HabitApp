@@ -201,21 +201,24 @@ async function createReward({ habitId, streakTarget, description }) {
 // test. Rechaza (lanza) si algo que va a usar como origen del borrado NO
 // tiene el prefijo — es la única red de seguridad contra borrar datos reales,
 // dado que esta clave salta RLS. No relajar nunca esta comprobación.
+// activation_attempts es independiente de los datos de test "normales": no
+// tiene email/company (solo ip_address + attempted_at), así que no puede
+// marcarse con TEST_PREFIX ni entra en la barrera de seguridad de
+// cleanupTestData(). Se borra entera, siempre, incondicionalmente — existe
+// solo para el rate limiting de check_activation_code, no contiene ningún
+// dato de usuario real, y se autoexpira igualmente en 1h. Expuesta aparte
+// (no solo dentro de cleanupTestData) porque una sola fase puede necesitar
+// resetear el contador VARIAS veces durante su propia ejecución si hace
+// muchas llamadas a check_activation_code seguidas (ver Fase 5) — llamar a
+// cleanupTestData() completo a media prueba borraría también las companies/
+// profiles que esa prueba todavía necesita. Ver tests/README.md.
+async function resetActivationRateLimit() {
+  const { error } = await supabaseAdmin.from('activation_attempts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (error) throw new Error(`resetActivationRateLimit: fallo borrando activation_attempts: ${error.message}`);
+}
+
 async function cleanupTestData() {
-  // activation_attempts es independiente de los datos de test "normales":
-  // no tiene email/company (solo ip_address + attempted_at), así que no puede
-  // marcarse con TEST_PREFIX ni entra en la barrera de seguridad de abajo. Se
-  // limpia entera, siempre, incondicionalmente — existe solo para el rate
-  // limiting de check_activation_code, no contiene ningún dato de usuario
-  // real, y se autoexpira igualmente en 1h. Sin esto, ejecutar la suite (o
-  // varias fases) varias veces seguidas en poco tiempo activa el propio
-  // rate limiting de producción contra la IP del que ejecuta los tests
-  // (mismo código que usa el signup real) y las siguientes ejecuciones de
-  // joinAsTestMember fallan con "Código bloqueado temporalmente" — no es un
-  // bug de la app, es el propio sistema de protección funcionando también
-  // contra el uso repetido de estos tests. Ver tests/README.md.
-  const { error: attemptsErr } = await supabaseAdmin.from('activation_attempts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-  if (attemptsErr) throw new Error(`cleanupTestData: fallo borrando activation_attempts: ${attemptsErr.message}`);
+  await resetActivationRateLimit();
 
   const { data: testCompanies, error: companiesErr } = await supabaseAdmin
     .from('companies')
@@ -321,14 +324,32 @@ async function cleanupTestData() {
     const { error } = await supabaseAdmin.from('companies').delete().in('id', companyIds);
     if (error) throw new Error(`cleanupTestData: fallo borrando companies: ${error.message}`);
   }
-  for (const id of userIds) {
+  // Usuarios huérfanos: si alguna vez una RPC de alta crea el auth.user y
+  // LUEGO falla antes de insertar su profiles (por ejemplo, handle_activation_
+  // registration lanzando 'limit_members_reached' tras el auth.signUp — el
+  // escenario que fuerza a propósito el test 4 de la Fase 5), ese auth.user
+  // no tiene ninguna fila en profiles y por tanto no aparecería en userIds.
+  // Se buscan aparte, directamente en auth.users, por email con el prefijo.
+  const { data: authUsersPage, error: authUsersErr } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (authUsersErr) throw new Error(`cleanupTestData: no se pudo listar auth.users: ${authUsersErr.message}`);
+  const orphanedTestUserIds = (authUsersPage?.users ?? [])
+    .filter((u) => u.email && u.email.startsWith(TEST_PREFIX) && !userIds.includes(u.id))
+    .map((u) => u.id);
+
+  const allUserIdsToDelete = [...userIds, ...orphanedTestUserIds];
+  for (const id of allUserIdsToDelete) {
     const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
     if (error && !/not.*found/i.test(error.message)) {
       throw new Error(`cleanupTestData: fallo borrando auth.user ${id}: ${error.message}`);
     }
   }
 
-  return { deleted: true, companiesDeleted: companyIds.length, usersDeleted: userIds.length };
+  return {
+    deleted: true,
+    companiesDeleted: companyIds.length,
+    usersDeleted: userIds.length,
+    orphanedAuthUsersDeleted: orphanedTestUserIds.length,
+  };
 }
 
 // Crea un cliente autenticado COMO un usuario de test concreto (email/password
@@ -385,6 +406,7 @@ module.exports = {
   buildStreak,
   createReward,
   getClientForUser,
+  resetActivationRateLimit,
   cleanupTestData,
   assertEqual,
   assertRejected,

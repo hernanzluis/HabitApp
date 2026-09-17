@@ -123,6 +123,7 @@ node tests/test-01-alta.js       # Fase 1: alta de admin y de miembro
 node tests/test-02-habitos.js    # Fase 2: hábitos, asignación, validadores
 node tests/test-03-rachas.js     # Fase 3: rachas y recompensas
 node tests/test-04-permisos.js   # Fase 4: permisos y RLS (profiles, aislamiento)
+node tests/test-05-limites.js    # Fase 5: límites de plan (plan_limits, check_member_limit, check_habit_limit)
 ```
 
 Cada script, en este orden:
@@ -218,6 +219,22 @@ Fase 2 — esta fase es específicamente sobre `profiles` y cross-tenant.
 | 5 | Un admin de la EMPRESA A SÍ puede leer los `habits` de la EMPRESA B (filas reales, no vacío) | Diseño intencional y **ya documentado** en la auditoría de RLS original (`habits` SELECT es `qual: true`) — este test confirma que ese diseño aceptado sigue siendo el comportamiento real, no es un hallazgo nuevo |
 | 6 | Un usuario normal se autoelimina con éxito vía `delete_own_account()` (su `profile` desaparece) | Confirma el mecanismo real que usa `ProfileScreen.js` — no `auth.admin.deleteUser` (inalcanzable desde un cliente autenticado como el propio usuario, solo con Service Role Key). No verifica la cascada completa a otras tablas — eso es la Fase 6 |
 
+### Fase 5 — `test-05-limites.js` (11 tests)
+
+Límites de plan: `plan_limits`, `check_member_limit`, `check_habit_limit`,
+`history_days`. Todos los valores límite se leen de `plan_limits` en tiempo de
+ejecución (no están hardcodeados en el test) precisamente para no asumir que
+siguen siendo los mismos que cuando se documentaron.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| — | (Test 1 del plan original: company nueva → `plan='familiar'` por defecto) | **No se repite aquí** — ya cubierto por el test 1 de la Fase 1 (`test-01-alta.js`). No es un hueco |
+| 2 (×3 aserciones) | `check_habit_limit`: `true` con `max-1` hábitos activos, `false` con `max` exactos, y un INSERT directo del hábito `max+1` **tiene éxito igualmente** | Confirma que `check_habit_limit` es enforcement de **cliente únicamente** — la policy RLS de `habits` INSERT no cuenta hábitos, así que nada en la BD bloquea saltarse la RPC. Ver hallazgo en el punto 7 |
+| 3 (×2 aserciones) | `check_member_limit` (chequeo de cliente, antes de generar el código): `true` con 1 hueco libre, `false` en el límite exacto | Camino normal, el que usa `AdminScreen.js`/`Members.jsx` antes de generar una invitación |
+| 4 (×2 aserciones) | Se genera un código cuando SÍ hay hueco (chequeo de cliente = `true`) → otro miembro ocupa ese hueco mientras tanto → activar el código ya generado es rechazado por el chequeo de **servidor** dentro de `handle_activation_registration` | Demuestra que son dos guardas independientes, no el mismo punto de código con nombre distinto — ver hallazgo en el punto 7 |
+| 5 | En plan `'empresa'` (`max_active_habits=NULL`), crear más hábitos que el límite de `'familiar'` no bloquea nada | Confirma que el límite es de verdad `NULL`/sin restricción, no asumido |
+| 6 (×3 aserciones) | `history_days`: la query real a `habit_logs` trae TODOS los logs sin filtro; el recorte por fecha replicado da el resultado esperado; con `historyDays=null` (planes plus/empresa) no recorta nada | `history_days` es filtro de cliente puro (igual que `photo_required` en la Fase 2), pero aquí se decidió testear la fórmula replicada en vez de dejarlo como hueco — ver punto 7 |
+
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
 `TEST_PREFIX = 'zztest-'` (en `test-helpers.js`) marca **todo** dato que crean
@@ -269,6 +286,25 @@ tabla no contiene ningún dato personal ni de negocio — pero es, con todas las
 letras, un borrado sin ninguna de las garantías que sí tiene el resto de esta
 función. No se disfraza de lo contrario.
 
+**`resetActivationRateLimit()` (usada desde la Fase 5):** misma limpieza
+incondicional de `activation_attempts` que hace `cleanupTestData()`, expuesta
+aparte para poder resetear el contador de rate limiting **varias veces
+durante una misma ejecución** sin llamar a la limpieza completa (que borraría
+también las companies/profiles que esa prueba todavía necesita). Hizo falta
+porque la Fase 5 encadena muchas más llamadas a `check_activation_code` en un
+solo run que las fases anteriores — ver el hallazgo correspondiente en el
+punto 7.
+
+**Usuarios huérfanos en `auth.users`:** `cleanupTestData()` también lista
+`auth.users` directamente (no solo a través de `profiles`) y borra cualquiera
+con email `zztest-%` que no tenga ya una fila en `profiles`. Hace falta
+porque `joinAsTestMember()` crea el `auth.user` (vía Admin API) **antes** de
+llamar a `handle_activation_registration`, y si esa RPC falla (por ejemplo,
+`limit_members_reached`, el escenario que fuerza a propósito el test 4 de la
+Fase 5) el `auth.user` queda creado pero sin ningún `profiles` asociado — la
+barrera de seguridad normal (que parte de `profiles.email`) nunca lo
+encontraría.
+
 ## 6. Huecos conocidos, pendientes
 
 ### Test 5 de la Fase 1 — `authFlags.skipNextRedirect`
@@ -313,6 +349,23 @@ account`, Fase de eliminación de cuenta de esta misma sesión) — una
 funcionalidad completamente distinta, sin ninguna relación con rachas ni con
 hábitos `once`. El test 5 se eliminó del plan; el periodo de gracia real (el
 de `weekly_x`/`monthly_x`) sí quedó cubierto, dentro de los tests 3 y 4.
+
+### Panel de administración web (Fase 5, excluido a propósito)
+
+`Admin.jsx`/`MemberDetail.jsx` (exclusivos del plan `'empresa'`) no se
+testean en ningún fichero de `tests/` — son una SPA, no backend puro, y
+requerirían decidir cómo automatizar el acceso a una interfaz web (login,
+navegación, aserciones sobre el DOM). Candidato natural para cuando se
+aborde testing de la web con una herramienta tipo Playwright, tal como se
+apuntó en la conversación original — no se ha intentado nada aquí.
+
+### `advanced_stats` (Fase 5, sin nada que testear)
+
+Confirmado en `business.md`: el campo está declarado (`plan_limits.
+advanced_stats`, expuesto por `usePlanInfo.js`) pero **ninguna pantalla lo
+consume condicionalmente todavía** — no hay ninguna lógica real, de cliente
+ni de servidor, que dependa de su valor. No hay nada que un test pueda
+verificar hasta que exista esa lógica.
 
 ## 7. Hallazgos de esta fase
 
@@ -454,3 +507,42 @@ mismo camino que un signup real. Se resolvió haciendo que
 incondicional (ver el porqué de que esto sea seguro en el punto 5) — sin
 este cambio, la propia suite no podía cumplir su promesa de "ejecutarse
 tantas veces como haga falta" (punto 1).
+
+### Fase 5 — `check_habit_limit` no tiene backstop de servidor (a diferencia de `check_member_limit`)
+
+**Se esperaba:** que los "3 puntos de enforcement" que menciona `business.md`
+(crear hábito, generar código, activar cuenta) tuvieran una robustez
+equivalente entre sí — el enunciado original pedía confirmar cada uno por
+separado precisamente para no asumir esto.
+
+**Se encontró:** son asimétricos. `check_habit_limit` se llama en
+`AdminScreen.js:450` y `Habits.jsx:514` (web) **antes** del INSERT en
+`habits`, pero la policy RLS de esa tabla (`is_admin() AND company_id =
+my_company_id()`) no comprueba ningún conteo — nada en la base de datos
+impide insertar el hábito nº 11 si se llama a la API directamente saltándose
+la RPC. `check_member_limit`, en cambio, tiene un backstop real: además del
+mismo tipo de chequeo de cliente (`AdminScreen.js:685`, `Members.jsx:68`),
+`handle_activation_registration` vuelve a llamar a `check_member_limit`
+**dentro** de la RPC de registro y lanza `RAISE EXCEPTION
+'limit_members_reached'` antes de insertar el profile — ese sí es
+inevitable, ocurre en el único camino real de alta de un miembro. El test 2
+de la Fase 5 confirma la ausencia de backstop en hábitos insertando
+directamente el hábito por encima del límite y comprobando que tiene éxito;
+el test 4 confirma la presencia del backstop en miembros forzando el
+escenario en que el chequeo de cliente ya había dado luz verde y el de
+servidor bloquea igualmente la activación.
+
+### Fase 5 — `history_days` es filtro de cliente puro, igual que `photo_required`
+
+**Se esperaba:** confirmar si `history_days` tiene algún enforcement de
+servidor o es solo un filtro de UI, tal como ya sugería `business.md`.
+
+**Se encontró:** confirmado que es 100% cliente — la query real a
+`habit_logs` en `ProfileScreen.js`/`HabitStatsScreen.js` no lleva ningún
+filtro de fecha (trae el historial completo), y el recorte
+(`logs.filter(l => new Date(l.created_at) >= cutoff)`) ocurre después, en JS
+(`ProfileScreen.js:310`, `HabitStatsScreen.js:318`). A diferencia de
+`photo_required` (Fase 2), aquí sí se decidió testear la fórmula replicada
+(test 6 de la Fase 5) en vez de dejarlo solo como hueco documentado — sirve
+para atrapar una regresión real en el cálculo del `cutoff`, aunque no sea
+"enforcement" en sentido estricto.
