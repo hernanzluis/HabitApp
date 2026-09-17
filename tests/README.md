@@ -124,6 +124,7 @@ node tests/test-02-habitos.js    # Fase 2: hábitos, asignación, validadores
 node tests/test-03-rachas.js     # Fase 3: rachas y recompensas
 node tests/test-04-permisos.js   # Fase 4: permisos y RLS (profiles, aislamiento)
 node tests/test-05-limites.js    # Fase 5: límites de plan (plan_limits, check_member_limit, check_habit_limit)
+node tests/test-06-borrado.js    # Fase 6: borrado de cuenta (delete_own_account)
 ```
 
 Cada script, en este orden:
@@ -235,6 +236,20 @@ siguen siendo los mismos que cuando se documentaron.
 | 5 | En plan `'empresa'` (`max_active_habits=NULL`), crear más hábitos que el límite de `'familiar'` no bloquea nada | Confirma que el límite es de verdad `NULL`/sin restricción, no asumido |
 | 6 (×3 aserciones) | `history_days`: la query real a `habit_logs` trae TODOS los logs sin filtro; el recorte por fecha replicado da el resultado esperado; con `historyDays=null` (planes plus/empresa) no recorta nada | `history_days` es filtro de cliente puro (igual que `photo_required` en la Fase 2), pero aquí se decidió testear la fórmula replicada en vez de dejarlo como hueco — ver punto 7 |
 
+### Fase 6 — `test-06-borrado.js` (21 tests)
+
+Borrado de cuenta (`delete_own_account`). Incluye la implementación y
+verificación de una decisión de producto nueva: bloquear el borrado si eres
+el único admin de tu grupo (antes no existía ningún chequeo de esto).
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 1 (×4 aserciones) | El único admin de su company intenta borrarse → rechazado con el mensaje esperado; su `profile`, `auth.user` y `company` siguen intactos tras el intento fallido | Decisión de producto implementada en esta misma fase — antes cualquier admin, incluso el único de su grupo, podía autoeliminarse dejándolo sin ningún admin para siempre |
+| 2 (×8 aserciones) | Un miembro normal se borra: su `profile`, `auth.user`, `habit_logs`, `habit_assignments` y `habit_validators` desaparecen — el admin y los hábitos de la company quedan intactos | Confirma la cascada real (vía FK, no borrado manual tabla a tabla) y que no afecta a nadie más de la company |
+| 3 (×4 aserciones) | Con DOS admins, uno se borra → funciona; el admin restante conserva "control total" verificado con acciones reales (crear un hábito, renombrar la company), no solo comprobando que su fila sigue existiendo | El chequeo de "único admin" no bloquea de más — deja borrarse a cualquier admin mientras quede al menos otro |
+| 4 | Cero filas residuales del usuario borrado en ninguna tabla relacionada (`habit_logs`, `habit_assignments`, `habit_validators`, `habit_validations`, `team_members`, `invitations`, `profiles`), ni siquiera con el campo nulificado | Confirma la decisión de producto de `project.md`: borrado real, sin anonimización |
+| 5 (×4 aserciones) | Un hábito con un único validador que se borra a sí mismo: el hábito se queda con **0 validadores**, pero sigue existiendo | Comportamiento real documentado tal cual, sin juzgar si es correcto — ver hallazgo en el punto 7 |
+
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
 `TEST_PREFIX = 'zztest-'` (en `test-helpers.js`) marca **todo** dato que crean
@@ -306,6 +321,23 @@ barrera de seguridad normal (que parte de `profiles.email`) nunca lo
 encontraría.
 
 ## 6. Huecos conocidos, pendientes
+
+### `check_habit_limit` sin backstop de servidor — DECISIÓN DE PRODUCTO PENDIENTE
+
+**Estado: pendiente de decisión, no implementado.** El hallazgo está en el
+punto 7 (Fase 5): `check_habit_limit` es enforcement de cliente únicamente,
+sin ninguna comprobación equivalente a nivel de RLS/trigger en la tabla
+`habits` — a diferencia de `check_member_limit`, que sí tiene un backstop
+real dentro de `handle_activation_registration`. No se ha implementado un
+trigger similar al de la Fase 4 (escalada de privilegios) porque, a
+diferencia de aquel caso, esto no es una vulnerabilidad de seguridad — es una
+inconsistencia de robustez entre dos límites de plan que debería resolverse
+como decisión de producto (¿merece la pena el mismo nivel de protección que
+`check_member_limit`, dado que solo lo explotaría un cliente que se salte la
+propia app?), no como fix unilateral de esta sesión de tests. Referenciado
+también desde una conversación con Claude (no visible desde aquí) como
+paralelo a otro caso pendiente ("hábitos personales") que no se ha
+encontrado documentado en este repo — no se puede confirmar esa paridad.
 
 ### Test 5 de la Fase 1 — `authFlags.skipNextRedirect`
 
@@ -546,3 +578,66 @@ filtro de fecha (trae el historial completo), y el recorte
 (test 6 de la Fase 5) en vez de dejarlo solo como hueco documentado — sirve
 para atrapar una regresión real en el cálculo del `cutoff`, aunque no sea
 "enforcement" en sentido estricto.
+
+### Fase 6 — un hábito puede quedarse sin ningún validador
+
+**Se pidió explícitamente no prejuzgar** si este comportamiento es correcto
+o incorrecto, solo documentarlo tal como es.
+
+**Se encontró:** si el único `habit_validators` de un hábito se borra a sí
+mismo, el hábito se queda con 0 validadores — sigue existiendo, los usuarios
+asignados pueden seguir completándolo con normalidad (`habit_assignments` no
+se toca), pero **nadie puede validar sus fotos** hasta que un admin entre y
+asigne un validador nuevo manualmente desde `AdminScreen.js`/`Habits.jsx`
+(no hay ninguna notificación ni aviso automático de que esto ha pasado). No
+hay ninguna protección equivalente a la de "único admin" — borrarse como
+único validador nunca se rechaza. Queda documentado como comportamiento real
+confirmado (test 5 de la Fase 6); si se decide que merece una protección
+similar (avisar al admin, o impedir el borrado, o reasignar automáticamente),
+es una decisión de producto pendiente, no algo que se haya resuelto aquí.
+
+---
+
+## Resumen — catálogo completo de tests (Fases 1 a 6)
+
+Con la Fase 6 se cierra el catálogo original de 6 fases planificadas. Índice
+para quien llegue a este documento por primera vez:
+
+| Fase | Fichero | Tests | Tema |
+|---|---|---|---|
+| 1 | `test-01-alta.js` | 8 | Alta de admin y de miembro, condición real de "family setup" |
+| 2 | `test-02-habitos.js` | 10 | Hábitos, asignación, validadores (RLS) |
+| 3 | `test-03-rachas.js` | 18 | Rachas y recompensas (`calculateStreak`/`calculateTotalCompleted`, recursividad, `featuredReward`) |
+| 4 | `test-04-permisos.js` | 12 | Permisos de `profiles` y aislamiento entre empresas |
+| 5 | `test-05-limites.js` | 11 | Límites de plan (`plan_limits`, `check_member_limit`, `check_habit_limit`, `history_days`) |
+| 6 | `test-06-borrado.js` | 21 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar |
+| **Total** | **6 ficheros** | **80** | |
+
+**Fixes críticos aplicados directamente a producción durante el proceso**
+(no solo hallazgos documentados — cambios reales de SQL en Supabase, todos
+verificados contra la base de datos real antes de darlos por buenos):
+
+1. **Rate limiting en `check_activation_code`** (por código + por IP) — antes no existía ningún límite de intentos para adivinar un código de activación de 6 dígitos.
+2. **Escalada de privilegios en `profiles`** (🔴 crítico, 2026-09-17) — cualquier usuario autenticado podía autoascenderse a admin o saltar a otra empresa con un simple `UPDATE` sobre su propia fila; sin trigger ni grant que lo impidiera. Ver la sección destacada al principio de este documento.
+3. **`delete_own_account()` bloquea el borrado del único admin** de un grupo (Fase 6) — antes el grupo podía quedarse sin ningún admin para siempre.
+4. **Dos FKs corregidas de `NO ACTION` a `SET NULL`** (`habit_logs.validated_by`, `invitations.created_by`) — antes podían bloquear con un error crudo de Postgres el borrado de cualquier perfil referenciado ahí, tanto en `delete_member` como en `delete_own_account`.
+
+**Hallazgos documentados, sin fix aplicado** (por ser diseño intencional ya
+aceptado, decisión de producto pendiente, o fuera del alcance de estos
+tests): la condición real de "family setup" depende de hábitos activos y no
+del nº de miembros (Fase 1); `habit_assignments` no exige admin pero
+`habit_validators` sí (Fase 2); nada impide ser asignado y validador del
+mismo hábito (Fase 2); `calculateHabitStreak` se movió/corrigió a
+`HabitDetailScreen.js` en otra tarea de esta sesión (Fase 3); "conseguida"
+es cálculo de cliente puro sin persistencia (Fase 3); `featuredReward` no
+elige por `streak_target` menor sino por `daysToNext` menor (Fase 3);
+`habits` SELECT es de lectura abierta entre empresas por diseño (Fase 4);
+`check_habit_limit` no tiene backstop de servidor — **decisión de producto
+pendiente** (Fase 5); `history_days` es filtro de cliente puro (Fase 5); un
+hábito puede quedarse sin ningún validador (Fase 6).
+
+**Huecos conocidos, no testeados aquí**: `authFlags.skipNextRedirect`
+(timing de cliente, Fase 1), `photo_required` (Fase 2), panel de
+administración web y `advanced_stats` (Fase 5) — todos candidatos para
+testing de UI (Maestro/Playwright) si se aborda en el futuro, no para este
+catálogo de tests de backend.
