@@ -14,6 +14,9 @@ propia fecha de "última vez probado" — no por ítem individual, para poder ve
 de un vistazo qué bloque lleva tiempo sin repasarse. Actualiza la fecha a
 mano tras cada repaso completo del bloque.
 
+Alcance: solo la app móvil (HabitApp). El producto web (habitteam-web) se
+cubrirá en un checklist separado más adelante.
+
 ---
 
 ## 1. Alta y onboarding
@@ -28,7 +31,18 @@ mano tras cada repaso completo del bloque.
 - [ ] Completar el paso de contraseña → cuenta activada, aterrizas en `HomeScreen` ya como miembro (`role='usuario'`), sin quedarte colgado en una pantalla de carga
 - [ ] Introducir un código de 6 dígitos ya usado o inventado → mensaje de error claro ("Código inválido"), no un crash ni una pantalla en blanco
 
-## 2. Hábitos — creación y visualización
+## 2. Recuperación de contraseña
+
+**Última vez probado:** _(pendiente)_
+
+- [ ] Desde `Login`, pulsar el enlace de "¿Olvidaste tu contraseña?" → navega a `ForgotPasswordScreen` con el campo de email vacío
+- [ ] Dejar el email vacío o escribir uno con formato inválido y pulsar enviar → aparece el error de validación de cliente correspondiente (email requerido / email inválido) sin llegar a llamar a Supabase (`ForgotPasswordScreen.js`, `isValidEmail`)
+- [ ] Introducir un email con formato válido (esté registrado o no) y pulsar enviar → mensaje de éxito ("revisa tu correo") y el botón de envío queda deshabilitado tras el envío — nótese que `resetPasswordForEmail` responde igual exista o no esa cuenta, así que este paso no puede usarse para confirmar si un email está registrado
+- [ ] Forzar un fallo de red durante el envío (modo avión) → aparece un mensaje de error de red distinto al de "email inválido", no un crash
+
+**Nota — flujo incompleto en el código actual:** `ForgotPasswordScreen.js` solo implementa el primer paso (enviar el correo de reseteo). Ver "Huecos conocidos" al final de este documento: no existe ninguna pantalla ni configuración de enlace profundo para completar el reseteo desde el correo recibido, así que no hay manera de probar manualmente "establecer nueva contraseña y hacer login con ella" — esa parte no está construida.
+
+## 3. Hábitos — creación y visualización
 
 **Última vez probado:** _(pendiente)_
 
@@ -39,7 +53,14 @@ mano tras cada repaso completo del bloque.
 - [ ] Asignar una categoría con icono/color propios → el icono correcto (Ionicons) se ve tanto en el selector del modal como en la tarjeta del hábito en `HomeScreen`
 - [ ] Un hábito sin categoría asignada → se muestra el icono por defecto `help-circle-outline`
 
-## 3. Completar hábitos
+## 4. Límites de plan (Familiar)
+
+**Última vez probado:** _(pendiente)_
+
+- [ ] Como admin de un grupo en plan Familiar con ya 10 hábitos activos, intentar crear un hábito nuevo → aparece un `Alert` con el título "Has alcanzado el límite de hábitos activos de tu plan actual" (sin cuerpo de mensaje adicional, un único botón OK) y el hábito NO se crea — ni error crudo en pantalla ni fallo silencioso (`AdminScreen.js`, `handleCreateHabit`) → cross-ref **Fase 5, test 2** (la RPC `check_habit_limit` ya está probada; aquí se verifica que la UI real bloquea ANTES de intentar el INSERT y que el usuario entiende por qué — recuerda que esta comprobación de cliente no tiene respaldo en el servidor, ver hueco documentado en `tests/README.md`)
+- [ ] Como admin de un grupo en plan Familiar con ya 6 miembros, pulsar "+ Añadir miembro" e intentar generar un código para un séptimo → antes de crear el código, aparece el `Alert` "Has alcanzado el límite de miembros de tu plan actual" y NO se genera ningún código nuevo (`AdminScreen.js`, `handleGenerateCode`) → cross-ref **Fase 5, test 3** (la RPC `check_member_limit` y su respaldo real dentro de `handle_activation_registration` ya están probados; aquí se verifica que el admin ve el aviso ANTES de repartir un código que luego fallaría al activarse)
+
+## 5. Completar hábitos
 
 **Última vez probado:** _(pendiente)_
 
@@ -50,7 +71,28 @@ mano tras cada repaso completo del bloque.
 - [ ] En `HomeScreen`, un hábito con una recompensa aún no conseguida más próxima → se ve el chip azul "🎯 A X días de: {descripción}" bajo la descripción (`HomeScreen.js:500-505`) → cross-ref **Fase 3, test 11** (`featuredReward`: el número/criterio ya está probado; aquí se verifica que se ve bien en pantalla, incluido el caso contraintuitivo de que gane un `streak_target` mayor)
 - [ ] Un hábito diario con `due_time` ya superada y sin completar hoy → el texto "Antes de las HH:MM" se pinta en **naranja** (`#f97316`, `HomeScreen.js:508`, estilo `dueTimeUrgent`)
 
-## 4. Validación
+## 6. Estadísticas de hábito (HabitStatsScreen)
+
+**Última vez probado:** _(pendiente)_
+
+- [ ] Abrir las estadísticas de un hábito con varias recompensas, algunas ya conseguidas y otras no → las conseguidas se muestran con fondo verde claro, emoji 🏆 y descripción en verde oscuro (`#2E7D32`), más el texto "conseguida X veces"; las pendientes se muestran con fondo neutro, emoji 🎯 y el texto "a X días de conseguirla" (`HabitStatsScreen.js:606-627`) → cross-ref **Fase 3, tests 7-10** (el cálculo de veces conseguidas / días restantes ya está probado; aquí se verifica que se ve bien diferenciado en pantalla)
+- [ ] En el calendario mensual: un día con log validado se pinta en verde, un día con log pendiente de validar se pinta en amarillo, un día sin log se queda en gris claro, y el día de hoy sin log se marca solo con un borde azul (sin relleno) → coincide con la leyenda mostrada debajo del calendario
+- [ ] Para un hábito **weekly_x**, un día dentro de una semana que ya cumplió el objetivo semanal se pinta en verde SOLO si todos los logs de esa semana están validados, y en amarillo si el objetivo numérico ya se cumplió pero aún queda algún log de esa semana sin validar — este matiz es fácil de pasar por alto a simple vista (`HabitStatsScreen.js:229-236`)
+- [ ] Navegar el calendario hacia atrás con "‹" hasta 6 meses antes del mes actual → la flecha se deshabilita (se pinta en gris) y no retrocede más; hacia delante, nunca se puede pasar del mes actual
+- [ ] Con comentarios de validadores existentes en logs recientes → aparecen en "Últimas validaciones" con avatar (o iniciales si no hay foto), nombre, fecha abreviada y el comentario entre comillas; sin comentarios → se muestra el texto de estado vacío correspondiente
+
+## 7. Actividad y ranking (RankingScreen)
+
+**Última vez probado:** _(pendiente)_
+
+- [ ] Como miembro no-admin, entrar en la pestaña "Actividad" con al menos un hábito diario asignado → en "Tu actividad" aparece una tarjeta con el icono de racha 🔥 en verde cuando la racha es mayor que 0 y en gris (`#E0E0E0`) cuando es 0, más los 7 puntos de la semana (L-D) coloreados verde=validado / amarillo=pendiente / gris=sin registro (`RankingScreen.js`, `getWeekDots`)
+- [ ] Con un hábito **weekly_x** asignado → en vez de puntos por día de la semana, se ven tantos puntos como el objetivo semanal, cada uno etiquetado con el día en que se completó esa repetición, coloreado verde si ya está validada, amarillo si está pendiente, gris si aún no se ha hecho (`WeeklyTargetDots`)
+- [ ] Con un hábito **monthly_x** asignado → mismo patrón de puntos que weekly_x, pero la etiqueta de cada punto es el número de día del mes en que se completó, no el día de la semana (`MonthlyTargetDots`)
+- [ ] Con un hábito **once** asignado → aparece bajo el separador "Eventos" con un icono de check verde relleno si ya se completó, o un círculo vacío gris con el texto "pendiente" si no (`OnceHabitCard`)
+- [ ] Como ADMIN, en la sección "Tu familia" → cada miembro aparece con su nombre como subcabecera y la lista EXPANDIDA de todos sus hábitos, con la misma tarjeta detallada (racha, puntos) que en "Tu actividad" — no un resumen compacto
+- [ ] Como miembro NO admin, en "Tu familia" → cada miembro aparece en una tarjeta compacta con solo sus puntos semanales de hábitos diarios y su racha general; no se ve el desglose por hábito individual ni sus hábitos weekly_x/monthly_x/once
+
+## 8. Validación
 
 **Última vez probado:** _(pendiente)_
 
@@ -60,7 +102,7 @@ mano tras cada repaso completo del bloque.
 - [ ] Elegir una reacción antes de votar → queda resaltada con fondo azul claro (`#EEF3FB`) al seleccionarla
 - [ ] Como admin, cuando un hábito se queda sin ningún validador explícito (por ejemplo, el único validador borró su cuenta) → el log pendiente de ese hábito aparece en TU propia pantalla de Validar aunque nunca te hayan asignado como validador, y puedes aprobarlo/rechazarlo con normalidad → cross-ref **Fase 6, test 5e-5h** (el `SELECT`/`INSERT` crudo ya está probado; aquí se verifica que la pantalla real lo muestra y lo deja votar)
 
-## 5. Perfil y avatar
+## 9. Perfil y avatar
 
 **Última vez probado:** _(pendiente)_
 
@@ -68,7 +110,7 @@ mano tras cada repaso completo del bloque.
 - [ ] Como admin, pulsar el icono de lápiz junto a "Grupo" y cambiar el nombre → se guarda y se refleja en pantalla al momento (sin test automático dedicado a esta acción concreta — ver huecos, abajo)
 - [ ] Como miembro normal (no admin), la fila de "Grupo" NO muestra icono de lápiz — no hay forma de intentar renombrar el grupo desde la UI
 
-## 6. Borrado de cuenta
+## 10. Borrado de cuenta
 
 **Última vez probado:** _(pendiente)_
 
@@ -77,16 +119,16 @@ mano tras cada repaso completo del bloque.
 - [ ] Confirmar el segundo `Alert` siendo el ÚNICO admin de tu grupo → aparece un `Alert` de error con el mensaje **"Eres el único administrador de tu grupo. Transfiere el rol de administrador a otro miembro, o elimina primero a los demás miembros, antes de eliminar tu cuenta."** — la cuenta NO se borra, sigues dentro de la app con normalidad → cross-ref **Fase 6, test 1** (allí se prueba que la RPC lo rechaza vía excepción SQL; aquí se prueba que el usuario real ve el mensaje bien formateado en un `Alert`, no un error técnico crudo ni la app colgada)
 - [ ] Como miembro normal (o admin que no es el único), completar el borrado → sesión cerrada automáticamente, aterrizas en la pantalla de Login sin ninguna acción extra → cross-ref **Fase 6, test 2/3**
 
-## 7. Casos visuales que los tests no pueden ver
+## 11. Casos visuales que los tests no pueden ver
 
 **Última vez probado:** _(pendiente)_
 
 - [ ] Estados de carga (`ActivityIndicator`) al entrar por primera vez en cada pantalla principal y al hacer pull-to-refresh → no se queda la pantalla en blanco ni parpadea el contenido antiguo mezclado con el nuevo
-- [ ] Forzar un error de red (modo avión) en cualquier pantalla que haga fetch → aparece el banner de error (fondo `#fee2e2`, texto `#b91c1c`, reutilizado en `AdminScreen`/`HabitStatsScreen`/`ProfileScreen`/`HomeScreen`/`HabitDetailScreen`), nunca un crash
-- [ ] Hábito diario con `due_time` superada (ya cubierto como acción funcional en el bloque 3, listado aquí también como el caso visual puro a comprobar si solo se está repasando colores)
+- [ ] Forzar un error de red (modo avión) en cualquier pantalla que haga fetch → aparece el banner de error (fondo `#fee2e2`, texto `#b91c1c`, reutilizado en `AdminScreen`/`HabitStatsScreen`/`ProfileScreen`/`HomeScreen`/`HabitDetailScreen`/`RankingScreen`), nunca un crash
+- [ ] Hábito diario con `due_time` superada (ya cubierto como acción funcional en el bloque 5, listado aquí también como el caso visual puro a comprobar si solo se está repasando colores)
 - [ ] **Nota:** el enunciado original de esta tarea pedía incluir aquí un "modal de onboarding con sugerencias" — no existe en el código actual. Solo hay un botón de desarrollo (`AdminScreen.js:1157`, "Reset onboarding (dev)") que borra la clave `onboarding_completed` de `AsyncStorage`, pero ningún otro fichero lee ni escribe esa clave, y no existe ningún componente de modal/tutorial en la app. Parece código vestigial de una función nunca construida (o retirada sin limpiar el botón). No se incluye un ítem de checklist para algo que no existe — si se decide construir esa función en el futuro, este es el hueco a rellenar.
 
-## 8. i18n
+## 12. i18n
 
 **Última vez probado:** _(pendiente)_
 
@@ -94,19 +136,21 @@ mano tras cada repaso completo del bloque.
 - [ ] Cambiar el idioma manualmente desde `ProfileScreen` → Idioma → toda la app cambia al momento, sin reiniciar
 - [ ] Cerrar y reabrir la app tras un cambio manual de idioma → se mantiene el idioma elegido (guardado en `AsyncStorage`, clave `user_language`), no vuelve a detectar el del dispositivo
 
-## 9. Multiplataforma (Android, secundario)
+## 13. Multiplataforma (Android, secundario)
 
 **Última vez probado:** _(pendiente)_
 
 Según `project.md`: "iOS primero, Android funcional" — los estilos se prueban en iOS y se verifica que no rompan en Android, no al revés.
 
 - [ ] Repetir el flujo de alta completo (bloque 1) en un emulador/dispositivo Android
-- [ ] Repetir completar un hábito con foto (bloque 3) en Android — los permisos de cámara/galería se piden y funcionan igual que en iOS
-- [ ] Repetir el borrado de cuenta (bloque 6) en Android, incluido el caso de único admin
+- [ ] Repetir completar un hábito con foto (bloque 5) en Android — los permisos de cámara/galería se piden y funcionan igual que en iOS
+- [ ] Repetir el borrado de cuenta (bloque 10) en Android, incluido el caso de único admin
 
 ---
 
 ## Huecos conocidos en este checklist
 
-- **Renombrar el grupo (bloque 5):** no hay ningún test automático dedicado a esta acción por sí sola — sí está cubierta indirectamente la policy que lo permite (`companies` UPDATE, Fase 4), pero no un test de backend específico de "el admin renombra su company". Pospuesto sin decisión tomada de si merece un test propio en una fase futura — anotado aquí en vez de en `tests/README.md` porque no es un hueco de cobertura *automática* pendiente, es un hueco de este checklist manual.
-- **Modal de onboarding con sugerencias:** no existe en el código — ver nota en el bloque 7. No es un hueco de test, es una funcionalidad inexistente.
+- **Renombrar el grupo (bloque 9):** no hay ningún test automático dedicado a esta acción por sí sola — sí está cubierta indirectamente la policy que lo permite (`companies` UPDATE, Fase 4), pero no un test de backend específico de "el admin renombra su company". Pospuesto sin decisión tomada de si merece un test propio en una fase futura — anotado aquí en vez de en `tests/README.md` porque no es un hueco de cobertura *automática* pendiente, es un hueco de este checklist manual.
+- **Modal de onboarding con sugerencias:** no existe en el código — ver nota en el bloque 11. No es un hueco de test, es una funcionalidad inexistente.
+- **Flujo completo de recuperación de contraseña (bloque 2):** `ForgotPasswordScreen.js` solo implementa el envío del correo de reseteo (`supabase.auth.resetPasswordForEmail`). No existe ninguna pantalla para introducir una nueva contraseña, ni configuración de enlace profundo (`scheme` en `app.json`, manejo de `Linking` en `App.js`/`RootNavigator.js`) que permita a la app recibir el enlace del correo y completar el cambio. No es un hueco de checklist: es una funcionalidad no construida, y por tanto no verificable manualmente más allá del primer paso.
+- **`resetPasswordForEmail` sin revelar si el email existe:** comportamiento correcto de seguridad (no permite enumerar cuentas registradas), documentado aquí para que no se confunda con un fallo al probarlo con un email no registrado y ver el mismo mensaje de éxito.
