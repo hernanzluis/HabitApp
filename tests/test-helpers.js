@@ -202,6 +202,21 @@ async function createReward({ habitId, streakTarget, description }) {
 // tiene el prefijo — es la única red de seguridad contra borrar datos reales,
 // dado que esta clave salta RLS. No relajar nunca esta comprobación.
 async function cleanupTestData() {
+  // activation_attempts es independiente de los datos de test "normales":
+  // no tiene email/company (solo ip_address + attempted_at), así que no puede
+  // marcarse con TEST_PREFIX ni entra en la barrera de seguridad de abajo. Se
+  // limpia entera, siempre, incondicionalmente — existe solo para el rate
+  // limiting de check_activation_code, no contiene ningún dato de usuario
+  // real, y se autoexpira igualmente en 1h. Sin esto, ejecutar la suite (o
+  // varias fases) varias veces seguidas en poco tiempo activa el propio
+  // rate limiting de producción contra la IP del que ejecuta los tests
+  // (mismo código que usa el signup real) y las siguientes ejecuciones de
+  // joinAsTestMember fallan con "Código bloqueado temporalmente" — no es un
+  // bug de la app, es el propio sistema de protección funcionando también
+  // contra el uso repetido de estos tests. Ver tests/README.md.
+  const { error: attemptsErr } = await supabaseAdmin.from('activation_attempts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (attemptsErr) throw new Error(`cleanupTestData: fallo borrando activation_attempts: ${attemptsErr.message}`);
+
   const { data: testCompanies, error: companiesErr } = await supabaseAdmin
     .from('companies')
     .select('id, name')

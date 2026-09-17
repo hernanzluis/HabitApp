@@ -1,5 +1,66 @@
 # Tests de backend — HabitApp
 
+## 🔴 Vulnerabilidad crítica encontrada y corregida — 2026-09-17
+
+Durante el diseño de la Fase 4 (permisos y RLS) se encontró una **escalada de
+privilegios real, explotable en producción**, antes de escribir ningún test.
+
+**Qué la causaba:** la policy `"users can update own profile"` en `profiles`
+(`USING: auth.uid() = id`, `WITH CHECK: auth.uid() = id`) permite a cualquier
+usuario autenticado editar su propia fila, pero **ninguna de las dos
+cláusulas comprueba qué columnas cambian** — solo que sigues editando tu
+propio `id`. No había ningún trigger en `profiles`, y `authenticated` (e
+incluso `anon`) tenían `GRANT UPDATE` sobre la tabla completa, sin
+restricción por columna. Resultado: cualquier usuario autenticado podía
+ejecutar `profiles.update({ role: 'admin' })` sobre sí mismo y quedar
+promocionado a admin, o `profiles.update({ company_id: <otra empresa> })` y
+saltar a cualquier otra empresa sin pasar por ningún código de activación.
+
+**Por qué pasó desapercibido en 3 rondas de auditoría RLS anteriores de esta
+misma sesión:** cada fix se centró en "qué puede hacer un admin sobre OTROS
+perfiles" (añadir `is_admin() AND company_id = my_company_id()` a una policy
+nueva) — la policy original de "edita tu propia fila", que ya existía desde
+el principio y nunca necesitó tocarse para esos fixes, se quedó exactamente
+igual de abierta que siempre.
+
+**Fix aplicado:** un trigger `BEFORE UPDATE` que bloquea el cambio de `role`
+o `company_id` salvo que quien ejecuta la operación sea admin
+(`is_admin()`, evaluado sobre el rol *anterior* al cambio):
+
+```sql
+create or replace function public.prevent_self_role_company_escalation()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if (new.role is distinct from old.role or new.company_id is distinct from old.company_id)
+     and not is_admin() then
+    raise exception 'No tienes permisos para cambiar role o company_id';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger profiles_prevent_self_escalation
+  before update on public.profiles
+  for each row
+  execute function public.prevent_self_role_company_escalation();
+```
+
+**Verificado contra la base de datos real** (no solo leído el SQL) antes de
+darlo por bueno, con usuarios de test desechables:
+- Un usuario normal intentando `role='admin'` sobre sí mismo → rechazado, confirmado en BD que no cambió.
+- Un usuario normal intentando cambiar su propio `company_id` → rechazado, confirmado en BD que no cambió.
+- Un admin cambiando el `role` de OTRO miembro de su empresa (flujo real de `AdminScreen.js`/`Members.jsx`) → **sigue funcionando exactamente igual**, el trigger no lo bloquea.
+- El propio admin tocando su `role`/`full_name` → **no queda bloqueado por error**, `is_admin()` se evalúa correctamente sobre su rol vigente.
+
+**Protección permanente:** el Test 0 de `test-04-permisos.js` (ver sección 4)
+existe específicamente para detectar si esta vulnerabilidad se reintroduce en
+el futuro — por ejemplo, si alguien vuelve a tocar la policy de `profiles` o
+elimina el trigger sin saber por qué existe.
+
 ## 1. Qué es esto y por qué existe
 
 Scripts de test de backend que corren contra el **Supabase real de producción** —
@@ -61,6 +122,7 @@ alta ni asumen cómo se comporta una política, la comprueban.
 node tests/test-01-alta.js       # Fase 1: alta de admin y de miembro
 node tests/test-02-habitos.js    # Fase 2: hábitos, asignación, validadores
 node tests/test-03-rachas.js     # Fase 3: rachas y recompensas
+node tests/test-04-permisos.js   # Fase 4: permisos y RLS (profiles, aislamiento)
 ```
 
 Cada script, en este orden:
@@ -140,6 +202,22 @@ cambian su lógica de cálculo, hay que actualizar las réplicas de
 
 **Eliminado del plan original:** el test 5 ("periodo de gracia en `once`") no existe como tal — ver punto 6. Su comprobación real (semana/mes en curso) quedó plegada en los tests 3 y 4.
 
+### Fase 4 — `test-04-permisos.js` (12 tests)
+
+Permisos y RLS sobre `profiles` y aislamiento entre empresas. No repite los
+tests de `habits`/`habit_assignments`/`habit_validators` ya cubiertos en la
+Fase 2 — esta fase es específicamente sobre `profiles` y cross-tenant.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 0 [GUARDA DE REGRESIÓN] (×4 aserciones) | Un usuario normal no puede auto-ascenderse a admin ni cambiarse de empresa | Protección permanente contra que la vulnerabilidad crítica documentada arriba se reintroduzca sin darse cuenta |
+| 1 | Un usuario normal no puede cambiar su propio `role` | Mismo mecanismo que el test 0, presentado como parte de la matriz sistemática de permisos de `profiles` (redundante con el 0 a propósito — ver la sección de la vulnerabilidad) |
+| 2 (×2 aserciones) | Un usuario normal no puede editar el perfil de OTRO miembro de su misma empresa | Confirma que `"users can update own profile"` no se cuela para filas ajenas |
+| 3 | Un admin SÍ puede editar `avatar_url` de otro miembro de su empresa | Bug real ya corregido en la auditoría de RLS de esta sesión (antes la policy no comprobaba `company_id` de la fila destino) — confirma que sigue arreglado |
+| 4 (×2 aserciones) | Un admin de la EMPRESA A no puede editar un perfil de la EMPRESA B | Aislamiento multi-tenant en `profiles`, mismo patrón que el test 7 de la Fase 2 pero sobre `profiles` |
+| 5 | Un admin de la EMPRESA A SÍ puede leer los `habits` de la EMPRESA B (filas reales, no vacío) | Diseño intencional y **ya documentado** en la auditoría de RLS original (`habits` SELECT es `qual: true`) — este test confirma que ese diseño aceptado sigue siendo el comportamiento real, no es un hallazgo nuevo |
+| 6 | Un usuario normal se autoelimina con éxito vía `delete_own_account()` (su `profile` desaparece) | Confirma el mecanismo real que usa `ProfileScreen.js` — no `auth.admin.deleteUser` (inalcanzable desde un cliente autenticado como el propio usuario, solo con Service Role Key). No verifica la cascada completa a otras tablas — eso es la Fase 6 |
+
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
 `TEST_PREFIX = 'zztest-'` (en `test-helpers.js`) marca **todo** dato que crean
@@ -160,6 +238,19 @@ borrar nada** y lanza un error explícito con el id y el valor que no encajaba,
 en vez de continuar "a ver si el resto está bien". Esta comprobación no se
 debe relajar ni hacer opcional nunca, precisamente porque es la única red de
 seguridad que existe — RLS aquí no protege nada.
+
+**Excepción deliberada — `activation_attempts`:** esta tabla (capa de rate
+limiting por IP de `check_activation_code`, ver `database.md`) se limpia
+entera e incondicionalmente en cada `cleanupTestData()`, sin pasar por el
+filtro de `TEST_PREFIX`. No puede llevar el prefijo porque no tiene ninguna
+columna de usuario/empresa (solo `ip_address` + `attempted_at`), así que la
+barrera de seguridad de arriba no se le puede aplicar tal cual. Se considera
+seguro porque: no contiene ningún dato personal ni de negocio, se autoexpira
+en 1 hora de todos modos, y el único efecto de borrarla antes de tiempo es
+que el contador de intentos de rate limiting de CUALQUIER IP (no solo la de
+quien ejecuta los tests) se resetea a 0 — un efecto a favor del usuario, no
+un riesgo de seguridad. Ver el hallazgo correspondiente en el punto 7 (Fase 4)
+para el porqué de que esto fuera necesario.
 
 ## 6. Huecos conocidos, pendientes
 
@@ -301,3 +392,48 @@ de `target=3` (sin conseguir, `daysToNext = 3 - (2 % 3) = 1`) — gana el target
 no es monótono con el tamaño del target. El test 11 de la Fase 3 deja este
 caso explícito para que no vuelva a asumirse "target menor = se muestra
 antes" sin comprobarlo.
+
+### Fase 4 — la vulnerabilidad de escalada de privilegios
+
+Ver la sección destacada al principio de este documento — se documenta ahí
+por separado, no como un hallazgo más de esta lista, precisamente porque es
+el ejemplo que justifica que este sistema de tests exista.
+
+### Fase 4 — un UPDATE bloqueado por RLS no lanza error, afecta 0 filas
+
+**Se esperaba:** que un `UPDATE` rechazado por RLS se comportara igual que un
+`INSERT` rechazado — devolviendo un `error` explícito que `assertRejected`
+pudiera capturar (así se habían planteado inicialmente los tests 2 y 4).
+
+**Se encontró:** al ejecutar el test 2 tal cual, pasó de forma inesperada —
+verificación puntual confirmó que **no hubo ningún error** (`error: null,
+status: 200`), pero el dato tampoco cambió (`data: []`, 0 filas afectadas).
+Cuando RLS bloquea un `UPDATE` a través de la cláusula `USING` (que decide
+qué filas existentes puedes ver/tocar), Postgres/PostgREST no lo trata como
+un fallo — simplemente no encuentra ninguna fila que la policy deje pasar
+como destino, así que la operación "tiene éxito" sin afectar a nada. Es
+distinto de una violación de `WITH CHECK` (como el trigger de la
+vulnerabilidad de arriba, o un `INSERT`), que sí lanza una excepción
+explícita. Los tests 2 y 4 de la Fase 4 se corrigieron para comprobar
+`data.length === 0` y releer el dato con la Service Role Key para confirmar
+que no cambió, en vez de comprobar `error`.
+
+### Fase 4 — la propia suite de tests puede autobloquearse por el rate limiting de producción
+
+**Se esperaba:** poder ejecutar `test-04-permisos.js` varias veces seguidas
+sin ningún efecto secundario entre ejecuciones, igual que las fases
+anteriores.
+
+**Se encontró:** la segunda ejecución consecutiva falló con `"Código
+bloqueado temporalmente, inténtalo de nuevo en unos minutos"` — el mismo
+mensaje de la capa de rate limiting por IP de `check_activation_code`
+(Fase de rate limiting de esta sesión). Cada `joinAsTestMember()` llama a esa
+RPC real, y tras varias ejecuciones de varias fases en poco tiempo, la IP
+desde la que se ejecutan los tests acumuló 5 intentos en la ventana de 15
+minutos — el propio sistema de protección contra fuerza bruta, funcionando
+correctamente también contra el uso repetido de los tests, que pasan por el
+mismo camino que un signup real. Se resolvió haciendo que
+`cleanupTestData()` limpie también `activation_attempts` de forma
+incondicional (ver el porqué de que esto sea seguro en el punto 5) — sin
+este cambio, la propia suite no podía cumplir su promesa de "ejecutarse
+tantas veces como haga falta" (punto 1).
