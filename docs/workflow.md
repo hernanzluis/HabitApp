@@ -23,10 +23,16 @@
   aislamiento cross-empresa en `habit_validations`.
 - No todo cambio necesita un test nuevo. Criterio: si el cambio toca RLS,
   una RPC, una tabla, o una regla de negocio verificable por datos → sí
-  evaluarlo. Si es puramente visual/UI sin lógica de servidor (por ejemplo,
-  el color de un botón) → no.
-- Si tras evaluarlo se decide que un cambio no necesita test, no hace falta
-  documentarlo caso por caso. Si en cambio se decide **posponer** un test
-  que sí tendría sentido, eso sí debe quedar anotado en `tests/README.md`,
-  sección "Huecos conocidos", con el mismo formato que los huecos ya
-  existentes.
+  evaluarlo (test automático en `tests/`). Si es puramente visual/UI sin
+  lógica de servidor (por ejemplo, el color de un botón, un gesto, una
+  animación) → evaluar si merece un ítem en
+  [manual-testing.md](manual-testing.md) en su lugar — es el mismo criterio
+  aplicado a las dos mitades: RLS/RPC/tabla/regla de negocio → automático;
+  UI/interacción visible → manual. Un cambio puede necesitar los dos a la
+  vez (por ejemplo, un fix de RLS que además cambia lo que ve el usuario).
+- Si tras evaluarlo se decide que un cambio no necesita test (automático ni
+  manual), no hace falta documentarlo caso por caso. Si en cambio se decide
+  **posponer** un test que sí tendría sentido, eso sí debe quedar anotado
+  como hueco conocido, con el mismo formato que los huecos ya existentes:
+  en `tests/README.md` si es automático, en la sección "Huecos conocidos"
+  de `manual-testing.md` si es manual.
