@@ -240,17 +240,34 @@ debe relajar ni hacer opcional nunca, precisamente porque es la única red de
 seguridad que existe — RLS aquí no protege nada.
 
 **Excepción deliberada — `activation_attempts`:** esta tabla (capa de rate
-limiting por IP de `check_activation_code`, ver `database.md`) se limpia
-entera e incondicionalmente en cada `cleanupTestData()`, sin pasar por el
-filtro de `TEST_PREFIX`. No puede llevar el prefijo porque no tiene ninguna
-columna de usuario/empresa (solo `ip_address` + `attempted_at`), así que la
-barrera de seguridad de arriba no se le puede aplicar tal cual. Se considera
-seguro porque: no contiene ningún dato personal ni de negocio, se autoexpira
-en 1 hora de todos modos, y el único efecto de borrarla antes de tiempo es
-que el contador de intentos de rate limiting de CUALQUIER IP (no solo la de
-quien ejecuta los tests) se resetea a 0 — un efecto a favor del usuario, no
-un riesgo de seguridad. Ver el hallazgo correspondiente en el punto 7 (Fase 4)
-para el porqué de que esto fuera necesario.
+limiting por IP de `check_activation_code`, ver `database.md`) **no sigue el
+criterio de prefijo del resto de `cleanupTestData()`**. Dicho sin rodeos: el
+código real es
+
+```js
+await supabaseAdmin.from('activation_attempts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+```
+
+y eso **borra la tabla entera, de cualquier IP, sin ninguna acotación** — el
+`.neq('id', <uuid imposible>)` no es un filtro real, es solo el truco para
+satisfacer que el cliente de Supabase exige al menos una condición en un
+`.delete()`; lo cumplen literalmente todas las filas. No hay ninguna
+comprobación fila a fila como con `companies`/`profiles`, porque no hay nada
+que comprobar: la tabla solo tiene `ip_address` + `attempted_at`, sin ningún
+campo de usuario/empresa/código donde aplicar `TEST_PREFIX` ni ninguna otra
+forma de distinguir "esto lo generó un test" de "esto lo generó un signup
+real". Se evaluó (y se descartó) acotar por una ventana de tiempo reciente en
+vez de borrar todo — no habría sido más preciso: un test que tarda en
+ejecutarse cae en la misma ventana que un usuario real activándose en ese
+momento, así que no distingue nada que un borrado completo no distinga ya.
+
+Se considera un riesgo aceptable, no inexistente: si un usuario real está
+intentando activarse justo en el momento en que corre `cleanupTestData()`, su
+contador de intentos se resetea a 0 antes de tiempo. El efecto de eso es
+puramente a favor de ese usuario (recupera intentos, no los pierde) y la
+tabla no contiene ningún dato personal ni de negocio — pero es, con todas las
+letras, un borrado sin ninguna de las garantías que sí tiene el resto de esta
+función. No se disfraza de lo contrario.
 
 ## 6. Huecos conocidos, pendientes
 
