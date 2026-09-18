@@ -34,7 +34,9 @@ export default function ForgotPasswordScreen() {
 
     setLoading(true);
     try {
-      const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(emailTrimmed);
+      const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(emailTrimmed, {
+        redirectTo: 'habitapp://reset-password',
+      });
       if (supabaseError) { setError(t('forgot.error_send')); return; }
       setSent(true);
     } catch {

@@ -3,6 +3,7 @@
     "name": "HabitTeam",
     "slug": "HabitApp",
     "version": "1.0.0",
+    "scheme": "habitapp",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

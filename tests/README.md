@@ -125,6 +125,7 @@ node tests/test-03-rachas.js     # Fase 3: rachas y recompensas
 node tests/test-04-permisos.js   # Fase 4: permisos y RLS (profiles, aislamiento)
 node tests/test-05-limites.js    # Fase 5: límites de plan (plan_limits, check_member_limit, check_habit_limit)
 node tests/test-06-borrado.js    # Fase 6: borrado de cuenta (delete_own_account)
+node tests/test-07-recuperacion.js  # Fase 7: recuperación de contraseña (generateLink, verifyOtp, updateUser)
 ```
 
 Cada script, en este orden:
@@ -249,6 +250,31 @@ el único admin de tu grupo (antes no existía ningún chequeo de esto).
 | 3 (×4 aserciones) | Con DOS admins, uno se borra → funciona; el admin restante conserva "control total" verificado con acciones reales (crear un hábito, renombrar la company), no solo comprobando que su fila sigue existiendo | El chequeo de "único admin" no bloquea de más — deja borrarse a cualquier admin mientras quede al menos otro |
 | 4 | Cero filas residuales del usuario borrado en ninguna tabla relacionada (`habit_logs`, `habit_assignments`, `habit_validators`, `habit_validations`, `team_members`, `invitations`, `profiles`), ni siquiera con el campo nulificado | Confirma la decisión de producto de `project.md`: borrado real, sin anonimización |
 | 5 (×8 aserciones) | Un hábito con un único validador que se borra a sí mismo se queda con 0 validadores — **RESUELTO en la misma fase**: el admin de la empresa cae como validador de fallback (ve el log como pendiente, y el INSERT real de la validación funciona), un admin de OTRA empresa no lo ve ni puede validarlo | Ver hallazgo en el punto 7 — incluye el cierre de un hueco de RLS preexistente en `habit_validations` que no tenía relación directa con el borrado de cuenta |
+
+### Fase 7 — `test-07-recuperacion.js` (14 tests)
+
+Recuperación de contraseña (`ForgotPasswordScreen.js` + `ResetPasswordScreen.js`
++ el manejo de deep link en `RootNavigator.js`). No hay forma de recibir un
+correo real en este entorno, así que la fase cubre lo que sí es verificable
+sin bandeja de entrada: el parser real del enlace (`getQueryParams`, de
+`expo-auth-session` — se llama a la librería tal cual, no a una réplica) y el
+mecanismo de backend completo, generando un enlace de recovery real vía la
+Admin API y canjeándolo exactamente como lo haría la app.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 0 [🟡 REQUISITO PENDIENTE] | `generateLink({type:'recovery', options:{redirectTo:'habitapp://reset-password'}})` devuelve ese mismo `redirect_to`, en vez de caer al Site URL por defecto | **Falla ahora mismo** (obtiene `http://localhost:3000` en vez de `habitapp://reset-password`) porque `habitapp://reset-password` todavía no está en Authentication → URL Configuration → Redirect URLs del dashboard de Supabase — algo que solo Luis puede añadir manualmente, no es alcanzable desde SQL ni desde este script. Hasta que se añada, el enlace real que recibiría un usuario en el correo apuntaría a una URL que la app nunca abre. Ver el resumen final de esta fase para el detalle |
+| 1 (×5 aserciones) | `getQueryParams()` (la librería real que usa `RootNavigator.js`, no una réplica) extrae `access_token`/`type=recovery` de un enlace de recovery válido, y detecta `params.error` en un enlace caducado/inválido sin `access_token` | Es el único punto de parseo del deep link en la app — si esta librería cambiara de formato de salida, este test lo detectaría antes que un usuario real con un enlace caducado |
+| 2 (×3 aserciones) | `supabaseAdmin.auth.admin.generateLink({type:'recovery'})` devuelve un `hashed_token` real, y `verifyOtp({token_hash, type:'recovery'})` con un cliente anónimo lo canjea por una sesión válida | Reproduce exactamente lo que hace el endpoint `/auth/v1/verify` de Supabase cuando el usuario pulsa el enlace del correo — no es un mock, es el mismo mecanismo de verificación |
+| 3 | `updateUser({password})` autenticado con esa sesión de recovery no da error | Es la llamada real que hace `ResetPasswordScreen.js` al enviar el formulario |
+| 4 (×2 aserciones) | `signInWithPassword` con la contraseña NUEVA tiene éxito y devuelve una sesión válida | Cierra el círculo: no basta con que `updateUser` no dé error, hay que confirmar que el login real funciona después |
+| 5 | `signInWithPassword` con la contraseña ANTIGUA es rechazado | Confirma que el cambio fue real en el servidor, no solo aparente en el cliente |
+| 6 | Reutilizar el mismo `hashed_token` una segunda vez es rechazado | Los tokens de recovery son de un solo uso — si esto fallara, el enlace del correo seguiría siendo válido indefinidamente tras usarse una vez |
+
+**Fuera de esta fase (no automatizable):** todo lo que depende de recibir el
+correo real y abrir el enlace desde el dispositivo (`Linking`/deep link real,
+`useLinkingURL()`, la navegación de `RootNavigator.js` hacia
+`ResetPasswordScreen`) — eso queda en `docs/manual-testing.md`, bloque 2.
 
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
@@ -618,10 +644,12 @@ insertarlo tampoco (antes sí podía).
 
 ---
 
-## Resumen — catálogo completo de tests (Fases 1 a 6)
+## Resumen — catálogo completo de tests (Fases 1 a 7)
 
-Con la Fase 6 se cierra el catálogo original de 6 fases planificadas. Índice
-para quien llegue a este documento por primera vez:
+El catálogo original de 6 fases planificadas se cerró con la Fase 6; la Fase 7
+(recuperación de contraseña) se añadió después, siguiendo la misma regla de
+`workflow.md` de evaluar cobertura de tests ante cualquier funcionalidad
+nueva. Índice para quien llegue a este documento por primera vez:
 
 | Fase | Fichero | Tests | Tema |
 |---|---|---|---|
@@ -631,7 +659,15 @@ para quien llegue a este documento por primera vez:
 | 4 | `test-04-permisos.js` | 12 | Permisos de `profiles` y aislamiento entre empresas |
 | 5 | `test-05-limites.js` | 11 | Límites de plan (`plan_limits`, `check_member_limit`, `check_habit_limit`, `history_days`) |
 | 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
-| **Total** | **6 ficheros** | **84** | |
+| 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
+| **Total** | **7 ficheros** | **98** | |
+
+**🟡 Requisito pendiente para que la Fase 7 pase al 100%:** el test 0 de
+`test-07-recuperacion.js` falla hoy (13/14) porque `habitapp://reset-password`
+no está registrada en Authentication → URL Configuration → Redirect URLs del
+dashboard de Supabase. Es configuración de dashboard, no SQL — solo Luis puede
+añadirla. Una vez añadida, re-ejecutar `node tests/test-07-recuperacion.js`
+debería dar 14/14.
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos

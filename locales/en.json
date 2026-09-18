@@ -48,6 +48,19 @@
     "error_send": "Could not send the email. Please try again.",
     "error_network": "Could not send the email. Check your connection and try again."
   },
+  "reset": {
+    "title": "New password",
+    "subtitle": "Choose a new password for your account",
+    "submit": "Save password",
+    "cancel": "Cancel",
+    "cancel_confirm_title": "Cancel recovery?",
+    "cancel_confirm_message": "You'll go back to the login screen without changing your password.",
+    "cancel_confirm_no": "No, keep going",
+    "cancel_confirm_yes": "Yes, cancel",
+    "link_invalid_title": "Invalid link",
+    "link_invalid_message": "The recovery link has expired or was already used. Request a new one from \"Forgot your password?\".",
+    "error_update": "Could not update the password. Please try again."
+  },
   "signup": {
     "welcome_title": "Welcome to HabitTeam",
     "welcome_subtitle": "How do you want to start?",

@@ -5,12 +5,15 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { useLinkingURL } from 'expo-linking';
+import { getQueryParams } from 'expo-auth-session/build/QueryParams';
 
 import { supabase } from '../lib/supabase';
-import { authFlags, registerSetSession } from '../lib/authFlags';
+import { authFlags, registerSetSession, registerRecoveryControls, enterRecoveryMode } from '../lib/authFlags';
 
 import LoginScreen from '../screens/LoginScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import HomeScreen from '../screens/HomeScreen';
 import HabitDetailScreen from '../screens/HabitDetailScreen';
@@ -249,6 +252,16 @@ function AuthStack() {
   );
 }
 
+// Solo se monta mientras `inRecovery` está activo (deep link de recuperación
+// de contraseña procesado). No es alcanzable por navegación normal.
+function RecoveryStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+    </Stack.Navigator>
+  );
+}
+
 function AppStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, headerBackTitle: '' }}>
@@ -262,13 +275,17 @@ function AppStack() {
 }
 
 export default function RootNavigator() {
+  const { t } = useTranslation();
   const [initializing, setInitializing] = useState(true);
   const [session, setSession] = useState(null);
+  const [inRecovery, setInRecovery] = useState(false);
+  const url = useLinkingURL();
 
   useEffect(() => {
     // Exponer setSession al singleton para que SignUpScreen (modo activate)
     // pueda navegar al AppStack manualmente tras completar el registro.
     registerSetSession(setSession);
+    registerRecoveryControls(setInRecovery);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -276,8 +293,10 @@ export default function RootNavigator() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      // Si el flujo de activación está en marcha, bloqueamos el redirect automático.
-      // SignUpScreen reseteará el flag y llamará a activateSession() cuando termine.
+      // Si el flujo de activación (o de recuperación de contraseña) está en
+      // marcha, bloqueamos el redirect automático. Quien lo puso a true es
+      // responsable de resetearlo (SignUpScreen) o de que se consuma aquí
+      // una sola vez (deep link de recovery, ver más abajo).
       if (session && authFlags.skipNextRedirect) {
         authFlags.skipNextRedirect = false;
         return;
@@ -287,6 +306,43 @@ export default function RootNavigator() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Salir de "modo recovery" en cuanto haya una sesión real (p.ej. tras un
+  // updateUser() con éxito en ResetPasswordScreen) — por higiene, ya que el
+  // render de abajo ya prioriza `session` sobre `inRecovery` de todos modos,
+  // así que no hay parpadeo aunque este efecto llegue un instante tarde.
+  useEffect(() => {
+    if (session && inRecovery) setInRecovery(false);
+  }, [session, inRecovery]);
+
+  // Deep link entrante (enlace de "recuperar contraseña" del correo).
+  // detectSessionInUrl está a false en lib/supabase.js porque en RN no hay
+  // barra de URL que lo dispare solo — el parseo y el setSession() son
+  // manuales, siguiendo la guía oficial de Expo para Supabase Auth.
+  useEffect(() => {
+    if (!url) return;
+    const { params, errorCode } = getQueryParams(url);
+
+    if (errorCode || params.error) {
+      Alert.alert(t('reset.link_invalid_title'), params.error_description || t('reset.link_invalid_message'));
+      return;
+    }
+    if (!params.access_token || params.type !== 'recovery') return;
+
+    (async () => {
+      authFlags.skipNextRedirect = true;
+      const { error } = await supabase.auth.setSession({
+        access_token: params.access_token,
+        refresh_token: params.refresh_token,
+      });
+      if (error) {
+        authFlags.skipNextRedirect = false;
+        Alert.alert(t('reset.link_invalid_title'), t('reset.link_invalid_message'));
+        return;
+      }
+      enterRecoveryMode();
+    })();
+  }, [url, t]);
 
   if (initializing) {
     return (
@@ -298,7 +354,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {session ? <AppStack /> : <AuthStack />}
+      {inRecovery && !session ? <RecoveryStack /> : session ? <AppStack /> : <AuthStack />}
     </NavigationContainer>
   );
 }

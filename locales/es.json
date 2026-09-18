@@ -48,6 +48,19 @@
     "error_send": "No se pudo enviar el correo. Intenta de nuevo.",
     "error_network": "No se pudo enviar el correo. Revisa tu conexión e inténtalo de nuevo."
   },
+  "reset": {
+    "title": "Nueva contraseña",
+    "subtitle": "Elige la nueva contraseña de tu cuenta",
+    "submit": "Guardar contraseña",
+    "cancel": "Cancelar",
+    "cancel_confirm_title": "¿Cancelar recuperación?",
+    "cancel_confirm_message": "Volverás a la pantalla de inicio de sesión sin cambiar tu contraseña.",
+    "cancel_confirm_no": "No, seguir",
+    "cancel_confirm_yes": "Sí, cancelar",
+    "link_invalid_title": "Enlace no válido",
+    "link_invalid_message": "El enlace de recuperación ha caducado o ya se ha usado. Solicita uno nuevo desde \"¿Olvidaste tu contraseña?\".",
+    "error_update": "No se pudo actualizar la contraseña. Intenta de nuevo."
+  },
   "signup": {
     "welcome_title": "Bienvenido a HabitTeam",
     "welcome_subtitle": "¿Cómo quieres empezar?",
