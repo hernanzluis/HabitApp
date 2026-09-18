@@ -263,7 +263,7 @@ Admin API y canjeándolo exactamente como lo haría la app.
 
 | Test | Qué verifica | Por qué importa |
 |---|---|---|
-| 0 [🟡 REQUISITO PENDIENTE] | `generateLink({type:'recovery', options:{redirectTo:'habitapp://reset-password'}})` devuelve ese mismo `redirect_to`, en vez de caer al Site URL por defecto | **Falla ahora mismo** (obtiene `http://localhost:3000` en vez de `habitapp://reset-password`) porque `habitapp://reset-password` todavía no está en Authentication → URL Configuration → Redirect URLs del dashboard de Supabase — algo que solo Luis puede añadir manualmente, no es alcanzable desde SQL ni desde este script. Hasta que se añada, el enlace real que recibiría un usuario en el correo apuntaría a una URL que la app nunca abre. Ver el resumen final de esta fase para el detalle |
+| 0 [GUARDA DE REGRESIÓN] | `generateLink({type:'recovery', options:{redirectTo:'habitapp://reset-password'}})` devuelve ese mismo `redirect_to`, en vez de caer al Site URL por defecto | Confirma que `habitapp://reset-password` sigue registrada en Authentication → URL Configuration → Redirect URLs del dashboard de Supabase (añadida el 2026-09-18, tras fallar este mismo test la primera vez — ver hallazgo más abajo). Si alguna vez se quita o se rota el scheme sin actualizar esa lista, este test lo detecta antes que un usuario real con un enlace muerto |
 | 1 (×5 aserciones) | `getQueryParams()` (la librería real que usa `RootNavigator.js`, no una réplica) extrae `access_token`/`type=recovery` de un enlace de recovery válido, y detecta `params.error` en un enlace caducado/inválido sin `access_token` | Es el único punto de parseo del deep link en la app — si esta librería cambiara de formato de salida, este test lo detectaría antes que un usuario real con un enlace caducado |
 | 2 (×3 aserciones) | `supabaseAdmin.auth.admin.generateLink({type:'recovery'})` devuelve un `hashed_token` real, y `verifyOtp({token_hash, type:'recovery'})` con un cliente anónimo lo canjea por una sesión válida | Reproduce exactamente lo que hace el endpoint `/auth/v1/verify` de Supabase cuando el usuario pulsa el enlace del correo — no es un mock, es el mismo mecanismo de verificación |
 | 3 | `updateUser({password})` autenticado con esa sesión de recovery no da error | Es la llamada real que hace `ResetPasswordScreen.js` al enviar el formulario |
@@ -642,6 +642,28 @@ del test 5 extendido (5e-5h): el admin ve y puede validar el log de
 fallback; un admin de otra empresa no lo ve y, además, ya no puede
 insertarlo tampoco (antes sí podía).
 
+### Fase 7 — `habitapp://reset-password` no estaba registrada como Redirect URL
+
+**Se encontró (2026-09-18), verificado empíricamente y no por suposición:**
+al implementar el flujo de recuperación de contraseña, generar un enlace de
+recovery real con `redirectTo: 'habitapp://reset-password'` vía la Admin API
+mostró que Supabase ignoraba ese `redirectTo` en silencio (sin ningún error)
+y devolvía el Site URL por defecto (`http://localhost:3000`) en su lugar —
+señal inequívoca de que esa URL todavía no estaba en la lista de
+Authentication → URL Configuration → Redirect URLs del dashboard. Con esa
+lista sin actualizar, el enlace real que le habría llegado a un usuario por
+correo no habría abierto la app en ningún caso.
+
+**Cerrado en la misma sesión** (siguiendo la regla de `workflow.md` de
+evaluar cerrar los hallazgos en vez de solo documentarlos): se añadió el
+test 0 de `test-07-recuperacion.js` como comprobación explícita de este
+requisito — falló primero (13/14, confirmando el hallazgo con un test real,
+no solo con el script ad-hoc de verificación), Luis añadió la Redirect URL
+en el dashboard, y el test pasó a verde (14/14) sin cambiar nada más. El
+test se mantiene como guarda de regresión permanente: si esa entrada se
+borra o se rota el scheme algún día sin actualizarla, este test lo detecta
+antes que un usuario real con un enlace muerto.
+
 ---
 
 ## Resumen — catálogo completo de tests (Fases 1 a 7)
@@ -661,13 +683,6 @@ nueva. Índice para quien llegue a este documento por primera vez:
 | 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
 | **Total** | **7 ficheros** | **98** | |
-
-**🟡 Requisito pendiente para que la Fase 7 pase al 100%:** el test 0 de
-`test-07-recuperacion.js` falla hoy (13/14) porque `habitapp://reset-password`
-no está registrada en Authentication → URL Configuration → Redirect URLs del
-dashboard de Supabase. Es configuración de dashboard, no SQL — solo Luis puede
-añadirla. Una vez añadida, re-ejecutar `node tests/test-07-recuperacion.js`
-debería dar 14/14.
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos
