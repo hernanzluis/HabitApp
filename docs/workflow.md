@@ -36,3 +36,29 @@
   como hueco conocido, con el mismo formato que los huecos ya existentes:
   en `tests/README.md` si es automático, en la sección "Huecos conocidos"
   de `manual-testing.md` si es manual.
+
+## Cerrar lo que se descubre, no solo documentarlo
+
+- El objetivo por defecto es cerrar los temas que se abren, no dejarlos a
+  medias. Cuando una tarea (una fase de `tests/`, una auditoría, una revisión
+  de `manual-testing.md`) descubre algo que no funciona o no existe — como ha
+  pasado con la escalada de privilegios en `profiles`, el fallback de
+  validador, o el flujo de recuperación de contraseña — la reacción por
+  defecto es evaluar cerrarlo en la misma sesión de trabajo donde se
+  descubrió, no solo documentarlo y seguir adelante.
+- Razón: un hallazgo documentado hoy, sin el contexto completo de por qué se
+  encontró y qué se investigó, es mucho más caro de retomar dentro de unas
+  semanas que resolverlo ahora que todo el contexto está fresco (código ya
+  revisado, decisiones ya tomadas, sesión de Supabase abierta).
+- Esto no significa que todo se resuelva sí o sí en el momento. Hay hallazgos
+  que requieren una decisión de producto (por ejemplo, "hábitos personales")
+  o que dependen de trabajo externo (builds EAS, Stripe, o — como en el caso
+  de la recuperación de contraseña — un paso manual en el dashboard de
+  Supabase que solo Luis puede hacer) y esos sí quedan como pendientes
+  explícitos.
+- La regla es: por defecto se evalúa cerrar, y solo se pospone con una razón
+  concreta documentada (no simplemente "lo dejamos para luego" sin más).
+- Cuando algo se pospone, debe quedar en el documento correspondiente
+  (`tests/README.md` o `docs/manual-testing.md`, según toque) con el mismo
+  nivel de detalle que ya se ha usado en los huecos existentes: qué se
+  encontró, por qué se pospone, y qué haría falta para cerrarlo.
