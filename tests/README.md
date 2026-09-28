@@ -147,6 +147,75 @@ falla si alguien reactiva "Confirm email" (con la confirmación activada
 `signUp` no devuelve sesión y todas las altas fallarían con
 `not_authenticated`).
 
+## 🟠 La barrera de `cleanupTestData()` no cubría el email de Auth — 2026-09-28
+
+Encontrado al investigar un usuario de `auth.users` (sin profile) que
+desapareció del proyecto durante la sesión del 2026-09-28. `auth.audit_log_entries`
+está vacía en este proyecto, así que se revisó por código todo lo que llama a
+`auth.admin.deleteUser`/`listUsers`: `cleanupTestData()` (`tests/test-helpers.js`)
+y `wipe-auth-users.js` (script suelto, sin seguimiento en git, que borra
+**todos** los usuarios sin filtro; no se ejecutó en esta sesión — la cuenta de
+Luis, creada ese mismo día a las 13:25 UTC, sigue existiendo).
+
+**Qué se esperaba:** que `cleanupTestData()` nunca pudiera borrar un usuario
+de Auth cuyo email no llevara el prefijo `zztest-` (punto 5 de este documento).
+
+**Qué se encontró:** dos vías de borrado en Auth, con criterios distintos
+(versión del commit `3dcc0a8`):
+- Huérfanos (Auth sin profile, líneas 342-347): filtro sobre el email **de
+  Auth** (`u.email.startsWith(TEST_PREFIX)`). Correcta: un usuario sin
+  prefijo y sin profile nunca se selecciona.
+- Usuarios con profile (`userIds`, borrados en las líneas 348-354): salen de
+  `profiles.email` con prefijo o de ser miembro de una company de test, y la
+  barrera fila a fila solo comprobaba **`profiles.email`**. Nunca se miraba el
+  email en `auth.users` antes del `deleteUser`. Y los dos pueden divergir: las
+  RPCs de alta guardaban el email que mandaba el cliente hasta el
+  2026-09-28, un admin puede editar `profiles.email` de un miembro
+  (`AdminScreen.js`, `update_member_profile`), y `profiles.id` no es FK real a
+  `auth.users`. Un usuario real con un profile que llevara `zztest-` se
+  borraba de Auth sin ningún aviso.
+
+Confirmado con `test-00-barrera-limpieza.js` ANTES del fix: el canario sin
+profile sobrevivió (test 1 ✓), el canario con profile `zztest-` fue borrado
+(tests 2a-2c ✗).
+
+**Fix:** `cleanupTestData()` lee `auth.users` al principio, antes de borrar
+nada, y aborta si algún usuario que se va a borrar tiene en Auth un email sin
+el prefijo. También aborta si hay 1000+ usuarios (solo se lee la primera
+página de `listUsers`, y la barrera no puede verificar lo que no ve). De paso
+se corrigió que el `return` temprano ("no había datos de test que limpiar")
+saltaba la limpieza de huérfanos de Auth cuando no quedaba ningún profile ni
+company de test.
+
+**Lo que NO explica:** el usuario desaparecido no tenía profile, así que la
+vía de `userIds` no pudo borrarlo si su email no llevaba el prefijo.
+
+**Explicación más probable — HIPÓTESIS NO CONFIRMADA:** que no fuera un
+usuario real, sino un huérfano `zztest-` (usuario de Auth sin profile)
+creado durante la investigación de la Fase 8 y borrado después por la propia
+limpieza. El candidato más concreto es un script puntual de esa sesión (no
+forma parte de `tests/`) que comprobó que el rate limiting se esquivaba: creó
+un usuario `zztest-` con la Admin API, llamó 8 veces a
+`handle_activation_registration` con códigos inventados (todas fallaron, sin
+profile) y llamó a `cleanupTestData()` al terminar. Sin ningún profile ni
+company de test en ese momento, la versión antigua salía por el `return`
+temprano ("no había datos de test que limpiar", línea 286 del commit
+`3dcc0a8`) **antes** de buscar huérfanos en Auth, así que ese usuario
+sobrevivía. Cuadra con la cronología: el recuento de "2 usuarios en Auth, 1
+profile" se hizo después de ese script, y la siguiente limpieza con datos de
+test (las rondas de las fases 1-8) sí lo habría borrado por la vía de
+huérfanos. Una alternativa del mismo tipo: un huérfano de las altas
+rechazadas del propio `test-08-registro-seguro.js`.
+
+Por qué no está confirmada: no se registró el email del segundo usuario
+cuando se contó, `auth.audit_log_entries` está vacía en este proyecto, y no
+queda ningún rastro que lo identifique. Luis tampoco recuerda haber borrado
+ninguno; que fuera su cuenta anterior, borrada al rehacer el alta, no se
+puede descartar del todo, aunque su cuenta actual (13:25 UTC) es anterior a
+ese recuento y no se borró. El `return` temprano está corregido y cubierto
+indirectamente: ahora los huérfanos se buscan antes de decidir si hay algo
+que limpiar.
+
 ## 1. Qué es esto y por qué existe
 
 Scripts de test de backend que corren contra el **Supabase real de producción** —
@@ -205,6 +274,7 @@ alta ni asumen cómo se comporta una política, la comprueban.
 ## 3. Cómo ejecutar cada fase
 
 ```bash
+node tests/test-00-barrera-limpieza.js  # Fase 0: canario de la barrera de cleanupTestData
 node tests/test-01-alta.js       # Fase 1: alta de admin y de miembro
 node tests/test-02-habitos.js    # Fase 2: hábitos, asignación, validadores
 node tests/test-03-rachas.js     # Fase 3: rachas y recompensas
@@ -233,6 +303,18 @@ Cada script, en este orden:
    también sale con código 1.
 
 ## 4. Índice de fases
+
+### Fase 0 — `test-00-barrera-limpieza.js` (4 tests)
+
+Canario de la barrera de seguridad de `cleanupTestData()` (punto 5). Crea con
+la Service Role Key usuarios de Auth con email `canary-…@habitapp-test.local`
+(nunca `zztest-`), ejecuta `cleanupTestData()` y los borra por id en un
+`finally`.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 1 | Un usuario de Auth sin prefijo y sin profile sobrevive a la limpieza | Vía de "huérfanos" |
+| 2 (×3) | Un usuario de Auth sin prefijo cuyo **profile** sí lleva `zztest-` hace que la limpieza aborte sin borrar nada: sigue en Auth y conserva su profile | Hueco encontrado el 2026-09-28 — ver sección destacada al principio |
 
 ### Fase 1 — `test-01-alta.js` (8 tests)
 
@@ -394,7 +476,9 @@ prefijo es la única frontera entre "esto es un dato de test, se puede borrar
 sin miedo" y "esto es una familia real usando la app".
 
 Por eso `cleanupTestData()` no se limita a filtrar por el prefijo al construir
-sus queries de borrado — **además** relee cada company y cada profile que va a
+sus queries de borrado — **además** comprueba el email en `auth.users` de cada
+usuario que va a borrar de Auth (desde el 2026-09-28, ver la sección
+destacada sobre la barrera) y relee cada company y cada profile que va a
 usar como origen de un borrado en cascada y comprueba, fila a fila, que
 efectivamente lleva el prefijo. Si encontrara una sola fila sin él (un fallo en
 el filtro, un bug futuro al tocar este fichero, lo que sea), **aborta sin
@@ -781,6 +865,7 @@ nueva. Índice para quien llegue a este documento por primera vez:
 
 | Fase | Fichero | Tests | Tema |
 |---|---|---|---|
+| 0 | `test-00-barrera-limpieza.js` | 4 | Canario de la barrera de `cleanupTestData()` (email de Auth sin prefijo, con y sin profile) |
 | 1 | `test-01-alta.js` | 8 | Alta de admin y de miembro, condición real de "family setup" |
 | 2 | `test-02-habitos.js` | 10 | Hábitos, asignación, validadores (RLS) |
 | 3 | `test-03-rachas.js` | 18 | Rachas y recompensas (`calculateStreak`/`calculateTotalCompleted`, recursividad, `featuredReward`) |
@@ -789,7 +874,7 @@ nueva. Índice para quien llegue a este documento por primera vez:
 | 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
 | 8 | `test-08-registro-seguro.js` | 41 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
-| **Total** | **8 ficheros** | **139** | |
+| **Total** | **9 ficheros** | **143** | |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos

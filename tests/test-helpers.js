@@ -282,7 +282,39 @@ async function cleanupTestData() {
     ...(membersOfTestCompanies ?? []).map((p) => p.id),
   ])];
 
-  if (userIds.length === 0 && companyIds.length === 0) {
+  // Barrera también sobre Auth, ANTES de borrar nada: cada usuario que se va a
+  // borrar con auth.admin.deleteUser debe llevar el prefijo en SU email de
+  // auth.users, no solo en profiles.email — los dos pueden no coincidir
+  // (profiles.email lo ha fijado históricamente el cliente, un admin puede
+  // editarlo, y profiles.id no es FK real a auth.users). Ver tests/README.md,
+  // hallazgo de la Fase 0; lo vigila tests/test-00-barrera-limpieza.js.
+  const { data: authUsersPage, error: authUsersErr } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (authUsersErr) throw new Error(`cleanupTestData: no se pudo listar auth.users: ${authUsersErr.message}`);
+  const authUsers = authUsersPage?.users ?? [];
+  if (authUsers.length >= 1000) {
+    throw new Error('cleanupTestData: ABORTADO sin borrar nada — auth.users tiene 1000+ usuarios y solo se lee la primera página');
+  }
+  const authEmailById = new Map(authUsers.map((u) => [u.id, u.email ?? '']));
+  for (const id of userIds) {
+    if (authEmailById.has(id) && !authEmailById.get(id).startsWith(TEST_PREFIX)) {
+      throw new Error(
+        `cleanupTestData: ABORTADO sin borrar nada — el auth.user ${id} ("${authEmailById.get(id)}") tiene un profile con ` +
+        `el prefijo "${TEST_PREFIX}" pero su email en Auth no lo lleva`
+      );
+    }
+  }
+
+  // Usuarios huérfanos: si alguna vez una RPC de alta crea el auth.user y
+  // LUEGO falla antes de insertar su profiles (por ejemplo, handle_activation_
+  // registration lanzando 'limit_members_reached' tras el auth.signUp — el
+  // escenario que fuerza a propósito el test 4 de la Fase 5), ese auth.user
+  // no tiene ninguna fila en profiles y por tanto no aparecería en userIds.
+  // Se buscan aparte, directamente en auth.users, por email con el prefijo.
+  const orphanedTestUserIds = authUsers
+    .filter((u) => u.email && u.email.startsWith(TEST_PREFIX) && !userIds.includes(u.id))
+    .map((u) => u.id);
+
+  if (userIds.length === 0 && companyIds.length === 0 && orphanedTestUserIds.length === 0) {
     return { deleted: false, reason: 'no había datos de test que limpiar' };
   }
 
@@ -333,18 +365,6 @@ async function cleanupTestData() {
     const { error } = await supabaseAdmin.from('companies').delete().in('id', companyIds);
     if (error) throw new Error(`cleanupTestData: fallo borrando companies: ${error.message}`);
   }
-  // Usuarios huérfanos: si alguna vez una RPC de alta crea el auth.user y
-  // LUEGO falla antes de insertar su profiles (por ejemplo, handle_activation_
-  // registration lanzando 'limit_members_reached' tras el auth.signUp — el
-  // escenario que fuerza a propósito el test 4 de la Fase 5), ese auth.user
-  // no tiene ninguna fila en profiles y por tanto no aparecería en userIds.
-  // Se buscan aparte, directamente en auth.users, por email con el prefijo.
-  const { data: authUsersPage, error: authUsersErr } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (authUsersErr) throw new Error(`cleanupTestData: no se pudo listar auth.users: ${authUsersErr.message}`);
-  const orphanedTestUserIds = (authUsersPage?.users ?? [])
-    .filter((u) => u.email && u.email.startsWith(TEST_PREFIX) && !userIds.includes(u.id))
-    .map((u) => u.id);
-
   const allUserIdsToDelete = [...userIds, ...orphanedTestUserIds];
   for (const id of allUserIdsToDelete) {
     const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
