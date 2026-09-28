@@ -61,6 +61,92 @@ existe específicamente para detectar si esta vulnerabilidad se reintroduce en
 el futuro — por ejemplo, si alguien vuelve a tocar la policy de `profiles` o
 elimina el trigger sin saber por qué existe.
 
+## 🔴 RPCs de alta ejecutables sin sesión — 2026-09-28
+
+Encontrado al investigar por qué el correo de confirmación de Supabase
+llevaba a `localhost:3000` (la confirmación de email se había activado en el
+dashboard). La consulta a `pg_proc` que ejecutó Luis mostró que
+`handle_new_user_registration` y `handle_activation_registration` eran
+`SECURITY DEFINER`, con `EXECUTE` para `anon`, sin comprobar `auth.uid()` y
+sin `SET search_path`.
+
+**Qué se esperaba:** que solo el usuario recién registrado, con su propia
+sesión, pudiera crear su profile, y que el rate limiting de
+`check_activation_code` protegiera los códigos de activación.
+
+**Qué se encontró** (verificado contra la BD real con
+`test-08-registro-seguro.js` ANTES de aplicar el fix, no solo leyendo SQL):
+- Sin sesión (solo la anon key pública) se crea una company + profile de
+  admin para cualquier `user_id` existente (tests 2a/2b fallaron).
+- Un usuario autenticado registra a OTRO `user_id` (3a/3c) y con un email que
+  no es el suyo (4a/4c): ambas RPCs se fiaban de `user_id`/`user_email` del
+  cliente.
+- **Un código de activación no estaba ligado al email del invitado:** un
+  usuario con cualquier email canjeaba el código emitido para otra persona y
+  entraba en esa familia (4d).
+- El rate limiting vivía solo en `check_activation_code`. Llamando a
+  `handle_activation_registration` directamente, 8 códigos inventados
+  seguidos → 8 veces "Código de activación inválido o expirado", ningún
+  bloqueo, 0 filas en `activation_attempts`. Con 900.000 códigos posibles y
+  sin email ligado, era fuerza bruta viable para entrar en un grupo ajeno.
+- El código lo marcaba como usado el CLIENTE con un `UPDATE` aparte
+  (`screens/SignUpScreen.js`, `onActivate`, antes líneas 260-268). Si RLS lo
+  bloqueaba, afectaba a 0 filas sin error (ver hallazgo de la Fase 4) y el
+  código seguía válido. Y la policy que lo permitía (`auth.uid() IS NOT NULL
+  AND used = false`, `WITH CHECK used = true`) dejaba a cualquier autenticado
+  quemar los códigos pendientes de cualquier empresa.
+- `company_name` en blanco aceptado (6a).
+- `profiles.id` **no tiene FK real a `auth.users`** (`database.md` decía lo
+  contrario): una llamada anónima con `user_id = 00000000-…` creó una company
+  y un profile de admin para un usuario que no existe. No hacía falta ni un
+  `user_id` real. Tras el fix no es alcanzable (la RPC exige `auth.uid() =
+  user_id`); añadir la FK queda como decisión aparte (`docs/release.md`).
+
+**Fix:** `sql/2026-09-28_registro_seguro.sql` (ejecutado por Luis en el SQL
+Editor). Ambas RPCs exigen `auth.uid() = user_id`, rechazan si ya hay profile,
+toman el email de `auth.users` (el parámetro se mantiene por compatibilidad y
+debe coincidir), `SET search_path = public, pg_temp`, `EXECUTE` solo para
+`authenticated`. `handle_activation_registration` además: el código solo lo
+canjea el usuario cuyo email coincide con el del código; lo marca usado dentro
+de la propia RPC (fila bloqueada con `FOR UPDATE`); aplica las mismas dos capas
+de rate limiting que `check_activation_code`; y devuelve `'ok'` /
+`'invalid_code'` en vez de lanzar excepción ante un código inválido — un
+`RAISE` deshace la transacción entera, incluido el registro del intento, y el
+rate limiting nunca contaría nada. Se elimina el `UPDATE` del cliente y la
+policy que lo permitía. `handle_new_user_registration` valida `company_name`
+y `full_name` (no vacíos, ≤100 caracteres).
+
+**Corrección posterior, mismo día — cupo de IP en el paso 2**
+(`sql/2026-09-28b_activacion_rate_limit.sql`): la primera versión comprobaba
+el cupo de IP al principio de `handle_activation_registration`. Al ejecutar
+las fases 1-8 tras aplicarla, la Fase 5 (test 3) falló: `check_activation_code`
+registra en `activation_attempts` **todas** sus llamadas, también las buenas,
+así que tras 5 activaciones legítimas desde la misma IP (o 4 errores de
+tecleo y un acierto) el paso 1 pasaba y el paso 2 decía "Código bloqueado" —
+con el `auth.user` ya creado por `signUp` y sin profile. Ahora el cupo de IP
+solo se comprueba en la rama de fallo; un código válido para el email del
+usuario autenticado siempre se canjea. Tests 8e, 8j y 8k.
+
+**Límite de inicios de sesión de Supabase:** como los helpers ahora inician
+sesión para llamar a las RPCs, ejecutar las 8 fases seguidas agotaba el
+límite de Auth por IP (`429 over_request_rate_limit`). `getClientForUser`
+cachea el cliente por usuario y, ante un 429, espera 30 s y reintenta (hasta
+6 min). Es un límite del servidor, no un fallo de la app: la Fase 7 hace sus
+propios `signInWithPassword` directos y puede seguir chocando con él si se
+ejecuta justo después de otras fases sin pausa.
+
+**Efecto en los tests existentes:** `createTestUser()` y `joinAsTestMember()`
+(`test-helpers.js`) llamaban a las RPCs con la Service Role Key, que no tiene
+`auth.uid()`. Ahora se autentican como el usuario de test antes de llamarlas
+— más fiel a la app que antes. Además ninguna fase pasaba por el `auth.signUp`
+real de la app (todas usan `admin.createUser`); el test 1 de la Fase 8 sí lo
+hace.
+
+**Protección permanente:** Fase 8 entera, y en particular su test 0, que
+falla si alguien reactiva "Confirm email" (con la confirmación activada
+`signUp` no devuelve sesión y todas las altas fallarían con
+`not_authenticated`).
+
 ## 1. Qué es esto y por qué existe
 
 Scripts de test de backend que corren contra el **Supabase real de producción** —
@@ -126,6 +212,7 @@ node tests/test-04-permisos.js   # Fase 4: permisos y RLS (profiles, aislamiento
 node tests/test-05-limites.js    # Fase 5: límites de plan (plan_limits, check_member_limit, check_habit_limit)
 node tests/test-06-borrado.js    # Fase 6: borrado de cuenta (delete_own_account)
 node tests/test-07-recuperacion.js  # Fase 7: recuperación de contraseña (generateLink, verifyOtp, updateUser)
+node tests/test-08-registro-seguro.js  # Fase 8: registro seguro (auth.uid, email, códigos, rate limiting)
 ```
 
 Cada script, en este orden:
@@ -275,6 +362,25 @@ Admin API y canjeándolo exactamente como lo haría la app.
 correo real y abrir el enlace desde el dispositivo (`Linking`/deep link real,
 `useLinkingURL()`, la navegación de `RootNavigator.js` hacia
 `ResetPasswordScreen`) — eso queda en `docs/manual-testing.md`, bloque 2.
+
+### Fase 8 — `test-08-registro-seguro.js` (41 tests)
+
+Seguridad de las dos RPCs de alta tras `sql/2026-09-28_registro_seguro.sql`.
+Ver la sección destacada al principio de este documento.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 0 [GUARDA] | `GET /auth/v1/settings` → `mailer_autoconfirm = true` | Si se reactiva "Confirm email", `signUp` no devuelve sesión y la app no puede llamar a las RPCs, que ahora exigen sesión |
+| 1 (×4) | `auth.signUp` real con la anon key devuelve sesión y la RPC con esa sesión crea el profile admin con el email de `auth.users` | Único test que recorre el camino real de `SignUpScreen.onSignUp`; el resto de fases usa `admin.createUser` |
+| 2 (×4) | Sin sesión, ninguna de las dos RPCs se ejecuta (`permission denied`) y no deja company ni código gastado | El agujero principal |
+| 3 (×4) | A no puede registrar el `user_id` de B en ninguna de las dos | `user_id` venía del cliente |
+| 4 (×5) | `user_email` distinto del autenticado → `email_mismatch`; un código emitido para otro email → `invalid_code`, sin sumar `failed_attempts` (no se puede usar para bloquear el código de otro) | Código ligado al email del invitado |
+| 5 (×2) | Segunda llamada con profile ya existente → `profile_already_exists`, sigue habiendo una sola company | Antes fallaba igual, pero con un error de PK crudo y tras insertar la company |
+| 6 (×2) | `company_name` en blanco o >100 caracteres rechazado | Validación que antes no existía |
+| 7 (×3) | El código queda `used = true` sin ningún UPDATE del cliente; tras borrar la cuenta, una cuenta nueva con el mismo email no puede reutilizarlo | Marcado atómico dentro de la RPC |
+| 8 (×11) | 5 códigos inventados por llamada directa → `invalid_code` y 5 filas en `activation_attempts`; el 6º se bloquea y no inserta (no alarga la ventana); con la IP bloqueada, un código **válido para tu propio email** sí se canjea; 5 intentos sobre un código usado → `failed_attempts = 5` y `locked_until` futuro, que bloquea aun con la IP limpia; una activación legítima no gasta cupo extra; y (8j/8k) tras 4 errores + 1 acierto en `check_activation_code`, el paso 2 no bloquea al usuario | El rate limiting ya no se esquiva llamando a la RPC directamente, y no frena a quien tiene un código bueno — ver hallazgo "cupo de IP en el paso 2" |
+| 9 | Un código emitido como `"  EMAIL  "` lo canjea el usuario con `email` | El admin puede teclear el email con mayúsculas o espacios |
+| 10 (×4) | Tras borrar la policy UPDATE no-admin: un miembro no puede marcar como usado un código pendiente de su grupo; el admin sigue editando nombre/email (`AdminScreen.handleSavePending`) y cancelando (DELETE, `AdminScreen` y `Members.jsx`) | El único UPDATE de cliente sobre `activation_codes` que queda es el del admin |
 
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
@@ -682,7 +788,8 @@ nueva. Índice para quien llegue a este documento por primera vez:
 | 5 | `test-05-limites.js` | 11 | Límites de plan (`plan_limits`, `check_member_limit`, `check_habit_limit`, `history_days`) |
 | 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
-| **Total** | **7 ficheros** | **98** | |
+| 8 | `test-08-registro-seguro.js` | 41 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
+| **Total** | **8 ficheros** | **139** | |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos
@@ -693,6 +800,7 @@ verificados contra la base de datos real antes de darlos por buenos):
 3. **`delete_own_account()` bloquea el borrado del único admin** de un grupo (Fase 6) — antes el grupo podía quedarse sin ningún admin para siempre.
 4. **Dos FKs corregidas de `NO ACTION` a `SET NULL`** (`habit_logs.validated_by`, `invitations.created_by`) — antes podían bloquear con un error crudo de Postgres el borrado de cualquier perfil referenciado ahí, tanto en `delete_member` como en `delete_own_account`.
 5. **Aislamiento multi-tenant cerrado en `habit_validations` INSERT** (Fase 6, tras cerrar el catálogo) — la policy nunca comprobó empresa ni pertenencia a `habit_validators`; cualquier autenticado de cualquier empresa podía validar el log de cualquier otra. Cerrado en el mismo cambio que añade el fallback de validador (admin de la empresa cuando un hábito se queda sin ninguno).
+6. **RPCs de alta cerradas a `anon` y ligadas a `auth.uid()`** (Fase 8, 2026-09-28) — ver la sección destacada al principio de este documento.
 
 **Hallazgos documentados, sin fix aplicado** (por ser diseño intencional ya
 aceptado, decisión de producto pendiente, o fuera del alcance de estos

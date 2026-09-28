@@ -83,6 +83,7 @@
     "enter_code": "Introduce tu código de activación",
     "code_placeholder": "Código de 6 dígitos",
     "code_invalid": "Código inválido o expirado",
+    "code_locked": "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.",
     "create_password": "Crea tu contraseña",
     "your_email": "Tu email",
     "submit_activate": "Activar cuenta",

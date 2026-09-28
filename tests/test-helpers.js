@@ -71,8 +71,11 @@ async function createTestUser({ role, companyName }) {
   }
   const userId = authData.user.id;
 
-  // Mismo RPC que SignUpScreen.onSignUp (modo "Crear grupo").
-  const { error: rpcError } = await supabaseAdmin.rpc('handle_new_user_registration', {
+  // Mismo RPC que SignUpScreen.onSignUp (modo "Crear grupo"), llamado COMO el
+  // propio usuario: desde 2026-09-28 la RPC exige auth.uid() = user_id y ya no
+  // la puede ejecutar anon (ni sirve la Service Role Key, que no tiene uid).
+  const userClient = await getClientForUser(email, password);
+  const { error: rpcError } = await userClient.rpc('handle_new_user_registration', {
     user_id: userId,
     user_email: email,
     user_full_name: `${TEST_PREFIX}Admin`,
@@ -128,7 +131,10 @@ async function joinAsTestMember(activationCode) {
   }
   const userId = authData.user.id;
 
-  const { error: rpcError } = await supabaseAdmin.rpc('handle_activation_registration', {
+  // Como el propio usuario, igual que en createTestUser. La RPC marca el
+  // código como usado ella misma y devuelve 'ok' | 'invalid_code'.
+  const userClient = await getClientForUser(record.email, password);
+  const { data: result, error: rpcError } = await userClient.rpc('handle_activation_registration', {
     user_id: userId,
     user_email: record.email,
     user_full_name: record.full_name,
@@ -136,6 +142,9 @@ async function joinAsTestMember(activationCode) {
   });
   if (rpcError) {
     throw new Error(`joinAsTestMember: fallo en handle_activation_registration (${record.email}): ${rpcError.message}`);
+  }
+  if (result !== 'ok') {
+    throw new Error(`joinAsTestMember: handle_activation_registration devolvió "${result}" para "${activationCode}"`);
   }
 
   return { userId, email: record.email, password, companyId: record.company_id };
@@ -358,15 +367,35 @@ async function cleanupTestData() {
 // usuario. El cliente con la Service Role Key nunca sirve para esto: la salta
 // por completo, así que "funciona" con él no dice nada sobre lo que puede
 // hacer un usuario real de la app.
+//
+// Cachea el cliente por email/contraseña: desde 2026-09-28 createTestUser y
+// joinAsTestMember inician sesión para llamar a las RPCs de alta, y sin caché
+// cada fase duplicaba los signInWithPassword. Supabase limita los inicios de
+// sesión por IP (429 over_request_rate_limit, ventana de 5 min), así que ante
+// un 429 se espera y se reintenta en vez de abortar la fase.
+const clientCache = new Map();
+const RATE_LIMIT_WAIT_MS = 30000;
+const RATE_LIMIT_MAX_WAITS = 12; // hasta 6 min, algo más que la ventana de 5
+
 async function getClientForUser(email, password) {
+  const key = `${email}\n${password}`;
+  if (clientCache.has(key)) return clientCache.get(key);
+
   const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
     realtime: { transport: WebSocket },
   });
-  const { error } = await client.auth.signInWithPassword({ email, password });
-  if (error) {
+  for (let attempt = 0; ; attempt++) {
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if (!error) break;
+    if (error.status === 429 && attempt < RATE_LIMIT_MAX_WAITS) {
+      console.log(`  (límite de inicios de sesión de Supabase alcanzado, esperando ${RATE_LIMIT_WAIT_MS / 1000}s...)`);
+      await new Promise((r) => setTimeout(r, RATE_LIMIT_WAIT_MS));
+      continue;
+    }
     throw new Error(`getClientForUser: no se pudo autenticar como ${email}: ${error.message}`);
   }
+  clientCache.set(key, client);
   return client;
 }
 
@@ -396,8 +425,22 @@ function assertRejected(error, message) {
   return pass;
 }
 
+// Cliente con la anon key y SIN sesión (visitante no autenticado), o con la
+// sesión que se le dé después (p. ej. tras un auth.signUp real).
+function getAnonClient() {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { transport: WebSocket },
+  });
+}
+
 module.exports = {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
   TEST_PREFIX,
+  testEmail,
+  randomPassword,
+  getAnonClient,
   supabaseAdmin,
   createTestUser,
   createTestCompanyAndAdmin,

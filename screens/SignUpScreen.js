@@ -89,7 +89,20 @@ export default function SignUpScreen() {
     if (/already registered|user.*exists|duplicate/i.test(msg)) return t('signup.error_already_registered');
     if (/invalid email/i.test(msg)) return t('errors.email_invalid');
     if (/password/i.test(msg)) return t('errors.password_required');
-    return msg;
+    console.warn('signUp error sin mapear:', msg);
+    return t('signup.error_generic');
+  };
+
+  // Errores de las RPCs de alta y de check_activation_code → siempre un texto
+  // traducido; el mensaje crudo de Postgres solo va a la consola.
+  const normalizeRegistrationError = (message) => {
+    const msg = String(message ?? '');
+    if (/bloqueado temporalmente/i.test(msg)) return t('signup.code_locked');
+    if (msg === 'limit_members_reached') return t('admin.limit_members_reached');
+    if (/invalid_code|inválido o expirado/i.test(msg)) return t('signup.code_invalid');
+    if (msg === 'profile_already_exists') return t('signup.error_already_registered');
+    console.warn('Error de registro sin mapear:', msg);
+    return t('signup.error_generic');
   };
 
   // ── Validación formulario create ──────────────────────────────────────────
@@ -160,7 +173,7 @@ export default function SignUpScreen() {
       activateSession(session);
       registered = true;
     } catch (e) {
-      setFormError(e?.message || t('signup.error_generic'));
+      setFormError(normalizeRegistrationError(e?.message));
     } finally {
       if (!registered) {
         authFlags.skipNextRedirect = false; // garantiza reset aunque haya crash o return temprano
@@ -197,7 +210,7 @@ export default function SignUpScreen() {
       setActivationData(record);
       setStep('activate_password');
     } catch (e) {
-      setFormError(e?.message || t('signup.error_generic'));
+      setFormError(normalizeRegistrationError(e?.message));
     } finally {
       setLoading(false);
     }
@@ -243,28 +256,19 @@ export default function SignUpScreen() {
         return;
       }
 
-      const { error: rpcError } = await supabase.rpc('handle_activation_registration', {
+      // La RPC marca el código como usado de forma atómica. Un código inválido
+      // no lanza error sino que devuelve 'invalid_code' (para que el intento
+      // fallido cuente en el rate limiting, ver docs/database.md).
+      const { data: activationResult, error: rpcError } = await supabase.rpc('handle_activation_registration', {
         user_id: user.id,
         user_email: activationData.email,
         user_full_name: activationData.full_name,
         activation_code: activationCodeTrimmed,
       });
-      if (rpcError) {
-        if (rpcError.message === 'limit_members_reached') {
-          setFormError(t('admin.limit_members_reached'));
-          return;
-        }
-        throw rpcError;
-      }
-
-      const { error: markUsedError } = await supabase
-        .from('activation_codes')
-        .update({ used: true })
-        .eq('code', activationCodeTrimmed);
-      if (markUsedError) {
-        // No bloqueamos el registro (la cuenta ya se creó vía RPC): solo avisamos
-        // para no dejar pasar en silencio un código que podría quedar reutilizable.
-        console.warn('No se pudo marcar el código de activación como usado:', markUsedError.message);
+      if (rpcError) throw rpcError;
+      if (activationResult !== 'ok') {
+        setFormError(t('signup.code_invalid'));
+        return;
       }
 
       // Todo OK: obtenemos la sesión activa y navegamos al AppStack manualmente.
@@ -272,7 +276,7 @@ export default function SignUpScreen() {
       activateSession(session);
       registered = true;
     } catch (e) {
-      setFormError(e?.message || t('signup.error_generic'));
+      setFormError(normalizeRegistrationError(e?.message));
     } finally {
       if (!registered) {
         authFlags.skipNextRedirect = false; // garantiza reset aunque haya crash o return temprano
@@ -461,6 +465,7 @@ export default function SignUpScreen() {
             placeholder={t('signup.full_name_placeholder')}
             placeholderTextColor={GRAY}
             autoCapitalize="words"
+            maxLength={100}
             editable={!loading}
           />
           {errors.fullName ? <Text style={styles.errorText}>{errors.fullName}</Text> : null}
@@ -520,6 +525,7 @@ export default function SignUpScreen() {
             placeholder={t('signup.company_placeholder')}
             placeholderTextColor={GRAY}
             autoCapitalize="words"
+            maxLength={100}
             editable={!loading}
           />
           {errors.companyName ? <Text style={styles.errorText}>{errors.companyName}</Text> : null}

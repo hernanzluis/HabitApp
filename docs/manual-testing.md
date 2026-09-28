@@ -1,6 +1,6 @@
 # HabitApp — Checklist de tests manuales
 
-Cubre lo que `tests/` (backend, 7 fases, 98 tests automáticos) no puede ver:
+Cubre lo que `tests/` (backend, 8 fases, 139 tests automáticos) no puede ver:
 UI real, gestos, cámara, permisos del sistema, estados visuales y timing de
 cliente. Ver [tests/README.md](../tests/README.md) para el catálogo
 automático — donde un ítem de aquí verifica el resultado visible de algo que
@@ -30,6 +30,9 @@ cubrirá en un checklist separado más adelante.
 - [ ] Desde OTRO dispositivo o cuenta, elegir "Activar con código" e introducir ese código → el email y el nombre se autocompletan (vienen del código) y avanza al paso de crear contraseña, sin pedir escribirlos de nuevo → cross-ref **Fase 1, test 3**
 - [ ] Completar el paso de contraseña → cuenta activada, aterrizas en `HomeScreen` ya como miembro (`role='usuario'`), sin quedarte colgado en una pantalla de carga
 - [ ] Introducir un código de 6 dígitos ya usado o inventado → mensaje de error claro ("Código inválido"), no un crash ni una pantalla en blanco
+- [ ] Tras registrarte (cualquiera de los dos modos) → no llega ningún correo de confirmación y no hay pantalla de "revisa tu correo": la confirmación de email está desactivada a propósito en la v1 → cross-ref **Fase 8, test 0** (comprueba el ajuste; aquí se verifica que el usuario real no queda esperando un correo)
+- [ ] Tras activar una cuenta con código, el admin abre la pestaña "Familia" → ese código ya no aparece como pendiente (lo marca usado la RPC, no el cliente) → cross-ref **Fase 8, test 7**
+- [ ] Introducir 5 códigos inventados seguidos en "Activar con código" y un 6º → el 6º muestra "Código bloqueado temporalmente, inténtalo de nuevo en unos minutos", no un error técnico → cross-ref **Fase 8, test 8** (allí por llamada directa a la RPC; aquí por la UI, que pasa por `check_activation_code`)
 
 ## 2. Recuperación de contraseña
 
@@ -39,7 +42,8 @@ cubrirá en un checklist separado más adelante.
 - [ ] Dejar el email vacío o escribir uno con formato inválido y pulsar enviar → aparece el error de validación de cliente correspondiente (email requerido / email inválido) sin llegar a llamar a Supabase (`ForgotPasswordScreen.js`, `isValidEmail`)
 - [ ] Introducir un email con formato válido (esté registrado o no) y pulsar enviar → mensaje de éxito ("revisa tu correo") y el botón de envío queda deshabilitado tras el envío — nótese que `resetPasswordForEmail` responde igual exista o no esa cuenta, así que este paso no puede usarse para confirmar si un email está registrado
 - [ ] Forzar un fallo de red durante el envío (modo avión) → aparece un mensaje de error de red distinto al de "email inválido", no un crash
-- [ ] Pulsar el enlace recibido por correo real (o, si el entorno de prueba no puede recibir correo real, un enlace de recovery generado desde el dashboard de Supabase/Admin API con el mismo `redirectTo`) con la app cerrada → la app se abre directamente en `ResetPasswordScreen` con el formulario de nueva contraseña, sin pasar por Login (`RootNavigator.js`, deep link `habitapp://reset-password`)
+- [ ] **Correo real, con el SMTP propio ya configurado:** pedir la recuperación para una cuenta cuyo email NO sea de la organización de Supabase (p. ej. un Gmail de pruebas) → el correo llega a la bandeja de entrada (no a spam) en pocos minutos, con el remitente de `habitteam.app`. El SMTP por defecto de Supabase solo entrega a miembros de la organización, así que este ítem no puede darse por bueno probando con la cuenta de Luis ni con un enlace generado por API — no es automatizable
+- [ ] Pulsar el enlace recibido por correo real con la app cerrada → la app se abre directamente en `ResetPasswordScreen` con el formulario de nueva contraseña, sin pasar por Login (`RootNavigator.js`, deep link `habitapp://reset-password`)
 - [ ] Repetir el mismo enlace con la app ya abierta en segundo plano → misma navegación a `ResetPasswordScreen`, sin necesidad de reiniciar la app (cubre tanto cold-start como warm-app, `Linking.useLinkingURL()`)
 - [ ] En `ResetPasswordScreen`, escribir una contraseña de menos de 8 caracteres o dejar el campo de confirmación distinto → error de validación de cliente correspondiente, sin llegar a llamar a `updateUser`
 - [ ] Completar el formulario con una contraseña válida y confirmada, y enviar → sin pantallas intermedias ni pulsar nada más, la app aterriza directamente en `HomeScreen` ya autenticado con la cuenta — es sesión real, no hace falta volver a iniciar sesión con la contraseña nueva
@@ -157,4 +161,5 @@ Según `project.md`: "iOS primero, Android funcional" — los estilos se prueban
 
 - **Renombrar el grupo (bloque 9):** no hay ningún test automático dedicado a esta acción por sí sola — sí está cubierta indirectamente la policy que lo permite (`companies` UPDATE, Fase 4), pero no un test de backend específico de "el admin renombra su company". Pospuesto sin decisión tomada de si merece un test propio en una fase futura — anotado aquí en vez de en `tests/README.md` porque no es un hueco de cobertura *automática* pendiente, es un hueco de este checklist manual.
 - **Modal de onboarding con sugerencias:** no existe en el código — ver nota en el bloque 11. No es un hueco de test, es una funcionalidad inexistente.
+- **Envío real de correo (SMTP, entrega, spam, plantillas):** ningún test de `tests/` puede verlo — `generateLink` (Fase 7) prueba el enlace, no que el correo llegue. Solo lo cubre el ítem de "correo real" del bloque 2.
 - **`resetPasswordForEmail` sin revelar si el email existe:** comportamiento correcto de seguridad (no permite enumerar cuentas registradas), documentado aquí para que no se confunda con un fallo al probarlo con un email no registrado y ver el mismo mensaje de éxito.

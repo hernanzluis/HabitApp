@@ -11,7 +11,7 @@ Supabase (PostgreSQL + Auth + Storage). RLS activado en todas las tablas.
 ### `profiles`
 | Campo | Tipo | Default | Notas |
 |---|---|---|---|
-| id | uuid | — | PK, FK → auth.users(id) |
+| id | uuid | gen_random_uuid() | PK. **No es FK real a auth.users(id)** (comprobado 2026-09-28: se pudo insertar un profile con un id inexistente vía la RPC de alta antigua) — la relación 1:1 solo la garantizan las RPCs de alta |
 | email | text | — | Email del usuario |
 | full_name | text | — | Nombre completo |
 | company_id | uuid | null | FK → companies(id) |
@@ -228,36 +228,33 @@ teams        ──── habits            (1:N, team_id, nullable)
 
 ## Funciones SQL (RPCs SECURITY DEFINER)
 
-### `handle_new_user_registration`
-Crea empresa nueva y perfil de administrador en una sola transacción. Se llama desde la app tras `auth.signUp` (SignUpScreen, modo "crear grupo").
+### `handle_new_user_registration` → void
+Crea empresa nueva y perfil de administrador en una sola transacción. Se llama desde la app tras `auth.signUp` (SignUpScreen, modo "crear grupo"), **con la sesión que devuelve `signUp`** — requiere la confirmación de email desactivada en el dashboard (si no, `signUp` no devuelve sesión). Reescrita el 2026-09-28 (`sql/2026-09-28_registro_seguro.sql`, ver `tests/README.md`): antes era ejecutable por `anon` y se fiaba de `user_id`/`user_email` del cliente.
 
-**Parámetros:**
-- `user_id` uuid
-- `user_email` text
-- `user_full_name` text
-- `company_name` text
+**Parámetros:** `user_id` uuid, `user_email` text, `user_full_name` text, `company_name` text
 
 **Lógica:**
-1. INSERT en `companies` con el nombre dado, guarda el nuevo `company_id`
-2. INSERT en `profiles` con `role = 'admin'` y el `company_id` creado
-3. UPDATE en `companies.admin_id` con el `user_id`
+1. `auth.uid()` NULL → `not_authenticated`; distinto de `user_id` → `user_id_mismatch`; ya existe profile → `profile_already_exists`
+2. Email tomado de `auth.users`; si `user_email` no coincide (sin distinguir mayúsculas ni espacios de los extremos) → `email_mismatch` (el parámetro se mantiene solo por compatibilidad)
+3. `full_name` y `company_name` recortados, no vacíos, ≤100 caracteres → si no, `invalid_full_name` / `invalid_company_name`
+4. INSERT en `companies` (`name`, `admin_id`) e INSERT en `profiles` (`role = 'admin'`) — mismas dos sentencias que la versión anterior
 
-### `handle_activation_registration`
-Registra un usuario en una empresa existente usando un código de activación personal. Se llama desde SignUpScreen (flujo `activate`) tras `auth.signUp`.
+`SECURITY DEFINER`, `search_path = public, pg_temp`, `EXECUTE` solo para `authenticated`.
 
-**Parámetros:**
-- `user_id` uuid
-- `user_email` text
-- `user_full_name` text
-- `activation_code` text
+### `handle_activation_registration` → text (`'ok'` | `'invalid_code'`)
+Registra un usuario en una empresa existente usando un código de activación personal. Se llama desde SignUpScreen (flujo `activate`) tras `auth.signUp`, con la sesión del propio usuario. Reescrita el 2026-09-28 junto con la anterior y corregida ese mismo día (`sql/2026-09-28b_activacion_rate_limit.sql`).
+
+**Parámetros:** `user_id` uuid, `user_email` text, `user_full_name` text (ignorado: el nombre sale del código), `activation_code` text
 
 **Lógica:**
-1. Busca el código en `activation_codes` donde `code = activation_code`, `used = false` y no expirado (`expires_at IS NULL OR expires_at > now()`)
-2. Si no existe, lanza excepción "Código de activación inválido o expirado"
-3. Obtiene `company_id` del registro del código
-4. Comprueba `check_member_limit(company_id)`; si no hay hueco, lanza excepción `limit_members_reached` (red de seguridad server-side, ver [business.md](business.md#enforcement))
-5. INSERT en `profiles` con `role = 'usuario'` y el `company_id` obtenido
-6. El cliente marca el código como `used = true` tras la llamada (UPDATE en `activation_codes`) — ver `check_activation_code` más abajo para el paso previo de validación del código antes del login
+1. Mismas comprobaciones de `auth.uid()`, profile existente y email que `handle_new_user_registration`
+2. Lee el código con `FOR UPDATE`. Si `locked_until` está en el futuro → excepción de bloqueo
+3. Código inexistente, usado, expirado o emitido para **otro email** (comparación sin mayúsculas ni espacios de los extremos) → rate limiting por IP (`activation_attempts`, mismo origen de IP que `check_activation_code`): si ya hay ≥5 intentos en 15 min, excepción de bloqueo sin insertar; si no, inserta un intento; si estaba usado/expirado, además `failed_attempts += 1` (a los 5, `locked_until = now() + 15 min`); **devuelve `'invalid_code'` sin lanzar** — un `RAISE` desharía también el registro del intento y el rate limiting nunca contaría nada. Un código válido con email incorrecto no suma `failed_attempts` (evita que un tercero bloquee el código de otra familia)
+4. `check_member_limit(company_id)` falso → `limit_members_reached` (se deshace todo, el código sigue sin usar)
+5. Marca el código `used = true` (resetea `failed_attempts`/`locked_until`) e inserta el profile con `role = 'usuario'` y el email de `auth.users`
+6. Devuelve `'ok'`
+
+El cupo de IP solo se comprueba en la rama de fallo (corrección `sql/2026-09-28b_activacion_rate_limit.sql`): `check_activation_code` registra todas sus llamadas, también las buenas, y comprobarlo al principio bloqueaba en el último paso a usuarios legítimos. Un código válido para el email del usuario autenticado siempre se canjea y no consume cupo. El cliente ya no hace ningún UPDATE sobre `activation_codes` tras la RPC.
 
 **Race condition:** se usa el singleton `authFlags` (`lib/authFlags.js`) para bloquear el redirect automático de `onAuthStateChange` durante el flujo de activación. `skipNextRedirect = true` se pone antes del `signUp`; se resetea en cada path de error; al terminar se llama `activateSession(session)` que ejecuta `setSession` directamente en RootNavigator. El mismo patrón se aplicó también al flujo "crear grupo" (`onSignUp`), que tenía la misma condición de carrera sin protección (corregido en la auditoría de 2026-09-16).
 
@@ -376,9 +373,9 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 - **DELETE:** `is_admin() AND company_id = my_company_id()` — las predefinidas (`company_id IS NULL`) nunca cumplen la condición, así que no se pueden borrar
 
 ### `activation_codes`
-- **SELECT:** `is_admin() AND company_id = my_company_id()` — solo el admin ve los códigos de su propia empresa (el signup con código pasa por el RPC `handle_activation_registration`, que bypasea RLS, así que el cliente no necesita SELECT abierto)
+- **SELECT:** `is_admin() AND company_id = my_company_id()` — solo el admin ve los códigos de su propia empresa (el signup con código pasa por `check_activation_code` y `handle_activation_registration`, que bypasean RLS, así que el cliente no necesita SELECT abierto)
 - **INSERT:** `is_admin() AND company_id = my_company_id()`
-- **UPDATE:** dos policies — `is_admin() AND company_id = my_company_id()` (el admin edita/cancela códigos de su empresa), o `auth.uid() IS NOT NULL AND used = false` con `WITH CHECK (used = true)` (el usuario recién registrado marca su propio código como usado justo tras `auth.signUp`)
+- **UPDATE:** `is_admin() AND company_id = my_company_id()` (el admin edita/cancela códigos de su empresa). La segunda policy que existía (`auth.uid() IS NOT NULL AND used = false`, `WITH CHECK (used = true)`, para que el usuario recién registrado marcara su código) se eliminó el 2026-09-28: el marcado lo hace ahora `handle_activation_registration`, y esa policy permitía a cualquier autenticado quemar los códigos pendientes de cualquier empresa
 - **DELETE:** `is_admin()` y `company_id` coincide con el del admin
 
 Corregido en 2026-09-16 tras auditoría de RLS — helpers `my_company_id()` e `is_admin()` (SECURITY DEFINER, `search_path` fijado) añadidos para evitar recursión al comprobar la empresa/rol del usuario desde las propias políticas de `profiles`.
