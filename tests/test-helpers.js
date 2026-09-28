@@ -346,10 +346,6 @@ async function cleanupTestData() {
     if (error) throw new Error(`cleanupTestData: fallo borrando activation_codes: ${error.message}`);
   }
   if (companyIds.length) {
-    const { error } = await supabaseAdmin.from('invitations').delete().in('company_id', companyIds);
-    if (error) throw new Error(`cleanupTestData: fallo borrando invitations: ${error.message}`);
-  }
-  if (companyIds.length) {
     const { error } = await supabaseAdmin.from('habits').delete().in('company_id', companyIds);
     if (error) throw new Error(`cleanupTestData: fallo borrando habits: ${error.message}`);
   }

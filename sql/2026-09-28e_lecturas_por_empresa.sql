@@ -1,5 +1,5 @@
 -- =============================================================================
--- PROPUESTA — NO EJECUTADO. Policies SELECT por empresa.
+-- APLICADO el 2026-09-28 con aprobación expresa de Luis (verificado en el catálogo). Policies SELECT por empresa.
 -- Fecha: 2026-09-28. Informe: docs/security-inventory-2026-09-28.md (sección B).
 --
 -- Hoy se leen SIN SESIÓN (demostrado con datos zztest-): habits, habit_logs

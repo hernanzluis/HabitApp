@@ -1,9 +1,31 @@
 # Inventario de seguridad de la API pública — 2026-09-28
 
-Qué queda abierto en la API de Supabase antes de abrir el registro a
-desconocidos. **Solo inventario:** no se ha modificado esquema, policies,
-funciones, grants ni datos reales. Las correcciones son propuestas en `sql/`
-(ficheros `2026-09-28c` a `2026-09-28g`), pendientes de aprobación de Luis.
+Qué quedaba abierto en la API de Supabase antes de abrir el registro a
+desconocidos, y cómo se cerró.
+
+## ✅ Estado: APLICADO el 2026-09-28
+
+Con aprobación expresa de Luis en el chat (Storage opción 1, borrar los
+ficheros huérfanos, eliminar `invitations`):
+
+1. **Copia de seguridad** previa en `~/habitapp-backups/2026-09-28-pre-seguridad/`
+   (fuera del repo): esquema y datos de `public`, volcado `pg_restore`,
+   policies/buckets/índice de Storage, default privileges, y copia de los 80
+   ficheros huérfanos.
+2. **Ensayo** de los seis SQL en una sola transacción con `ROLLBACK`: sin
+   errores, incluidos el trigger y la FK sobre `auth.users`.
+3. **Aplicados**, cada uno en su transacción y verificados en el catálogo:
+   `sql/2026-09-28c_funciones.sql`, `d_grants_tablas`, `e_lecturas_por_empresa`,
+   `f_storage` (opción 1), `g_fk_profiles_auth` y `h_drop_invitations`.
+4. **Ficheros huérfanos borrados** con la API de Storage: 69 fotos + 11 avatares
+   de 11 usuarios inexistentes (antes 69/11, después 0/0; ninguno de la cuenta
+   de Luis).
+5. **Verificación** con dos empresas `zztest-` (91/93, ver "Resultado tras
+   aplicar" al final) y una ronda de las fases 0-8 (fallos esperados, listados
+   al final). Barrido: 0 restos.
+
+Lo que sigue describe el estado **anterior** a la aplicación (el inventario)
+y las propuestas tal como se aprobaron.
 
 ## Método y qué se comprobó de verdad
 
@@ -183,7 +205,7 @@ Cambios de comportamiento que **sí** requieren tocar la UI:
 
 | Opción | Cierra | No cierra | Esfuerzo |
 |---|---|---|---|
-| **1. Públicos + listar/leer solo carpetas de la propia empresa** (recomendada v1) | Listar y descargar por API ficheros ajenos | Una URL ya conocida se abre sin sesión para siempre (con B aplicado, la API deja de filtrarlas) | ~1 h, sin cambios de código |
+| **1. Públicos + listar/leer solo carpetas de la propia empresa** (recomendada v1, **aplicada**) | **Listar** ficheros ajenos por la API | Una ruta ya conocida se abre sin sesión para siempre, por URL pública **o por `download()` de la API** (corregido tras aplicar: en un bucket público el endpoint de descarga no aplica RLS). Con B aplicado, las rutas ya no se filtran por la API | ~1 h, sin cambios de código |
 | **2. Privados + URLs firmadas** | Todo lo anterior + acceso sin sesión + URLs filtradas caducan | — | 1,5-2,5 días (11 pantallas/componentes + migración de URLs a rutas) |
 
 ---
@@ -230,3 +252,51 @@ Cambios de comportamiento que **sí** requieren tocar la UI:
   usuario).
 - Origen de los 80 ficheros huérfanos (probablemente cuentas borradas en
   pruebas anteriores; no comprobado).
+
+---
+
+## Resultado tras aplicar (2026-09-28)
+
+### Verificación con dos empresas `zztest-` — 91/93
+
+Bloqueado ✅: anon no lee ninguna tabla (`permission denied`) ni ejecuta
+ninguna función salvo `check_activation_code`; B no lee de A validaciones,
+`team_members`, hábitos, logs, asignaciones, validadores, recompensas,
+categorías ni profiles; B no lista la carpeta de A1 ni en la raíz ni dentro;
+`check_habit_limit`/`check_member_limit` de otra empresa → `forbidden`,
+`get_company_plan_info` → vacío; `delete_member` sobre uno mismo →
+`use_delete_own_account` (el admin sigue existiendo); rol no válido →
+`invalid_role`; URL de avatar ajena → `invalid_avatar_url` (y el CHECK frena el
+UPDATE directo); un UPDATE directo de `profiles.email` no lo desincroniza.
+
+Legítimo ✅, por los caminos de la app: alta real con `signUp`,
+`check_activation_code` sin sesión y activación con código; admin y miembro
+leen todo lo suyo (incluidas las 8 categorías predefinidas); el miembro sube su
+foto y registra el log con `photo_url`; avatar propio con `upsert` (dos veces)
+y `UPDATE` de `avatar_url`; `update_member_avatar` con la URL del bucket; URLs
+públicas de foto y avatar → HTTP 200.
+
+Las 2 que no:
+1. **B descarga la foto de A por la API si conoce la ruta** — propio de la
+   opción 1 (bucket público), ver la corrección en la tabla de B4. Cerrarlo del
+   todo es la opción 2.
+2. **El admin no puede reemplazar el avatar YA existente de un miembro**
+   (`upsert` → "new row violates row-level security policy"). **Anterior a este
+   cambio:** la única policy UPDATE de `storage.objects` es "users can update
+   own avatar", idéntica en el backup previo. Arreglarlo (policy UPDATE de admin
+   para avatares de su empresa) necesita una aprobación nueva.
+
+### Ronda de las fases 0-8 — tests que fallan
+
+Ninguno por rotura de la app; todos por el cambio aplicado. No se ha
+modificado `tests/` salvo quitar de `cleanupTestData()` el borrado de
+`invitations` (4 líneas, autorizado por Luis: sin ello todas las fases fallaban
+en la limpieza inicial).
+
+| Fase / test | Causa | Qué hacer en la tarea de tests |
+|---|---|---|
+| 4, test 5 | Esperado: el admin de A ya no lee los habits de B | Invertirlo |
+| 4, test 3 | Usa `avatar_url = 'https://example.com/…'`; el CHECK nuevo lo rechaza | Usar una URL del bucket `avatars/<id>/` |
+| 5, tests 2a, 2b y 5 | Llaman a `check_habit_limit` con la Service Role Key (sin `auth.uid()` → `forbidden`). Como admin autenticado funciona (comprobado: `true`) | Llamarlo con el cliente del admin |
+| 0, test 2a | El trigger de email hace imposible el desfase `profiles.email` ≠ `auth.users.email` que el canario simulaba; el canario sobrevive (2b, 2c ✓) | Reformular: comprobar que el desfase ya no se puede crear |
+| 6 (25/25, pasa) | La comprobación de `invitations` del test 4 es vacía: la tabla no existe y el `count` sale nulo | Quitar `invitations` de la lista |

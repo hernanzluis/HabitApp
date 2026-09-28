@@ -1,7 +1,7 @@
 -- =============================================================================
--- PROPUESTA — NO EJECUTADO. Funciones expuestas por la API.
+-- APLICADO el 2026-09-28 con aprobación expresa de Luis (verificado en el catálogo). Funciones expuestas por la API.
 -- Fecha: 2026-09-28. Informe: docs/security-inventory-2026-09-28.md (sección A).
--- Solo se aplica en una tarea posterior con aprobación expresa de Luis.
+-- Aplicado en su propia transacción, tras copia de seguridad y ensayo con ROLLBACK.
 --
 -- Orden recomendado de aplicación: este fichero (c) → d → e → f → g.
 -- Todo en una transacción: si algo falla, no se aplica nada.

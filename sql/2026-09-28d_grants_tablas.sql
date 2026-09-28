@@ -1,5 +1,5 @@
 -- =============================================================================
--- PROPUESTA — NO EJECUTADO. Privilegios de tabla de anon y authenticated.
+-- APLICADO el 2026-09-28 con aprobación expresa de Luis (verificado en el catálogo). Privilegios de tabla de anon y authenticated.
 -- Fecha: 2026-09-28. Informe: docs/security-inventory-2026-09-28.md (sección A).
 --
 -- Hoy anon y authenticated tienen SELECT, INSERT, UPDATE, DELETE, TRUNCATE,

@@ -1,5 +1,5 @@
 -- =============================================================================
--- PROPUESTA — NO EJECUTADO. FK profiles.id → auth.users(id) ON DELETE CASCADE.
+-- APLICADO el 2026-09-28 con aprobación expresa de Luis (verificado en el catálogo). FK profiles.id → auth.users(id) ON DELETE CASCADE.
 -- Fecha: 2026-09-28. Informe: docs/security-inventory-2026-09-28.md (sección C).
 --
 -- Estado comprobado a 2026-09-28: profiles solo tiene profiles_pkey; 0 profiles

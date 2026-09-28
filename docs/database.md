@@ -11,12 +11,12 @@ Supabase (PostgreSQL + Auth + Storage). RLS activado en todas las tablas.
 ### `profiles`
 | Campo | Tipo | Default | Notas |
 |---|---|---|---|
-| id | uuid | gen_random_uuid() | PK. **No es FK real a auth.users(id)** (comprobado 2026-09-28: se pudo insertar un profile con un id inexistente vía la RPC de alta antigua) — la relación 1:1 solo la garantizan las RPCs de alta |
-| email | text | — | Email del usuario |
+| id | uuid | — | PK y **FK → auth.users(id) ON DELETE CASCADE** (`profiles_id_fkey`, desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`); antes no había FK y el default `gen_random_uuid()` permitía profiles sin usuario de Auth). Borrar el usuario de Auth borra su profile y, en cascada, sus logs, asignaciones, validaciones y membresías |
+| email | text | — | Email del usuario. **Siempre igual al de `auth.users`**: el trigger `profiles_email_from_auth` lo fija en cada INSERT/UPDATE (un UPDATE directo de `email` no tiene efecto) y `on_auth_user_email_updated` (sobre `auth.users`) lo propaga si cambia en Auth |
 | full_name | text | — | Nombre completo |
 | company_id | uuid | null | FK → companies(id) |
-| role | text | — | 'admin' o 'usuario' (sin default a nivel de columna; lo fija cada RPC de alta) |
-| avatar_url | text | null | URL pública en Storage bucket avatars |
+| role | text | — | 'admin' o 'usuario' — `CHECK profiles_role_check` (sin default; lo fija cada RPC de alta) |
+| avatar_url | text | null | URL pública en Storage bucket avatars. `CHECK profiles_avatar_url_check`: null o `https://<proyecto>.supabase.co/storage/v1/object/public/avatars/<id>/<fichero>` (con query opcional) |
 | created_at | timestamptz | now() | — |
 
 ### `companies`
@@ -188,24 +188,14 @@ Tabla de solo lectura vía RPC (`get_company_plan_info`, `SECURITY DEFINER`); no
 | created_at | timestamptz | now() | — |
 | — | UNIQUE | — | (team_id, user_id) — un usuario no puede estar dos veces en el mismo equipo |
 
-### `invitations` _(sin uso activo)_
-| Campo | Tipo | Default | Notas |
-|---|---|---|---|
-| id | uuid | gen_random_uuid() | PK |
-| code | text | — | Código único, reutilizable |
-| company_id | uuid | — | FK → companies(id) |
-| created_by | uuid | — | FK → profiles(id) — no listado antes en esta tabla, corregido en la auditoría 2026-09-16 |
-| expires_at | timestamptz | null | Opcional, se valida en cliente |
-| created_at | timestamptz | now() | — |
-
-Ligada al RPC `handle_invited_user_registration`, que está discontinuada (ver sección de Funciones SQL). No hay ninguna llamada a `.from('invitations')` en el código actual de ninguno de los dos repos. Se mantiene documentada como su RPC, por si se retoma el flujo de invitación por código genérico en el futuro.
+### `invitations` — eliminada
+Tabla del flujo de invitación por código genérico, sin uso. **Eliminada el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`)** junto con su RPC `handle_invited_user_registration`: tenía 0 filas, se podía leer sin sesión (con los códigos) y la RPC creaba profiles en cualquier empresa sin ninguna comprobación. Su definición está en el backup del 2026-09-28.
 
 ### Relaciones entre tablas
 ```
 auth.users   ──── profiles          (1:1)
 companies    ──── profiles          (1:N, company_id)
 companies    ──── habits            (1:N, company_id)
-companies    ──── invitations       (1:N, company_id)
 companies    ──── activation_codes  (1:N, company_id)
 companies    ──── teams             (1:N, company_id)
 habits       ──── habit_assignments (1:N, habit_id)   ← asignación explícita por usuario
@@ -283,50 +273,47 @@ Ambos mensajes de bloqueo llegan al cliente vía `error.message` de Supabase y y
 
 ⚠️ Si `x-forwarded-for` llegara vacío (no debería pasar en tráfico real vía Supabase, pero sí al probar la función directamente en el SQL Editor sin pasar por PostgREST), `v_ip` es `NULL` y `ip_address = NULL` nunca iguala nada en SQL — ese tráfico quedaría sin límite por IP. Para probarlo en el SQL Editor hay que fijar `request.headers` manualmente con `select set_config('request.headers', '{"x-forwarded-for":"1.2.3.4"}', true)` antes de llamar a la función.
 
-### `handle_invited_user_registration` _(discontinuada)_
-Registra un usuario en una empresa existente usando un código de invitación.
-
-**Parámetros:**
-- `user_id` uuid
-- `user_email` text
-- `user_full_name` text
-- `invitation_code` text
-
-**Lógica:**
-1. Busca la invitación por `code` para obtener `company_id`
-2. INSERT en `profiles` con `role = 'usuario'` y el `company_id` de la invitación
-3. No marca la invitación como usada (diseño deliberado: el código es reutilizable)
-
-> **Discontinuada:** no se invoca en ningún punto del código actual (solo aparece mencionada en comentarios en `SignUpScreen.js` y `lib/authFlags.js`) y no tiene uso previsto a corto plazo. Se mantiene documentada por si se retoma en el futuro.
-
 ### `delete_member(member_id uuid)`
-Elimina un miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` (app) y `src/components/admin/Members.jsx` (web) desde el botón "Eliminar miembro". Borra `profiles` (el `ON DELETE CASCADE` de las FKs limpia `habit_logs`, `habit_assignments`, `habit_validators`, `habit_validations`, `team_members` propios) y después `auth.users`, todo dentro de la misma función — transaccional por construcción: si cualquier paso falla, Postgres deshace todo lo anterior, no puede quedar a medias. No limpia Storage (avatar/fotos de hábito quedan huérfanas).
+Elimina un miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` (app) y `src/components/admin/Members.jsx` (web) desde el botón "Eliminar miembro". Borra `profiles` (el `ON DELETE CASCADE` de las FKs limpia `habit_logs`, `habit_assignments`, `habit_validators`, `habit_validations`, `team_members` propios) y después `auth.users`, todo dentro de la misma función — transaccional por construcción: si cualquier paso falla, Postgres deshace todo lo anterior, no puede quedar a medias. No limpia Storage (avatar/fotos de hábito quedan huérfanas). Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): rechaza `member_id = auth.uid()` con `use_delete_own_account` (un admin no puede borrarse a sí mismo por aquí y saltarse la regla de único admin de `delete_own_account`; las dos UIs ya ocultaban ese botón).
 
 ### `delete_own_account()`
 Permite a un usuario eliminar su propia cuenta (requisito de revisión de Apple, guideline 5.1.1v). Mismo patrón que `delete_member` (`SECURITY DEFINER`, `DELETE FROM profiles` + `DELETE FROM auth.users` en una sola función, transaccional), pero **sin parámetros**: opera exclusivamente sobre `auth.uid()`, así que no existe ningún id que pueda no coincidir con quien llama — más seguro que replicar la firma `member_id uuid` de `delete_member` y comprobar la igualdad a mano. Llamada desde `screens/ProfileScreen.js` (`runAccountDeletion`), tras dos `Alert.alert` de confirmación consecutivos y un borrado best-effort de los ficheros del usuario en `avatars`/`habit-photos` (Storage no se limpia dentro de la función, igual que en `delete_member`, así que se hace desde el cliente antes de llamar a la RPC). Tras el éxito, el cliente hace `supabase.auth.signOut()`; `RootNavigator` gestiona la redirección a Login vía `onAuthStateChange`, sin lógica de navegación adicional.
 
-Corrigió dos FKs que antes eran `ON DELETE NO ACTION` (`habit_logs.validated_by`, `invitations.created_by`) a `SET NULL` — con `NO ACTION`, borrar el perfil de un usuario referenciado ahí habría fallado con un error de Postgres sin manejar, tanto aquí como en `delete_member` (afectaba a ambos, no solo al nuevo flujo).
+Corrigió dos FKs que antes eran `ON DELETE NO ACTION` (`habit_logs.validated_by`, `invitations.created_by` — tabla eliminada el 2026-09-28) a `SET NULL` — con `NO ACTION`, borrar el perfil de un usuario referenciado ahí habría fallado con un error de Postgres sin manejar, tanto aquí como en `delete_member` (afectaba a ambos, no solo al nuevo flujo).
 
 **Limitación conocida, aceptada deliberadamente:** si el único admin de un grupo elimina su cuenta, el grupo queda sin ningún admin (nadie puede volver a gestionar miembros/hábitos). No se bloquea el borrado por esto — Apple exige poder eliminar la cuenta sin trabas. `companies.admin_id` y `habits.created_by` no son FKs reales en la base de datos (solo referencias lógicas documentadas, ningún código las lee) y quedan con un valor obsoleto tras el borrado, sin impacto funcional.
 
 ### `check_habit_limit(p_company_id)` → boolean
-Comprueba si el grupo puede crear un hábito activo más, según su plan. Usada en `screens/AdminScreen.js` (app) y `Habits.jsx` (web) antes del INSERT de un nuevo hábito. Detalle de planes y límites en [business.md](business.md).
+Comprueba si el grupo puede crear un hábito activo más, según su plan. Usada en `screens/AdminScreen.js` (app) y `Habits.jsx` (web) antes del INSERT de un nuevo hábito. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): solo sobre la empresa propia (`forbidden` si `p_company_id` ≠ `my_company_id()`). Detalle de planes y límites en [business.md](business.md).
 
 ### `check_member_limit(p_company_id)` → boolean
-Comprueba si el grupo puede añadir un miembro más, según su plan. Usada en `screens/AdminScreen.js` (app) y `Members.jsx` (web) antes de generar un código de activación, y como red de seguridad server-side dentro de `handle_activation_registration`. Detalle en [business.md](business.md).
+Comprueba si el grupo puede añadir un miembro más, según su plan. Usada en `screens/AdminScreen.js` (app) y `Members.jsx` (web) antes de generar un código de activación, y como red de seguridad server-side dentro de `handle_activation_registration`. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): solo sobre la empresa propia (`forbidden`), salvo si quien llama aún no tiene profile (caso de `handle_activation_registration` durante el alta). Detalle en [business.md](business.md).
 
 ### `get_company_plan_info(p_company_id)`
-Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` del grupo. Usada por el hook `lib/usePlanInfo.js`. Detalle en [business.md](business.md).
+Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` del grupo. Usada por el hook `lib/usePlanInfo.js`. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): no devuelve nada para una empresa ajena. Detalle en [business.md](business.md).
 
 ### `delete_expired_habit(p_habit_id uuid)`
 Elimina un hábito 'once' ya caducado (SECURITY DEFINER, bypasea RLS). Usada en `screens/ValidateHabitScreen.js`, pestaña "caducados", desde el botón de borrar de cada tarjeta.
 
 ### `update_member_avatar(member_id uuid, new_avatar_url text)`
-Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` cuando un admin cambia la foto de perfil de otro miembro. Ver nota en la política UPDATE de `profiles` más abajo: esta RPC existe para ese campo, pero `full_name`/`email`/`role` de otro miembro se actualizan con un UPDATE directo desde el cliente en el mismo flujo — inconsistente con pasar por RPC solo para el avatar; pendiente de aclarar si la política real de `profiles` ya contempla una excepción de admin.
+Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` cuando un admin cambia la foto de perfil de otro miembro. Ver nota en la política UPDATE de `profiles` más abajo: esta RPC existe para ese campo, pero `full_name`/`email`/`role` de otro miembro se actualizan con un UPDATE directo desde el cliente en el mismo flujo — inconsistente con pasar por RPC solo para el avatar; pendiente de aclarar si la política real de `profiles` ya contempla una excepción de admin. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): `new_avatar_url` debe ser null o del bucket `avatars` en la carpeta del propio miembro (`invalid_avatar_url`).
+
+### `update_member_profile(member_id, new_full_name, new_email, new_role)`
+**Sin llamadas en la app ni en la web** (la edición de miembros es un UPDATE directo sobre `profiles`). Admin de la misma empresa. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): `new_role` ∈ {`admin`, `usuario`} (`invalid_role`), `new_full_name` no vacío y ≤100; `new_email` se ignora (el email lo fija el trigger de sincronización con Auth).
+
+### Helpers de policies: `is_admin()`, `my_company_id()`, `is_my_company_habit(habit_id)`, `is_my_company_log(log_id)`
+`SECURITY DEFINER`, `STABLE`. Los dos últimos se añadieron el 2026-09-28 para las policies SELECT de las tablas hijas (evitan RLS anidado).
+
+### Permisos de EXECUTE y `search_path` (desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`))
+- Todas las funciones de `public` tienen `search_path = public, pg_temp`.
+- `anon` y `public` solo pueden ejecutar `check_activation_code` (paso 1 del alta con código, antes del signUp). Todas las demás: solo `authenticated`. Las funciones de trigger (`prevent_self_role_company_escalation`, `profiles_email_from_auth`, `sync_profile_email_from_auth`) no las ejecuta ningún cliente.
+- Default privileges del rol `postgres` en `public`: las funciones futuras nacen sin EXECUTE para `anon`/`public`.
 
 ---
 
 ## Políticas RLS
+
+Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`) **todas las policies SELECT son `to authenticated` y filtran por la empresa propia**; `anon` no tiene ningún privilegio de tabla (ver "Privilegios de tabla" al final de esta sección).
 
 ### `profiles`
 - **SELECT:** `id = auth.uid() OR company_id = my_company_id()` — el propio perfil o el de un compañero de la misma empresa
@@ -339,36 +326,36 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 - **UPDATE:** `is_admin() AND id = my_company_id()` — cubre el rename de grupo en `screens/ProfileScreen.js` (`saveGroupName`)
 
 ### `habits`
-- **SELECT:** `true` — lectura abierta (se filtra por company_id en el cliente)
+- **SELECT:** `company_id = my_company_id()` (antes `true`, legible incluso sin sesión)
 - **INSERT:** `is_admin() AND company_id = my_company_id()`
 - **UPDATE:** `is_admin() AND company_id = my_company_id()`
 - **DELETE:** usuarios con `role = 'admin'` de la misma empresa
 
 ### `habit_assignments`
-- **SELECT:** `true` — lectura abierta (necesario para HomeScreen y RankingScreen)
+- **SELECT:** `is_my_company_habit(habit_id)` (antes `true`)
 - **INSERT:** cualquier autenticado (no solo el admin, intencional), acotado a que el hábito referenciado sea de tu propia empresa (`EXISTS (... habits h WHERE h.id = habit_id AND h.company_id = my_company_id())`)
 - **DELETE:** `is_admin()` y el hábito referenciado pertenece a la empresa del admin
 
 ### `habit_validators`
-- **SELECT:** `true` — lectura abierta
+- **SELECT:** `is_my_company_habit(habit_id)` (antes `true`)
 - **INSERT/DELETE:** `is_admin()` y el hábito referenciado pertenece a la empresa del admin (`EXISTS (... habits h WHERE h.id = habit_id AND h.company_id = my_company_id())`) — cubre los INSERT/DELETE directos de `AdminScreen.js` y `Habits.jsx` (web)
 
 ### `habit_logs`
-- **SELECT:** `true` — lectura abierta (necesario para ValidateHabitScreen y RankingScreen)
+- **SELECT:** `is_my_company_habit(habit_id)` (antes `true`, con `photo_url` y `notes` legibles sin sesión)
 - **INSERT:** `user_id = auth.uid()` y el hábito referenciado es de tu propia empresa — evita insertar logs a nombre de otro usuario
 - **UPDATE:** el propio dueño del log, un validador asignado a ese hábito (`habit_validators`), o un admin de la empresa del hábito. En la práctica no la usa ningún flujo actual del cliente (la validación social escribe en `habit_validations`, no toca `status` de `habit_logs` directamente — `validated_by`/`validated_at`/`status` son en la práctica legado, ver más abajo)
 
 ### `habit_validations`
-- **SELECT:** `true` — lectura abierta
-- **INSERT:** `auth.uid() = validator_id` — solo puedes insertar con tu propio validator_id
+- **SELECT:** `is_my_company_log(habit_log_id)` (antes `true` para cualquier autenticado)
+- **INSERT:** `auth.uid() = validator_id`, log de tu empresa y ser validador del hábito (o admin si el hábito no tiene validadores)
 - La constraint UNIQUE (habit_log_id, validator_id) a nivel de DB previene votos duplicados
 
 ### `habit_rewards`
-- **SELECT:** `true` — lectura abierta
+- **SELECT:** `is_my_company_habit(habit_id)` (antes `true`)
 - **INSERT/UPDATE/DELETE:** `is_admin()` y el hábito referenciado pertenece a la empresa del admin — cubre los INSERT/DELETE directos de `AdminScreen.js` y `Habits.jsx` (web)
 
 ### `categories`
-- **SELECT:** `true` — lectura abierta (predefinidas del sistema + las de todas las empresas; se filtra por `company_id` en el cliente)
+- **SELECT:** `company_id IS NULL OR company_id = my_company_id()` — predefinidas + las de tu empresa (antes `true`)
 - **INSERT:** `is_admin() AND company_id = my_company_id()` — solo puede crear categorías para su propia empresa
 - **DELETE:** `is_admin() AND company_id = my_company_id()` — las predefinidas (`company_id IS NULL`) nunca cumplen la condición, así que no se pueden borrar
 
@@ -380,16 +367,16 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 
 Corregido en 2026-09-16 tras auditoría de RLS — helpers `my_company_id()` e `is_admin()` (SECURITY DEFINER, `search_path` fijado) añadidos para evitar recursión al comprobar la empresa/rol del usuario desde las propias políticas de `profiles`.
 
-### `invitations` _(sin uso activo — ver nota en el esquema de tablas)_
-- **SELECT:** `true`, roles `anon, authenticated` — lectura abierta (pensada para validar el código sin sesión, aunque el flujo real está discontinuado)
-- **INSERT:** `is_admin() AND company_id = my_company_id()`
-- **UPDATE:** `is_admin() AND company_id = my_company_id()`
-
 ### `teams` / `team_members` _(creadas, sin uso activo en el código — ver nota en el esquema de tablas)_
 - `teams` SELECT/UPDATE: `auth.uid() = created_by`; INSERT: `is_admin() AND company_id = my_company_id()`
-- `team_members` SELECT: `true`; INSERT/DELETE: `is_admin()` y el equipo referenciado pertenece a la empresa del admin
+- `team_members` SELECT: el team es de tu empresa (antes `true`); INSERT/DELETE: `is_admin()` y el equipo referenciado pertenece a la empresa del admin
 
 Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verificado en la auditoría de 2026-09-16).
+
+### Privilegios de tabla (desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`))
+- `anon`: **ningún privilegio** en ninguna tabla de `public` (antes SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER en todas). Nada en la app ni en la web consulta tablas sin sesión: el alta va por RPCs.
+- `authenticated`: SELECT/INSERT/UPDATE/DELETE (acotados por RLS); sin TRUNCATE/REFERENCES/TRIGGER; sin acceso a `activation_attempts` ni `plan_limits` (solo vía funciones).
+- Default privileges del rol `postgres` en `public` ajustados igual para tablas y secuencias futuras.
 
 ---
 
@@ -401,7 +388,7 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 - **Path:** `{user_id}/{habit_id}/{timestamp}.{ext}`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
 - **Política INSERT:** `bucket_id = 'habit-photos' AND (storage.foldername(name))[1] = auth.uid()::text` — solo puedes subir a tu propio path
 - **Política DELETE:** mismo criterio (propio path) — usada por `ProfileScreen.deleteAllUserStorageFiles` al eliminar la propia cuenta
-- **Política SELECT:** pública (URLs públicas)
+- **Política SELECT (listar/leer por API):** `members read own company files` — solo carpetas de usuarios de tu empresa (desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`); antes cualquier autenticado listaba todo). El bucket sigue siendo **público**: la URL pública, o `download()` con la ruta conocida, sirve el fichero sin sesión ni RLS
 
 ### Bucket: `avatars`
 - **Tipo:** público
@@ -409,7 +396,8 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 - **Path:** `{user_id}/avatar.jpg`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
 - **Política INSERT/UPDATE:** solo tu propio path; además, `admins can upload avatar for own company member` permite a un admin subir el avatar de otro miembro (para `update_member_avatar`) siempre que ese miembro sea de su misma empresa (`profiles.company_id = my_company_id()`)
 - **Política DELETE:** propio path — usada por `ProfileScreen.deleteAllUserStorageFiles` al eliminar la propia cuenta
-- **Política SELECT:** pública (URLs públicas)
+- **Política SELECT (listar/leer por API):** la misma `members read own company files`. Bucket público: ver nota de `habit-photos`
+- **Limitación conocida (anterior al 2026-09-28):** no hay policy UPDATE de admin, así que el `upsert` de AdminScreen sobre el avatar YA existente de un miembro falla por RLS; solo funciona si el miembro no tenía avatar
 - **Nota:** la URL limpia se guarda en `profiles.avatar_url`; en el cliente se añade `?t=Date.now()` para cache-busting inmediato tras la subida
 
 ---

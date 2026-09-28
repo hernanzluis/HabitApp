@@ -1,5 +1,5 @@
 -- =============================================================================
--- PROPUESTA — NO EJECUTADO. Storage: dos opciones, elegir UNA.
+-- APLICADO el 2026-09-28 con aprobación expresa de Luis (verificado en el catálogo). Storage: dos opciones, elegir UNA.
 -- Fecha: 2026-09-28. Informe: docs/security-inventory-2026-09-28.md (sección B).
 --
 -- Hoy (demostrado con datos zztest-):
@@ -18,9 +18,10 @@
 -- OPCIÓN 1 (recomendada para la v1) — buckets públicos, sin listado ajeno.
 -- Esfuerzo: ~1 h (SQL + prueba manual). Sin cambios en app ni web.
 --
--- Cierra: listar y descargar por API ficheros de otras empresas.
--- NO cierra: quien ya tenga una URL la puede abrir para siempre, sin sesión
--- (el bucket sigue siendo público). Con el fichero e aplicado, las URLs dejan
+-- Cierra: LISTAR por API ficheros de otras empresas.
+-- NO cierra: quien conozca una ruta la abre para siempre, sin sesión, por la
+-- URL pública o por download() de la API (en un bucket público ese endpoint
+-- no aplica RLS — comprobado tras aplicar). OPCIÓN 1 APLICADA el 2026-09-28. Con el fichero e aplicado, las URLs dejan
 -- de filtrarse por la API; el riesgo que queda es una URL compartida o
 -- filtrada por otro canal.
 -- =============================================================================
