@@ -63,6 +63,27 @@ Cambios de configuración además de las versiones de `package.json`:
 
 ---
 
+## Configuración externa
+
+Lo que no vive en el código ni en el esquema de Supabase (no se puede reproducir con SQL ni con un commit). Estado a 2026-09-29, según lo configurado por Luis; Code no lo ha verificado desde fuera.
+
+### Dominio
+- `habitteam.app` está **registrado y gestionado en Namecheap** (DNS en *Advanced DNS*), **no en Vercel**.
+- Vercel solo tiene los dominios de habitteam-web para el hosting (`habitteam.app`, `www.habitteam.app` y el subdominio `*.vercel.app`), sin gestionar su DNS: cualquier registro DNS nuevo (correo, verificaciones) se añade en Namecheap.
+
+### SMTP (correos de Supabase Auth)
+- Proveedor: **Resend**.
+- Dominio de envío verificado: **`updates.habitteam.app`**, con DKIM y SPF (dos CNAME: `rsend.updates` y `send.updates`). **DMARC** (`_dmarc` TXT) opcional y **pendiente de añadir** (ver `release.md`).
+- Conectado a Supabase con la **integración directa de Resend** (Resend → Settings → Integrations → *Connect to Supabase*), no copiando credenciales SMTP a mano.
+- Remitente: `team@updates.habitteam.app`, nombre **"HabitApp"**.
+
+### Supabase — Authentication (panel)
+- **Confirm email: desactivado.** Decisión v1 (menos pasos en el alta y un fallo menos en la revisión de Apple). Revisar antes de reactivarlo: con la confirmación activa `signUp` no devuelve sesión y las RPCs de alta (que exigen `auth.uid()`) fallarían — ver `tests/README.md` (Fase 8, test 0) y `release.md`.
+- **Site URL:** `https://habitteam.app`. Redirect URLs: `habitapp://reset-password` (deep link de recuperación de contraseña).
+- **Enable custom SMTP: activado**, con la integración de Resend (sustituye al SMTP por defecto de Supabase, que solo entregaba a miembros de la organización y con un límite de 2 correos/hora).
+
+---
+
 ## Comandos
 
 ```bash
