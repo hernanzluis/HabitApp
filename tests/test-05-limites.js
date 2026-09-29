@@ -10,6 +10,7 @@ const {
   supabaseAdmin,
   createTestCompanyAndAdmin,
   joinAsTestMember,
+  getClientForUser,
   buildStreak,
   resetActivationRateLimit,
   cleanupTestData,
@@ -20,6 +21,18 @@ const results = [];
 function check(actual, expected, message) {
   const pass = assertEqual(actual, expected, message);
   results.push({ pass, message });
+}
+
+// Desde el 2026-09-28 check_habit_limit / check_member_limit /
+// get_company_plan_info solo responden sobre la empresa de quien llama
+// (my_company_id()). La Service Role Key no tiene usuario → 'forbidden'. Se
+// llaman como el admin de prueba, igual que hace la app (AdminScreen,
+// Habits.jsx, Members.jsx) y como las RPCs de alta en la Fase 8.
+async function rpcAsAdmin(admin, fn, args) {
+  const client = await getClientForUser(admin.email, admin.password);
+  const { data, error } = await client.rpc(fn, args);
+  if (error) throw new Error(`${fn} como admin: ${error.message}`);
+  return data;
 }
 
 async function getPlanLimits(plan) {
@@ -80,11 +93,11 @@ async function run() {
     for (let i = 0; i < maxHabits - 1; i++) {
       await createTestHabit(adminHabits);
     }
-    const { data: okBeforeLimit } = await supabaseAdmin.rpc('check_habit_limit', { p_company_id: adminHabits.companyId });
+    const okBeforeLimit = await rpcAsAdmin(adminHabits, 'check_habit_limit', { p_company_id: adminHabits.companyId });
     check(okBeforeLimit, true, `Test 2a: con ${maxHabits - 1} hábitos activos (uno menos del límite), check_habit_limit = true`);
 
     await createTestHabit(adminHabits); // llega exactamente al límite
-    const { data: okAtLimit } = await supabaseAdmin.rpc('check_habit_limit', { p_company_id: adminHabits.companyId });
+    const okAtLimit = await rpcAsAdmin(adminHabits, 'check_habit_limit', { p_company_id: adminHabits.companyId });
     check(okAtLimit, false, `Test 2b: con ${maxHabits} hábitos activos (el límite exacto), check_habit_limit = false`);
 
     // La RPC dice que no hay hueco — pero nada en la base de datos impide
@@ -112,12 +125,12 @@ async function run() {
       const { code } = await addTestMember(adminMembers, `Member${i}`);
       await joinAsTestMember(code);
     }
-    const { data: okOneSlotLeft } = await supabaseAdmin.rpc('check_member_limit', { p_company_id: adminMembers.companyId });
+    const okOneSlotLeft = await rpcAsAdmin(adminMembers, 'check_member_limit', { p_company_id: adminMembers.companyId });
     check(okOneSlotLeft, true, `Test 3a: con ${maxMembers - 1} miembros totales (admin + ${maxMembers - 2}), queda 1 hueco, check_member_limit = true`);
 
     const { code: lastCode } = await addTestMember(adminMembers, 'LastMember');
     await joinAsTestMember(lastCode); // ocupa el último hueco -> total = maxMembers
-    const { data: okAtMemberLimit } = await supabaseAdmin.rpc('check_member_limit', { p_company_id: adminMembers.companyId });
+    const okAtMemberLimit = await rpcAsAdmin(adminMembers, 'check_member_limit', { p_company_id: adminMembers.companyId });
     check(okAtMemberLimit, false, `Test 3b: con ${maxMembers} miembros totales (el límite exacto), check_member_limit = false`);
 
     // ============================================================
@@ -137,7 +150,7 @@ async function run() {
     }
     // Ahora hay 1 hueco. Se genera un código para "el siguiente" pero NO se usa todavía.
     const { code: heldBackCode, email: heldBackEmail } = await addTestMember(adminRace, 'HeldBack');
-    const { data: clientCheckPassed } = await supabaseAdmin.rpc('check_member_limit', { p_company_id: adminRace.companyId });
+    const clientCheckPassed = await rpcAsAdmin(adminRace, 'check_member_limit', { p_company_id: adminRace.companyId });
     check(clientCheckPassed, true, 'Test 4a: en el momento de generar el código, check_member_limit ya decía que había hueco (chequeo de cliente)');
 
     // Otro miembro distinto ocupa ese mismo hueco mientras el código anterior sigue sin usar.
@@ -179,7 +192,7 @@ async function run() {
     for (let i = 0; i < habitsToCreate; i++) {
       await createTestHabit(adminEnterprise);
     }
-    const { data: enterpriseOk } = await supabaseAdmin.rpc('check_habit_limit', { p_company_id: adminEnterprise.companyId });
+    const enterpriseOk = await rpcAsAdmin(adminEnterprise, 'check_habit_limit', { p_company_id: adminEnterprise.companyId });
     check(enterpriseOk, true, `Test 5: con ${habitsToCreate} hábitos activos (más que el límite de familiar), check_habit_limit sigue en true en plan "empresa"`);
 
     // ============================================================

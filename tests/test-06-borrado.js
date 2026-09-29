@@ -8,7 +8,8 @@
 // profiles (CASCADE real vía FK a habit_logs.user_id, habit_assignments.
 // user_id, habit_validators.user_id, habit_validations.validator_id,
 // team_members.user_id; SET NULL en las dos columnas legado/sin uso
-// habit_logs.validated_by e invitations.created_by) + DELETE FROM auth.users.
+// habit_logs.validated_by; invitations.created_by también, hasta que la tabla
+// se eliminó el 2026-09-28) + DELETE FROM auth.users.
 
 const {
   TEST_PREFIX,
@@ -195,13 +196,16 @@ async function run() {
       ['habit_validators', 'user_id'],
       ['habit_validations', 'validator_id'],
       ['team_members', 'user_id'],
-      ['invitations', 'created_by'],
       ['profiles', 'id'],
     ];
     let anyResidual = false;
     for (const [table, column] of tablesAndColumns) {
       const { count, error } = await supabaseAdmin.from(table).select('*', { count: 'exact', head: true }).eq(column, memberT2.userId);
       if (error) throw error;
+      // Con head:true, una tabla que ya no existe devuelve count=null SIN
+      // error (así pasó en silencio invitations tras eliminarse el
+      // 2026-09-28). Un recuento nulo no demuestra "cero filas": se falla.
+      if (count === null) throw new Error(`Test 4: no se pudo contar ${table}.${column} (¿la tabla existe?)`);
       if (count > 0) {
         anyResidual = true;
         console.log(`  residual encontrado: ${table}.${column} = ${count} fila(s)`);

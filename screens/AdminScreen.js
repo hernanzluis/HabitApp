@@ -179,7 +179,6 @@ export default function AdminScreen() {
   const [editMemberVisible, setEditMemberVisible] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [editMemberName, setEditMemberName] = useState('');
-  const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberAvatarUrl, setEditMemberAvatarUrl] = useState(null);
   const [editMemberRole, setEditMemberRole] = useState('usuario');
   const [savingMember, setSavingMember] = useState(false);
@@ -716,7 +715,6 @@ export default function AdminScreen() {
   const handleOpenEditMember = (member) => {
     setEditingMember(member);
     setEditMemberName(member.full_name || '');
-    setEditMemberEmail(member.email || '');
     setEditMemberAvatarUrl(member.avatar_url || null);
     setEditMemberRole(member.role || 'usuario');
     setMemberModalError('');
@@ -812,9 +810,10 @@ export default function AdminScreen() {
         }
       }
 
+      // Sin email: profiles.email lo fija un trigger a partir de auth.users
+      // (sql/2026-09-28c_funciones.sql), así que editarlo aquí no tendría efecto.
       const updatePayload = {
         full_name: editMemberName.trim(),
-        email: editMemberEmail.trim(),
       };
       if (roleChanged) updatePayload.role = editMemberRole;
 
@@ -826,7 +825,7 @@ export default function AdminScreen() {
 
       setMembers((prev) => prev.map((m) =>
         m.id === editingMember.id
-          ? { ...m, full_name: editMemberName.trim(), email: editMemberEmail.trim(), avatar_url: editMemberAvatarUrl, role: editMemberRole }
+          ? { ...m, full_name: editMemberName.trim(), avatar_url: editMemberAvatarUrl, role: editMemberRole }
           : m
       ));
       setEditMemberVisible(false);
@@ -1840,17 +1839,6 @@ export default function AdminScreen() {
                   placeholder={t('admin.member_name')}
                   placeholderTextColor={GRAY}
                   autoCapitalize="words"
-                  editable={!savingMember}
-                />
-                <Text style={styles.inputLabel}>{t('admin.member_email')}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={editMemberEmail}
-                  onChangeText={setEditMemberEmail}
-                  placeholder={t('admin.member_email')}
-                  placeholderTextColor={GRAY}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
                   editable={!savingMember}
                 />
 

@@ -5,9 +5,14 @@
 // auth.admin.deleteUser. Este test comprueba, con usuarios de Auth reales,
 // que nunca borra uno cuyo email en Auth no lleve el prefijo zztest-:
 //   A) canario sin profile (la vía de "huérfanos" de cleanupTestData)
-//   B) canario CON un profile cuyo profiles.email sí lleva el prefijo
-//      (la vía de userIds, que parte de profiles.email — ver tests/README.md,
-//      hallazgo de la Fase 0)
+//   B) canario CON profile, miembro de una company zztest- (la vía de userIds
+//      que parte de "miembros de una company de test", sea cual sea su email)
+// Hasta el 2026-09-28 el caso B era un profile con email zztest- sobre un
+// usuario de Auth canary- (desfase profiles.email ≠ auth.users.email, ver
+// tests/README.md, hallazgo de la Fase 0). Desde ese día el trigger
+// profiles_email_from_auth hace imposible ese desfase (lo confirma el test
+// 3), así que el caso B vigila la otra vía por la que un usuario real podría
+// acabar en userIds.
 // Los canarios usan el prefijo canary-, nunca zztest-, y un dominio no real.
 // Cada uno se borra explícitamente por su id en un finally.
 //
@@ -50,6 +55,7 @@ async function run() {
   console.log('== Fase 0: canario de la barrera de cleanupTestData ==\n');
   const canaries = [];
   const canaryProfileIds = [];
+  let canaryCompanyId = null;
 
   try {
     // ---- Test 1: canario sin profile ----
@@ -59,15 +65,16 @@ async function run() {
     await cleanupTestData();
     check(await authUserExists(a.id), true, `Test 1: el canario ${a.email} sigue existiendo tras cleanupTestData()`);
 
-    // ---- Test 2: canario con profile de email zztest- ----
-    console.log('\nTest 2: usuario de Auth sin prefijo cuyo profile SÍ lleva email zztest-');
+    // ---- Test 2: canario miembro de una company zztest- ----
+    console.log('\nTest 2: usuario de Auth sin prefijo, con profile en una company zztest-');
     const b = await createCanary();
     canaries.push(b);
+    const { data: company, error: compErr } = await supabaseAdmin.from('companies')
+      .insert({ name: `${TEST_PREFIX}CanaryCompany-${Date.now()}` }).select('id').single();
+    if (compErr) throw new Error(`no se pudo crear la company del canario: ${compErr.message}`);
+    canaryCompanyId = company.id;
     const { error: profErr } = await supabaseAdmin.from('profiles').insert({
-      id: b.id,
-      email: `${TEST_PREFIX}desincronizado-${Date.now()}@habitapp-test.local`,
-      full_name: 'canary',
-      role: 'usuario',
+      id: b.id, email: b.email, full_name: 'canary', role: 'usuario', company_id: company.id,
     });
     if (profErr) throw new Error(`no se pudo crear el profile del canario: ${profErr.message}`);
     canaryProfileIds.push(b.id);
@@ -83,11 +90,25 @@ async function run() {
     check(await authUserExists(b.id), true, `Test 2b: el canario ${b.email} sigue existiendo en Auth`);
     const { data: bProfile } = await supabaseAdmin.from('profiles').select('id').eq('id', b.id).maybeSingle();
     check(!!bProfile, true, 'Test 2c: su profile tampoco se ha borrado (aborta ANTES de borrar nada)');
+    const { data: bCompany } = await supabaseAdmin.from('companies').select('id').eq('id', company.id).maybeSingle();
+    check(!!bCompany, true, 'Test 2d: ni la company zztest- de la que es miembro');
+
+    // ---- Test 3: el desfase profiles.email ≠ auth.users.email ya no se puede crear ----
+    console.log('\nTest 3: el antiguo escenario del canario (profile con email zztest- sobre un usuario canary-) ya no se puede crear');
+    const { error: updErr } = await supabaseAdmin.from('profiles')
+      .update({ email: `${TEST_PREFIX}desincronizado-${Date.now()}@habitapp-test.local` }).eq('id', b.id);
+    if (updErr) throw new Error(`UPDATE de email del canario: ${updErr.message}`);
+    const { data: bAfter } = await supabaseAdmin.from('profiles').select('email').eq('id', b.id).single();
+    check(bAfter.email, b.email, 'Test 3: incluso con la Service Role Key, profiles.email vuelve al email de Auth (trigger profiles_email_from_auth)');
   } finally {
     console.log('\nLimpieza de los canarios (por id)...');
     for (const id of canaryProfileIds) {
       const { error } = await supabaseAdmin.from('profiles').delete().eq('id', id).eq('full_name', 'canary');
       if (error) console.error(`  no se pudo borrar el profile del canario ${id}: ${error.message}`);
+    }
+    if (canaryCompanyId) {
+      const { error } = await supabaseAdmin.from('companies').delete().eq('id', canaryCompanyId).like('name', `${TEST_PREFIX}CanaryCompany-%`);
+      if (error) console.error(`  no se pudo borrar la company del canario: ${error.message}`);
     }
     for (const c of canaries) {
       if (!c.email.startsWith('canary-')) throw new Error(`se iba a borrar ${c.email}, que no es un canario`);

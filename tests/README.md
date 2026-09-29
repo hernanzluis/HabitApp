@@ -283,6 +283,7 @@ node tests/test-05-limites.js    # Fase 5: límites de plan (plan_limits, check_
 node tests/test-06-borrado.js    # Fase 6: borrado de cuenta (delete_own_account)
 node tests/test-07-recuperacion.js  # Fase 7: recuperación de contraseña (generateLink, verifyOtp, updateUser)
 node tests/test-08-registro-seguro.js  # Fase 8: registro seguro (auth.uid, email, códigos, rate limiting)
+node tests/test-09-aislamiento.js  # Fase 9: aislamiento de la API pública (anon, entre empresas, Storage, RPCs de miembros)
 ```
 
 Cada script, en este orden:
@@ -304,17 +305,27 @@ Cada script, en este orden:
 
 ## 4. Índice de fases
 
-### Fase 0 — `test-00-barrera-limpieza.js` (4 tests)
+### Fase 0 — `test-00-barrera-limpieza.js` (6 tests)
 
 Canario de la barrera de seguridad de `cleanupTestData()` (punto 5). Crea con
 la Service Role Key usuarios de Auth con email `canary-…@habitapp-test.local`
 (nunca `zztest-`), ejecuta `cleanupTestData()` y los borra por id en un
 `finally`.
 
+**Rediseñada el 2026-09-29.** El test 2 original simulaba un profile con email
+`zztest-` sobre un usuario de Auth `canary-` (desfase `profiles.email` ≠
+`auth.users.email`). Desde el cierre de seguridad del 2026-09-28 el trigger
+`profiles_email_from_auth` fuerza siempre el email de Auth, así que ese
+escenario ya no se puede crear (el test 3 lo confirma). La barrera sigue
+teniendo otra vía por la que un usuario real podría acabar en la lista de
+borrado: ser **miembro de una company `zztest-`**, sea cual sea su email. El
+test 2 vigila ahora esa vía.
+
 | Test | Qué verifica | Por qué importa |
 |---|---|---|
 | 1 | Un usuario de Auth sin prefijo y sin profile sobrevive a la limpieza | Vía de "huérfanos" |
-| 2 (×3) | Un usuario de Auth sin prefijo cuyo **profile** sí lleva `zztest-` hace que la limpieza aborte sin borrar nada: sigue en Auth y conserva su profile | Hueco encontrado el 2026-09-28 — ver sección destacada al principio |
+| 2 (×4) | Un usuario de Auth sin prefijo, **miembro de una company `zztest-`**, hace que la limpieza aborte sin borrar nada: sigue en Auth, conserva su profile y la company sigue ahí | Vía de "miembros de una company de test" de la barrera |
+| 3 | Un UPDATE de `profiles.email` a un valor `zztest-` (incluso con la Service Role Key) no desincroniza el email: vuelve al de Auth | Confirma que el hueco del 2026-09-28 (ver sección destacada) ya no se puede reproducir en datos |
 
 ### Fase 1 — `test-01-alta.js` (8 tests)
 
@@ -374,7 +385,7 @@ cambian su lógica de cálculo, hay que actualizar las réplicas de
 
 **Eliminado del plan original:** el test 5 ("periodo de gracia en `once`") no existe como tal — ver punto 6. Su comprobación real (semana/mes en curso) quedó plegada en los tests 3 y 4.
 
-### Fase 4 — `test-04-permisos.js` (12 tests)
+### Fase 4 — `test-04-permisos.js` (14 tests)
 
 Permisos y RLS sobre `profiles` y aislamiento entre empresas. No repite los
 tests de `habits`/`habit_assignments`/`habit_validators` ya cubiertos en la
@@ -385,9 +396,9 @@ Fase 2 — esta fase es específicamente sobre `profiles` y cross-tenant.
 | 0 [GUARDA DE REGRESIÓN] (×4 aserciones) | Un usuario normal no puede auto-ascenderse a admin ni cambiarse de empresa | Protección permanente contra que la vulnerabilidad crítica documentada arriba se reintroduzca sin darse cuenta |
 | 1 | Un usuario normal no puede cambiar su propio `role` | Mismo mecanismo que el test 0, presentado como parte de la matriz sistemática de permisos de `profiles` (redundante con el 0 a propósito — ver la sección de la vulnerabilidad) |
 | 2 (×2 aserciones) | Un usuario normal no puede editar el perfil de OTRO miembro de su misma empresa | Confirma que `"users can update own profile"` no se cuela para filas ajenas |
-| 3 | Un admin SÍ puede editar `avatar_url` de otro miembro de su empresa | Bug real ya corregido en la auditoría de RLS de esta sesión (antes la policy no comprobaba `company_id` de la fila destino) — confirma que sigue arreglado |
+| 3 (×2) | Un admin SÍ puede editar `avatar_url` de otro miembro de su empresa (UPDATE directo, afecta 1 fila y queda en BD) | Bug real ya corregido en la auditoría de RLS (antes la policy no comprobaba `company_id` de la fila destino). Desde el 2026-09-29 usa una URL válida del bucket (`avatars/<miembro>/avatar.jpg`): el CHECK `profiles_avatar_url_check` rechaza cualquier otra (eso lo cubre la Fase 9) |
 | 4 (×2 aserciones) | Un admin de la EMPRESA A no puede editar un perfil de la EMPRESA B | Aislamiento multi-tenant en `profiles`, mismo patrón que el test 7 de la Fase 2 pero sobre `profiles` |
-| 5 | Un admin de la EMPRESA A SÍ puede leer los `habits` de la EMPRESA B (filas reales, no vacío) | Diseño intencional y **ya documentado** en la auditoría de RLS original (`habits` SELECT es `qual: true`) — este test confirma que ese diseño aceptado sigue siendo el comportamiento real, no es un hallazgo nuevo |
+| 5 (×2) | Un admin de la EMPRESA A **NO** lee los `habits` de la EMPRESA B (0 filas), y el admin de B sí lee su propio hábito (control) | **Invertido el 2026-09-29.** Hasta el cierre de seguridad del 2026-09-28 `habits` SELECT era `qual: true` y este test confirmaba ese diseño aceptado; con registro abierto a desconocidos se cerró (`sql/2026-09-28e_lecturas_por_empresa.sql`) y ahora confirma el aislamiento |
 | 6 | Un usuario normal se autoelimina con éxito vía `delete_own_account()` (su `profile` desaparece) | Confirma el mecanismo real que usa `ProfileScreen.js` — no `auth.admin.deleteUser` (inalcanzable desde un cliente autenticado como el propio usuario, solo con Service Role Key). No verifica la cascada completa a otras tablas — eso es la Fase 6 |
 
 ### Fase 5 — `test-05-limites.js` (11 tests)
@@ -396,6 +407,14 @@ Límites de plan: `plan_limits`, `check_member_limit`, `check_habit_limit`,
 `history_days`. Todos los valores límite se leen de `plan_limits` en tiempo de
 ejecución (no están hardcodeados en el test) precisamente para no asumir que
 siguen siendo los mismos que cuando se documentaron.
+
+Desde el 2026-09-29 `check_habit_limit` y `check_member_limit` se llaman
+**autenticado como el admin de prueba** (helper `rpcAsAdmin`), igual que la app.
+Desde el 2026-09-28 esas funciones solo responden sobre la empresa de quien
+llama, y la Service Role Key (sin usuario) recibe `forbidden` en
+`check_habit_limit`; `check_member_limit` aún respondía con ella solo por la
+excepción pensada para el alta (llamante sin profile), así que también se
+cambió para no depender de esa excepción.
 
 | Test | Qué verifica | Por qué importa |
 |---|---|---|
@@ -417,7 +436,7 @@ el único admin de tu grupo (antes no existía ningún chequeo de esto).
 | 1 (×4 aserciones) | El único admin de su company intenta borrarse → rechazado con el mensaje esperado; su `profile`, `auth.user` y `company` siguen intactos tras el intento fallido | Decisión de producto implementada en esta misma fase — antes cualquier admin, incluso el único de su grupo, podía autoeliminarse dejándolo sin ningún admin para siempre |
 | 2 (×8 aserciones) | Un miembro normal se borra: su `profile`, `auth.user`, `habit_logs`, `habit_assignments` y `habit_validators` desaparecen — el admin y los hábitos de la company quedan intactos | Confirma la cascada real (vía FK, no borrado manual tabla a tabla) y que no afecta a nadie más de la company |
 | 3 (×4 aserciones) | Con DOS admins, uno se borra → funciona; el admin restante conserva "control total" verificado con acciones reales (crear un hábito, renombrar la company), no solo comprobando que su fila sigue existiendo | El chequeo de "único admin" no bloquea de más — deja borrarse a cualquier admin mientras quede al menos otro |
-| 4 | Cero filas residuales del usuario borrado en ninguna tabla relacionada (`habit_logs`, `habit_assignments`, `habit_validators`, `habit_validations`, `team_members`, `invitations`, `profiles`), ni siquiera con el campo nulificado | Confirma la decisión de producto de `project.md`: borrado real, sin anonimización |
+| 4 | Cero filas residuales del usuario borrado en ninguna tabla relacionada (`habit_logs`, `habit_assignments`, `habit_validators`, `habit_validations`, `team_members`, `profiles`), ni siquiera con el campo nulificado. Un recuento nulo hace fallar el test | Confirma la decisión de producto de `project.md`: borrado real, sin anonimización. `invitations` se quitó de la lista el 2026-09-29 (tabla eliminada el 2026-09-28): con `head: true` una tabla inexistente devuelve `count: null` **sin error**, y la comprobación había pasado en silencio sin comprobar nada |
 | 5 (×8 aserciones) | Un hábito con un único validador que se borra a sí mismo se queda con 0 validadores — **RESUELTO en la misma fase**: el admin de la empresa cae como validador de fallback (ve el log como pendiente, y el INSERT real de la validación funciona), un admin de OTRA empresa no lo ve ni puede validarlo | Ver hallazgo en el punto 7 — incluye el cierre de un hueco de RLS preexistente en `habit_validations` que no tenía relación directa con el borrado de cuenta |
 
 ### Fase 7 — `test-07-recuperacion.js` (14 tests)
@@ -463,6 +482,31 @@ Ver la sección destacada al principio de este documento.
 | 8 (×11) | 5 códigos inventados por llamada directa → `invalid_code` y 5 filas en `activation_attempts`; el 6º se bloquea y no inserta (no alarga la ventana); con la IP bloqueada, un código **válido para tu propio email** sí se canjea; 5 intentos sobre un código usado → `failed_attempts = 5` y `locked_until` futuro, que bloquea aun con la IP limpia; una activación legítima no gasta cupo extra; y (8j/8k) tras 4 errores + 1 acierto en `check_activation_code`, el paso 2 no bloquea al usuario | El rate limiting ya no se esquiva llamando a la RPC directamente, y no frena a quien tiene un código bueno — ver hallazgo "cupo de IP en el paso 2" |
 | 9 | Un código emitido como `"  EMAIL  "` lo canjea el usuario con `email` | El admin puede teclear el email con mayúsculas o espacios |
 | 10 (×4) | Tras borrar la policy UPDATE no-admin: un miembro no puede marcar como usado un código pendiente de su grupo; el admin sigue editando nombre/email (`AdminScreen.handleSavePending`) y cancelando (DELETE, `AdminScreen` y `Members.jsx`) | El único UPDATE de cliente sobre `activation_codes` que queda es el del admin |
+
+### Fase 9 — `test-09-aislamiento.js` (71 tests)
+
+Aislamiento de la API pública tras el cierre de seguridad del 2026-09-28
+(`sql/2026-09-28c`–`h`, `docs/security-inventory-2026-09-28.md`). Convierte en
+tests la verificación que ese día se hizo a mano con dos empresas `zztest-`.
+Cada bloqueo lleva su control positivo: 0 filas solo demuestra algo si el dueño
+sí las ve.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 1 (×14) | Sin sesión (solo anon key), ninguna de las 14 tablas de `public` se puede leer (`permission denied`) | Antes se leían sin sesión `habits`, `habit_logs` (con `photo_url` y notas), asignaciones, validadores, recompensas, categorías e invitaciones |
+| 2 (×15) | Sin sesión no se ejecuta ninguna función (14) salvo `check_activation_code` (control) | Antes todas salvo las dos RPCs de alta eran ejecutables por anon |
+| 3 (×22) | Un miembro de B no lee de A ninguna de 11 tablas (hábitos, logs, asignaciones, validadores, recompensas, validaciones, categorías, profiles, companies, códigos, team_members); controles: el miembro de A sí lee las suyas, el admin de A sus códigos, y B las categorías predefinidas | Aislamiento entre empresas, que hasta el 2026-09-28 dependía de filtrar en el cliente |
+| 4 (×4) | `check_habit_limit` / `check_member_limit` de otra empresa → `forbidden`; `get_company_plan_info` → vacío; control: el plan propio sí | Antes respondían para cualquier empresa, incluso sin sesión |
+| 5 (×5) | Storage: B no ve la carpeta del miembro de A en la raíz, ni lista sus fotos ni su avatar; controles: el admin de A sí lista ambos | Antes cualquier autenticado listaba todo el bucket |
+| 6 (×2) **[CONOCIDO]** | B descarga la foto de A con la ruta conocida y la URL pública se abre sin sesión (HTTP 200) | **No es un fallo:** límite aceptado de la opción 1 de Storage (buckets públicos; `download()` de un bucket público no aplica RLS). Sin poder listar ni leer las tablas, la ruta no se puede descubrir. Si se aplica la opción 2 (buckets privados + URLs firmadas) estos dos checks fallarán y habrá que invertirlos |
+| 7 (×2) | `delete_member` sobre uno mismo → `use_delete_own_account`; el admin sigue existiendo | Evita saltarse la regla de "único admin" de `delete_own_account` |
+| 8 (×3) | `update_member_profile` con `new_role='superadmin'` → `invalid_role` y el rol no cambia; el UPDATE directo tampoco (CHECK `profiles_role_check`) | Antes aceptaba cualquier texto como rol |
+| 9 (×4) | `update_member_avatar` rechaza otra URL de dominio y la carpeta de otro usuario (`invalid_avatar_url`), acepta `avatars/<miembro>/` (control); el UPDATE directo del propio usuario con una URL ajena lo frena el CHECK | Antes aceptaba cualquier URL |
+
+**Fuera de esta fase, a propósito** (pendientes de aprobación aparte, ver
+`docs/release.md`): el `upsert` del admin sobre el avatar ya existente de un
+miembro (hoy falla por RLS, anterior al 2026-09-28) y la limpieza de Storage al
+borrar un miembro.
 
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
@@ -554,6 +598,14 @@ propia app?), no como fix unilateral de esta sesión de tests. Referenciado
 también desde una conversación con Claude (no visible desde aquí) como
 paralelo a otro caso pendiente ("hábitos personales") que no se ha
 encontrado documentado en este repo — no se puede confirmar esa paridad.
+
+**Debilidad del test que lo demuestra (anotada el 2026-09-29, sin cambiar):**
+el test 2c de la Fase 5 hace el INSERT del hábito nº `max+1` con la Service
+Role Key, que se salta RLS por definición — así que prueba que "la base de
+datos no tiene un trigger/constraint que cuente hábitos", pero no que un admin
+autenticado pueda saltarse el límite por la API. Hacerlo como el admin de
+prueba lo demostraría con más rigor; no se cambió en la tarea del 2026-09-29
+(que solo tocaba las llamadas a `check_habit_limit`).
 
 ### Test 5 de la Fase 1 — `authFlags.skipNextRedirect`
 
@@ -856,7 +908,7 @@ antes que un usuario real con un enlace muerto.
 
 ---
 
-## Resumen — catálogo completo de tests (Fases 1 a 7)
+## Resumen — catálogo completo de tests (Fases 0 a 9)
 
 El catálogo original de 6 fases planificadas se cerró con la Fase 6; la Fase 7
 (recuperación de contraseña) se añadió después, siguiendo la misma regla de
@@ -865,16 +917,17 @@ nueva. Índice para quien llegue a este documento por primera vez:
 
 | Fase | Fichero | Tests | Tema |
 |---|---|---|---|
-| 0 | `test-00-barrera-limpieza.js` | 4 | Canario de la barrera de `cleanupTestData()` (email de Auth sin prefijo, con y sin profile) |
+| 0 | `test-00-barrera-limpieza.js` | 6 | Canario de la barrera de `cleanupTestData()` (usuario sin prefijo, sin profile y miembro de una company de test; desfase de email imposible) |
 | 1 | `test-01-alta.js` | 8 | Alta de admin y de miembro, condición real de "family setup" |
 | 2 | `test-02-habitos.js` | 10 | Hábitos, asignación, validadores (RLS) |
 | 3 | `test-03-rachas.js` | 18 | Rachas y recompensas (`calculateStreak`/`calculateTotalCompleted`, recursividad, `featuredReward`) |
-| 4 | `test-04-permisos.js` | 12 | Permisos de `profiles` y aislamiento entre empresas |
+| 4 | `test-04-permisos.js` | 14 | Permisos de `profiles` y aislamiento entre empresas |
 | 5 | `test-05-limites.js` | 11 | Límites de plan (`plan_limits`, `check_member_limit`, `check_habit_limit`, `history_days`) |
 | 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
 | 8 | `test-08-registro-seguro.js` | 41 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
-| **Total** | **9 ficheros** | **143** | |
+| 9 | `test-09-aislamiento.js` | 71 | Aislamiento de la API pública: anon, entre empresas, Storage, RPCs de gestión de miembros |
+| **Total** | **10 ficheros** | **218** | |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos

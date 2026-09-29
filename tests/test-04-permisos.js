@@ -6,6 +6,7 @@
 // y aislamiento cross-company.
 
 const {
+  SUPABASE_URL,
   TEST_PREFIX,
   supabaseAdmin,
   createTestCompanyAndAdmin,
@@ -99,15 +100,21 @@ async function run() {
     // (antes la policy de UPDATE no comprobaba company_id, y en otro punto no
     // existía ninguna excepción de admin en absoluto). La referencia no está
     // en un comentario de código — está documentada en docs/database.md.
+    // Desde el 2026-09-28 el CHECK profiles_avatar_url_check solo admite URLs
+    // del bucket avatars en la carpeta del propio miembro: se usa la misma
+    // forma de URL que genera AdminScreen (getPublicUrl de <id>/avatar.jpg).
+    // Que una URL ajena se rechace lo cubre la Fase 9.
     console.log('\nTest 3: el admin SÍ puede editar el avatar_url de otro miembro de su empresa (bug ya corregido, confirmar que sigue así)');
-    const { error: err3 } = await clientAdminA
-      .from('profiles').update({ avatar_url: 'https://example.com/test-avatar.jpg' }).eq('id', memberA.userId);
+    const memberAvatarUrl = `${SUPABASE_URL}/storage/v1/object/public/avatars/${memberA.userId}/avatar.jpg`;
+    const { data: data3, error: err3 } = await clientAdminA
+      .from('profiles').update({ avatar_url: memberAvatarUrl }).eq('id', memberA.userId).select('id');
     if (err3) {
       results.push({ pass: false, message: `Test 3: FALLO — el admin no pudo editar el avatar de su miembro: ${err3.message}` });
     } else {
+      check(data3.length, 1, 'Test 3: el UPDATE del admin afecta a la fila de su miembro (no la filtra RLS)');
       const { data: memberAvatar, error: e } = await supabaseAdmin.from('profiles').select('avatar_url').eq('id', memberA.userId).single();
       if (e) throw e;
-      check(memberAvatar.avatar_url, 'https://example.com/test-avatar.jpg', 'Test 3: el admin pudo actualizar el avatar_url de su miembro');
+      check(memberAvatar.avatar_url, memberAvatarUrl, 'Test 3: confirmado en BD — el admin actualizó el avatar_url de su miembro');
     }
 
     // ---- Test 4: aislamiento cross-empresa en profiles ----
@@ -119,15 +126,15 @@ async function run() {
     const { data: memberAAfter4 } = await supabaseAdmin.from('profiles').select('full_name').eq('id', memberA.userId).single();
     check(memberAAfter4.full_name.startsWith(TEST_PREFIX + 'Hijacked'), false, 'Test 4: confirmado en BD — el full_name de memberA no cambió');
 
-    // ---- Test 5: SELECT de habits de otra empresa — lectura abierta por diseño ----
-    // NO es "falla o vacío" (las dos opciones que se habían planteado antes de
-    // revisar la policy real): la policy SELECT de habits es qual=true, sin
-    // ninguna restricción — ya documentado como diseño intencional en la
-    // auditoría de RLS original ("lectura abierta, se filtra por company_id en
-    // el cliente"), igual que habit_logs/habit_validations. No es un hallazgo
-    // nuevo de esta fase: este test confirma que ese diseño ya aceptado sigue
-    // siendo el comportamiento real, no lo cuestiona.
-    console.log('\nTest 5: un admin de OTRA empresa SÍ puede leer los habits de una empresa ajena (diseño intencional, ya documentado)');
+    // ---- Test 5: SELECT de habits de otra empresa — BLOQUEADO desde 2026-09-28 ----
+    // INVERTIDO el 2026-09-28. Hasta entonces la policy SELECT de habits era
+    // qual=true (lectura abierta, incluso sin sesión) y este test confirmaba
+    // ese diseño aceptado. Con registro abierto a desconocidos se cerró:
+    // sql/2026-09-28e_lecturas_por_empresa.sql (company_id = my_company_id()).
+    // Ahora confirma el aislamiento. Un SELECT filtrado por RLS no da error,
+    // devuelve 0 filas; por eso se comprueba también que B sí lee su propio
+    // hábito (si no, 0 filas no demostraría nada).
+    console.log('\nTest 5: un admin de OTRA empresa NO puede leer los habits de una empresa ajena (aislamiento, desde 2026-09-28)');
     const habitB = `${TEST_PREFIX}HabitB-${Date.now()}`;
     const { error: habitBErr } = await supabaseAdmin.from('habits').insert({
       title: habitB, company_id: adminB.companyId, created_by: adminB.userId, is_active: true,
@@ -136,11 +143,11 @@ async function run() {
     const { data: crossRead, error: crossReadErr } = await clientAdminA
       .from('habits').select('title').eq('company_id', adminB.companyId);
     if (crossReadErr) throw crossReadErr;
-    check(
-      (crossRead ?? []).some((h) => h.title === habitB),
-      true,
-      'Test 5: el admin de la empresa A recibe filas REALES de la empresa B (SELECT de habits es qual=true, sin aislamiento)'
-    );
+    check(crossRead.length, 0, 'Test 5a: el admin de la empresa A NO recibe ningún hábito de la empresa B');
+    const { data: ownRead, error: ownReadErr } = await clientAdminB
+      .from('habits').select('title').eq('company_id', adminB.companyId);
+    if (ownReadErr) throw ownReadErr;
+    check(ownRead.some((h) => h.title === habitB), true, 'Test 5b: control — el admin de B sí lee su propio hábito');
 
     // ---- Test 6: autoeliminación de cuenta (delete_own_account, sin cascada completa — eso es Fase 6) ----
     // No es auth.admin.deleteUser: esa API solo es alcanzable con la Service

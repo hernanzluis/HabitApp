@@ -1,6 +1,6 @@
 # HabitApp — Checklist de tests manuales
 
-Cubre lo que `tests/` (backend, 9 fases, 143 tests automáticos) no puede ver:
+Cubre lo que `tests/` (backend, 10 fases, 218 tests automáticos) no puede ver:
 UI real, gestos, cámara, permisos del sistema, estados visuales y timing de
 cliente. Ver [tests/README.md](../tests/README.md) para el catálogo
 automático — donde un ítem de aquí verifica el resultado visible de algo que
@@ -118,6 +118,8 @@ cubrirá en un checklist separado más adelante.
 - [ ] Subir una foto de perfil nueva (cámara o galería) → la foto se actualiza EN PANTALLA de inmediato, sin recargar la app ni salir de `ProfileScreen` (cache-bust con `?t=timestamp` añadido en el cliente, `ProfileScreen.js`, `uploadAvatar`)
 - [ ] Como admin, pulsar el icono de lápiz junto a "Grupo" y cambiar el nombre → se guarda y se refleja en pantalla al momento (sin test automático dedicado a esta acción concreta — ver huecos, abajo)
 - [ ] Como miembro normal (no admin), la fila de "Grupo" NO muestra icono de lápiz — no hay forma de intentar renombrar el grupo desde la UI
+- [ ] Como admin, en `AdminScreen` → pestaña Familia, abrir el modal de editar un miembro activo → se ven foto, nombre y (si no eres tú) el selector de rol, pero **ya no hay campo de email** (desde el 2026-09-29: `profiles.email` se sincroniza con Auth por trigger y editarlo ahí no tenía efecto). Cambiar el nombre y guardar → se refleja en la lista sin tocar el email → cross-ref **Fase 0, test 3** (el email no se puede desincronizar)
+- [ ] En el modal de editar un código **pendiente** (miembro aún sin activar) el campo de email **sigue estando** y se puede cambiar: ese email es el del código de activación, no el del profile
 
 ## 10. Borrado de cuenta
 

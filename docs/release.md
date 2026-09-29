@@ -21,6 +21,6 @@ verificado, no cuando se ha hecho.
 - [ ] **Login con "Email not confirmed"** — solo aplica si se reactiva la confirmación: hoy `LoginScreen.js` muestra el mensaje en inglés tal cual, sin opción de reenviar el correo.
 - [ ] **Storage: buckets públicos** — con la opción 1 aplicada, una ruta conocida se abre sin sesión (URL pública o `download()`). Cerrarlo del todo es la opción 2 (buckets privados + URLs firmadas, 1,5-2,5 días), prevista para la 1.1.
 - [ ] **Avatar de miembro por el admin** — el `upsert` de AdminScreen sobre un avatar ya existente falla por RLS (no hay policy UPDATE de admin en Storage). Anterior al 2026-09-28; necesita una policy nueva aprobada.
-- [ ] **Email editable en el modal de miembro (AdminScreen)** — desde el 2026-09-28 no tiene efecto (el email se sincroniza con Auth): quitar el campo.
+- [x] **Email editable en el modal de miembro (AdminScreen)** — quitado el 2026-09-29 (el email se sincroniza con Auth por trigger; editarlo ahí no tenía efecto). habitteam-web no tenía ese campo. Pendiente de probar en dispositivo: `manual-testing.md`, bloque 9.
 - [ ] **Borrado de cuenta y Storage** — `delete_member` no limpia los ficheros del miembro borrado (el borrado de la propia cuenta sí lo intenta desde el cliente): origen de los 80 huérfanos borrados el 2026-09-28.
-- [ ] **Tests tras el cierre de seguridad** — invertir Fase 4 test 5 y ajustar los tests que quedan desfasados (lista en `docs/security-inventory-2026-09-28.md`, "Resultado tras aplicar"), más la fase 9 nueva.
+- [x] **Tests tras el cierre de seguridad** — hecho el 2026-09-29: Fase 4 test 5 invertido, tests 0/4/5/6 ajustados y Fase 9 nueva (71 tests). Fases 0-9 dos veces seguidas: 218/218 en ambas, sin residuos. Detalle en `tests/README.md`.
