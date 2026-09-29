@@ -11,7 +11,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.luishernanz.habitteam",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true
       }
     },
     "android": {
@@ -19,21 +20,33 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-localization",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": [
+              "es",
+              "en"
+            ],
+            "android": [
+              "es",
+              "en"
+            ]
+          }
+        }
+      ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "HabitTeam necesita acceder a tus fotos para subir pruebas de hábitos.",
-          "cameraPermission": "HabitTeam necesita acceder a la cámara para tomar fotos de tus hábitos."
+          "photosPermission": "HabitTeam accede a tus fotos para que puedas elegir una foto de perfil, la tuya o la de un miembro de tu grupo.",
+          "cameraPermission": "HabitTeam usa la cámara para que hagas la foto que prueba un hábito completado y, si quieres, tu foto de perfil.",
+          "microphonePermission": false
         }
       ],
       "expo-status-bar",
@@ -52,6 +65,10 @@
         "projectId": "61d6f633-3451-424f-84b5-e802e6b579d1"
       }
     },
-    "owner": "hernanz.luis"
+    "owner": "hernanz.luis",
+    "locales": {
+      "es": "./locales/native/es.json",
+      "en": "./locales/native/en.json"
+    }
   }
 }

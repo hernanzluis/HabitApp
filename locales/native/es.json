@@ -1,0 +1,7 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "HabitTeam",
+    "NSCameraUsageDescription": "HabitTeam usa la cámara para que hagas la foto que prueba un hábito completado y, si quieres, tu foto de perfil.",
+    "NSPhotoLibraryUsageDescription": "HabitTeam accede a tus fotos para que puedas elegir una foto de perfil, la tuya o la de un miembro de tu grupo."
+  }
+}
