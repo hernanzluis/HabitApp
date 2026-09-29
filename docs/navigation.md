@@ -2,8 +2,9 @@
 
 ## Estructura de navegación (RootNavigator.js)
 
-- RootNavigator: si hay sesión → AppStack, si no → AuthStack. La sesión la gestiona `RootNavigator` vía `supabase.auth.onAuthStateChange`; no hay navegación manual tras login/logout.
+- RootNavigator: si hay sesión → AppStack; si no hay sesión pero se está en modo recuperación (`inRecovery`) → RecoveryStack; si no → AuthStack (`RootNavigator.js:357`). La sesión la gestiona `RootNavigator` vía `supabase.auth.onAuthStateChange`; no hay navegación manual tras login/logout (salvo `activateSession()` al terminar el alta, ver SignUpScreen).
 - **AuthStack** (headerShown: false): Login, ForgotPassword, SignUp
+- **RecoveryStack** (headerShown: false): ResetPassword. Solo se monta al abrir el enlace de recuperación de contraseña (deep link `habitapp://reset-password`): `RootNavigator` lo recibe con `useLinkingURL()` (expo-linking), lee `access_token`/`refresh_token`/`type=recovery` con `getQueryParams` (expo-auth-session), pone `authFlags.skipNextRedirect = true`, llama a `supabase.auth.setSession()` y entra en modo recovery. Un enlace inválido o caducado muestra un `Alert` "enlace no válido"
 - **AppStack** (headerShown: false globalmente, headerBackTitle: ''):
   - `Tabs` → TabNavigator
   - `HabitDetail` → HabitDetailScreen (headerShown: false en ruta, lo activa con useEffect)
@@ -33,16 +34,23 @@
 
 ### `ForgotPasswordScreen`
 - Campo: email
-- Llama a `supabase.auth.resetPasswordForEmail`
+- Llama a `supabase.auth.resetPasswordForEmail(email, { redirectTo: 'habitapp://reset-password' })` (esa URL está registrada en Supabase → Redirect URLs; la vigila la Fase 7, test 0)
 - Muestra mensaje de confirmación tras enviar
+
+### `ResetPasswordScreen` _(RecoveryStack)_
+- Se muestra tras abrir el enlace del correo de recuperación (ver RecoveryStack arriba)
+- Campos: nueva contraseña y confirmación (mínimo 8 caracteres, deben coincidir)
+- Guardar: `supabase.auth.updateUser({ password })` → la sesión real llega por `onAuthStateChange` y la app pasa al AppStack sin volver a iniciar sesión
+- Cancelar: confirmación → `supabase.auth.signOut()` + `exitRecoveryMode()` → vuelve a Login sin cambiar la contraseña
 
 ### `SignUpScreen`
 - Paso `choose`: dos opciones en tarjetas:
   - **"Crear un grupo familiar"** → flujo `create`
   - **"Activar mi cuenta"** → flujo `activate`
-- **Flujo `create`:** campos nombre completo, email, contraseña, confirmar contraseña, nombre del grupo → llama a RPC `handle_new_user_registration` → `onAuthStateChange` navega al AppStack automáticamente
+- **Flujo `create`:** campos nombre completo, email, contraseña, confirmar contraseña, nombre del grupo (máx. 100 caracteres) → `authFlags.skipNextRedirect = true` → `auth.signUp` → RPC `handle_new_user_registration` con la sesión devuelta → `activateSession(session)` navega al AppStack. El flag evita que `onAuthStateChange` navegue antes de que exista el profile
 - **Flujo `activate` — paso 1 (código):** campo numérico de 6 dígitos → RPC `check_activation_code(p_code)` (antes era un SELECT directo sobre `activation_codes`, cambiado en la auditoría de RLS de 2026-09-16 porque la policy SELECT quedó restringida a admins; ver [database.md](database.md#check_activation_codep_code-text--email-full_name-company_id)) → si no devuelve fila muestra error inline; si existe guarda `{ email, full_name, company_id }` y avanza al paso 2
-- **Flujo `activate` — paso 2 (contraseña):** email no editable (proviene del código), campos contraseña y confirmar contraseña → `auth.signUp` → RPC `handle_activation_registration` → UPDATE `activation_codes SET used = true` → `activateSession()` navega al AppStack
+- **Flujo `activate` — paso 2 (contraseña):** email no editable (proviene del código), campos contraseña y confirmar contraseña → `auth.signUp` → RPC `handle_activation_registration` (devuelve `'ok'` o `'invalid_code'`; marca ella misma el código como usado — el cliente ya no hace ningún UPDATE sobre `activation_codes` desde el 2026-09-28) → `activateSession()` navega al AppStack
+- **Errores:** todos los errores del alta se muestran traducidos (`normalizeRegistrationError`: código bloqueado, código inválido, límite de miembros, ya registrado, genérico); el texto crudo solo va a la consola
 - Validación inline por campo antes de enviar en ambos flujos
 
 ### `HomeScreen`
@@ -95,10 +103,10 @@
 - **UI por tarjeta:** avatar del miembro (foto real si tiene `avatar_url`, inicial si no), nombre, título del hábito, fecha, foto de prueba, nota del log (si existe, en caja gris #F9F9F9), contadores ✓ N / ✗ N, fila de reacciones emoji, campo de comentario, botones Aprobar/Rechazar
 - Tras votar el último pendiente → muestra "Todo al día ✓" → navega a Home tras 1 segundo
 - Pull-to-refresh, estado vacío
-- Un validador vota `validated` o `rejected` → INSERT en `habit_validations`. El log muestra contadores `validatedCount` y `rejectedCount` en tiempo real. `userValidated = true` cuando el validador actual ya votó (bloquea nuevos votos). El status del log (`habit_logs.status`) lo actualiza una función de base de datos/trigger, no el cliente. Al votar, el item se elimina de la lista del validador (optimistic update). Si la lista queda vacía → navega a Home tras 1 segundo
+- Un validador vota `validated` o `rejected` → INSERT en `habit_validations`. El log muestra contadores `validatedCount` y `rejectedCount` en tiempo real. `userValidated = true` cuando el validador actual ya votó (bloquea nuevos votos). El status del log (`habit_logs.status`) **no lo actualiza nada**: no existe ningún trigger ni función que lo cambie tras los votos (se inserta `'pending'` y se queda así); el estado real se deriva en cada pantalla de `habit_validations`. Al votar, el item se elimina de la lista del validador (optimistic update). Si la lista queda vacía → navega a Home tras 1 segundo
 
 ### `HistoryScreen`
-- Accesible desde el icono de reloj (🕐) en el header de Home
+- **Código muerto:** no está registrada en `RootNavigator` ni es accesible desde ninguna pantalla (el antiguo icono de reloj del header de Home ya no existe). Descripción conservada por si se retoma
 - **Datos:** todos los `habit_logs` del usuario actual, ordenados por `created_at DESC`
 - **Queries:**
   1. `habit_logs` → `id, habit_id, photo_url, created_at` donde `user_id = currentUser`
@@ -123,7 +131,7 @@
 #### Pestaña Hábitos
 - Lista todos los hábitos del grupo ordenados por `created_at DESC`; cada fila muestra "X asignado(s)" (tappable) y un icono de papelera
 - Switch por hábito para activar/desactivar (`is_active`) con actualización optimista + rollback en error
-- **Icono papelera:** Alert de confirmación destructiva → DELETE en `habits` (CASCADE elimina habit_assignments, habit_logs y habit_validations); actualización optimista del estado local
+- **Icono papelera:** Alert de confirmación destructiva → DELETE en `habits` (CASCADE elimina habit_assignments, habit_validators, habit_rewards, habit_logs y, a través de estos, habit_validations); actualización optimista del estado local
 - **Botón "Nuevo hábito":** abre modal de creación
 
 **Modal crear hábito:**
@@ -143,7 +151,7 @@
 - **Recibe `initialTab: 'family'`** como parámetro de navegación (enviado por HomeScreen en el primer arranque del admin) → `useEffect` lo lee y llama `setActiveTab('family')`
 - **Mensaje de bienvenida** (`admin.family_welcome`) cuando no hay miembros ni códigos pendientes — sustituye el onboarding modal eliminado
 - **Miembros activos:** lista todos los perfiles del grupo incluyendo el admin actual (muestra badge "Tú" en su fila), cada fila tappable con chevron → modal "Editar miembro"
-- **Modal editar miembro:** nombre, email, avatar con upload a Storage vía RPC `update_member_avatar`; toggle de rol Miembro/Administrador (oculto para el usuario actual); botón "Eliminar miembro" en rojo al final del modal con Alert de confirmación destructivo (oculto para el usuario actual). Restricción: no se puede bajar de admin a miembro si es el único administrador del grupo
+- **Modal editar miembro:** nombre y avatar con upload a Storage vía RPC `update_member_avatar` (sin campo de email desde el 2026-09-29: `profiles.email` se sincroniza con Auth por trigger); **limitación conocida:** si el miembro ya tenía avatar, el `upsert` del admin falla por RLS (no hay policy UPDATE de admin en Storage, ver `release.md`); toggle de rol Miembro/Administrador (oculto para el usuario actual); botón "Eliminar miembro" en rojo al final del modal con Alert de confirmación destructivo (oculto para el usuario actual). Restricción: no se puede bajar de admin a miembro si es el único administrador del grupo
 - **Códigos pendientes:** lista los `activation_codes` WHERE `used = false AND company_id = X`, cada fila tappable con chevron → modal con código en grande, edición de nombre/email, botón compartir y botón "Cancelar invitación" (DELETE)
 - **Botón "+ Añadir miembro":** modal con campos nombre y email → genera código de 6 dígitos → INSERT en `activation_codes` → muestra código para compartir → guarda `family_setup_done` en AsyncStorage para que HomeScreen no redirija de nuevo
 - **Avatar upload:** `fetch(uri).arrayBuffer()` (no `.blob()` que devuelve 0 bytes en React Native) → Supabase Storage `avatars/{user_id}/avatar.jpg` → RPC `update_member_avatar` (SECURITY DEFINER, bypasea RLS)

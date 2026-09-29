@@ -35,7 +35,7 @@ Los valores de `familiar` son definitivos, no límites provisionales de prueba �
 
 ### RPCs relacionadas
 
-Ver detalle técnico (parámetros, dónde se llaman) en [database.md](database.md#funciones-sql-rpcs-security-definer): `check_habit_limit`, `check_member_limit`, `get_company_plan_info`.
+Ver detalle técnico (parámetros, dónde se llaman) en [database.md](database.md#funciones-sql-rpcs): `check_habit_limit`, `check_member_limit`, `get_company_plan_info`.
 
 ### Campos añadidos a `companies`
 | Campo | Tipo | Default | Notas |

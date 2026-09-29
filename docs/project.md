@@ -4,10 +4,12 @@
 
 Plataforma de hábitos compartidos con validación social entre miembros del grupo. Los usuarios registran hábitos saludables diarios y sus familiares o compañeros de grupo los validan mediante fotografías como prueba. El objetivo es fomentar hábitos positivos mediante la responsabilidad compartida. Diseñado para familias, grupos de amigos y equipos pequeños.
 
+**Nombre visible de la app: HabitTeam** (`app.json` → `name`; dominio `habitteam.app`). "HabitApp" es el nombre del repositorio y del `slug` de Expo.
+
 ## Perfil de usuario
 
 - Luis Hernanz (hernanz.luis@gmail.com) — creador y desarrollador principal de HabitApp
-- Rol admin en el proyecto de Supabase de desarrollo
+- Rol admin en el proyecto de Supabase. Solo hay **un** proyecto, el de producción: no existe un entorno de desarrollo separado (los tests de `tests/` también corren contra él, con datos `zztest-`)
 - Trabaja con iOS primero (Mac/iPhone), Android como secundario
 - Usa Expo Go en desarrollo para evitar builds nativos
 
@@ -17,14 +19,16 @@ Plataforma de hábitos compartidos con validación social entre miembros del gru
 
 | Tecnología | Versión |
 |---|---|
-| Expo SDK | ^57.0.0 (subido desde ~54.0.33 el 2026-09-16) |
+| Expo SDK | ~57.0.25 (subido desde ~54.0.33 el 2026-09-16; parches actualizados con `npx expo install --fix` el 2026-09-29) |
 | React | 19.2.3 |
 | React Native | 0.86.3 |
 | @supabase/supabase-js | ^2.106.2 |
 | @react-navigation/native | ^7.2.5 |
 | @react-navigation/native-stack | ^7.16.0 |
 | @react-navigation/bottom-tabs | ^7.16.2 |
-| expo-image-picker | ~57.0.18 |
+| expo-image-picker | ~57.0.20 (config plugin con textos de permisos y `microphonePermission: false`) |
+| expo-linking | ~57.0.11 (`useLinkingURL()` en `RootNavigator.js`: recibe el deep link de recuperación de contraseña) |
+| expo-auth-session | ~57.0.13 (`getQueryParams` en `RootNavigator.js`: lee los tokens del enlace de recuperación) |
 | expo-status-bar | ~57.0.1 |
 | @expo/vector-icons (Ionicons) | ^15.0.2 — **dependencia explícita desde SDK 57** (hasta SDK 55 venía incluida dentro de `expo`; desde SDK 56 `expo` ya no la trae, hay que declararla y añadir `expo-font`) |
 | expo-font | ~57.0.4 (peer dependency requerida por `@expo/vector-icons`) |
@@ -119,6 +123,8 @@ npm run android
 
 ```
 HabitApp/
+├── .github/workflows/
+│   └── supabase-keepalive.yml  # Ping cada 3 días para que Supabase no se pause (ver "Configuración externa")
 ├── assets/                     # Iconos y splash
 │   ├── icon.png
 │   ├── adaptive-icon.png
@@ -129,12 +135,16 @@ HabitApp/
 │   ├── authFlags.js            # Singleton para coordinar activación y evitar race condition
 │   ├── i18n.js                 # Configuración i18next + detección de idioma
 │   └── usePlanInfo.js          # Hook que envuelve la RPC get_company_plan_info
+├── locales/
+│   ├── es.json / en.json       # Textos de la app (i18next)
+│   └── native/es.json, en.json # Textos nativos de iOS (permisos, nombre visible) por idioma
 ├── navigation/
 │   └── RootNavigator.js        # Navegación raíz + lógica de sesión + badge tab
 ├── screens/
 │   ├── LoginScreen.js
 │   ├── SignUpScreen.js
 │   ├── ForgotPasswordScreen.js
+│   ├── ResetPasswordScreen.js  # Nueva contraseña tras abrir el enlace de recuperación (RecoveryStack)
 │   ├── HomeScreen.js
 │   ├── HabitDetailScreen.js
 │   ├── ValidateHabitScreen.js
@@ -143,10 +153,14 @@ HabitApp/
 │   ├── HabitStatsScreen.js
 │   ├── ProfileScreen.js
 │   └── AdminScreen.js
+├── sql/                        # SQL aplicado en Supabase, versionado por fecha (ver database.md)
+├── tests/                      # Tests de backend, fases 0-9 (ver tests/README.md)
 ├── App.js                      # Punto de entrada (renderiza RootNavigator)
 ├── index.js                    # Registro de la app con Expo
-├── app.json                    # Configuración de Expo
+├── app.json                    # Configuración de Expo (nombre, bundle id, scheme, permisos, plugins)
+├── eas.json                    # Perfiles de EAS Build/Submit (development, preview, production)
 ├── package.json
+├── AGENTS.md / CLAUDE.md       # Reglas para Claude Code en este repo
 └── docs/                       # Documentación del proyecto (este directorio)
 ```
 
@@ -161,13 +175,13 @@ HabitApp/
 | Supabase como backend | BaaS completo: auth, DB, storage y RLS en un solo servicio. Sin servidor propio. |
 | Dos RPCs para registro | El trigger `on_auth_user_created` de Supabase no permite lógica condicional (crear empresa vs. unirse). Las RPCs con SECURITY DEFINER permiten inserts cross-tabla de forma segura. |
 | Validación antes de `auth.signUp` | Se verifica el código de invitación antes de crear el usuario en auth para evitar usuarios huérfanos si el código es inválido. |
-| `maybeSingle()` en invitations | Devuelve null en lugar de error cuando no existe la fila, simplificando el manejo de código inválido. |
+| RPC `check_activation_code` para validar el código | La policy SELECT de `activation_codes` es solo para admins, así que un visitante sin sesión valida su código de 6 dígitos con esta RPC `SECURITY DEFINER` (con rate limiting). La tabla `invitations` y su flujo genérico se eliminaron el 2026-09-28. |
 | `habit_validations` tabla separada | Permite validaciones múltiples por log (N validadores), sin sobrescribir el estado del log. La constraint UNIQUE previene doble voto. |
 | `onAuthStateChange` para navegación | Desacopla el resultado del login/logout de la lógica de navegación. El navigator reacciona solo al estado de sesión. |
 | `useFocusEffect` en todas las pantallas | Los datos se recargan cada vez que la pantalla recibe foco (al volver de otra pantalla o cambiar de tab), sin necesidad de estado global ni eventos. |
 | Reintento en HomeScreen (500ms) | Race condition documentada: en auto-login, `getUser()` puede fallar si se llama antes de que la sesión se restaure desde AsyncStorage. El reintento lo resuelve sin librería. |
 | Cache-bust de avatar con `?t=Date.now()` | React Native cachea agresivamente imágenes por URI. Al cambiar la URI se fuerza la recarga inmediata sin borrar la URL guardada en DB. |
-| Expo Go sin builds nativos | En desarrollo, evita tiempos de compilación. Solo se necesitará EAS Build para producción (notificaciones push, actualizaciones OTA). |
+| Expo Go en desarrollo, EAS Build para la tienda | En desarrollo, Expo Go evita compilar. Cualquier build de App Store/TestFlight se hace con EAS (`eas.json`, perfil `production`, número de build gestionado en remoto): el primer build iOS de tienda fue el **build 3**, 2026-09-29 (commit `4b6393d`). |
 | iOS primero, Android funcional | El equipo de desarrollo usa Mac/iPhone. Los estilos base se prueban en iOS y se verifica que no rompan en Android. |
 | Un usuario pertenece a un solo grupo | Simplifica el modelo de datos y toda la lógica de contexto de la app. El caso de uso principal es una familia en un único grupo. Multi-grupo postpuesto deliberadamente a v2 cuando haya demanda real — requeriría tabla group_members (N:N), selector de grupo activo en login y refactor de filtros en todas las pantallas. |
 | `authFlags` singleton para activación | Race condition: `skipNextRedirect` evita que `onAuthStateChange` navegue antes de que termine la RPC de registro. SignUpScreen llama a `activateSession(session)` manualmente al terminar. |
@@ -210,8 +224,8 @@ Ya implementado (histórico):
 
 | Email | Rol | Empresa | Company ID | Plan actual |
 |---|---|---|---|---|
-| hernanz.luis@gmail.com | admin | Familia Hernanz | 6b7ee546-846f-484b-b72c-a4ce4ba50ef1 | empresa |
+| hernanz.luis@gmail.com | admin | Familia Hernanz | 0f089219-9130-454d-adf2-6e58847fea28 | familiar |
 
-> Las contraseñas no se almacenan en este documento. La confirmación de email está desactivada en el proyecto de Supabase de desarrollo.
+> Las contraseñas no se almacenan en este documento. La confirmación de email está desactivada en el proyecto de Supabase (el único, de producción).
 >
-> El plan 'empresa' se asignó manualmente para permitir el acceso al panel admin web durante el desarrollo. En producción, los grupos nuevos arrancan en plan 'familiar' por defecto.
+> **Estado a 2026-09-29:** la cuenta y el grupo se rehicieron el 2026-09-28 (el grupo anterior, `6b7ee546-…`, tenía el plan 'empresa' asignado a mano). El grupo actual está en plan **'familiar'**, el default de los grupos nuevos, así que **el panel web (`/admin`) está bloqueado** para esta cuenta: `habitteam-web/src/pages/Acceder.jsx` rechaza cualquier plan distinto de 'empresa' ("El panel web solo está disponible para el plan Empresa"). Subirlo a 'empresa' es una decisión pendiente, no un fallo.

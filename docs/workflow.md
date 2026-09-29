@@ -1,10 +1,10 @@
 # Forma de trabajo
 
 - Claude (asistente) diseña los cambios y produce prompts para Claude Code.
-- Code ejecuta el SQL en Supabase directamente (no lo hace Luis manualmente).
+- Code ejecuta el SQL en Supabase directamente, con acceso SQL propio (`SUPABASE_DB_URL` en `.env`, nunca en el repo ni en el chat). Las consultas de solo lectura son libres. **Cualquier cambio de esquema, funciones, policies, grants o borrado de datos que no sean de test requiere aprobación expresa de Luis en el chat**, y se aplica con copia de seguridad previa (`~/habitapp-backups/`, fuera del repo) y ensayo con `BEGIN … ROLLBACK`. El SQL aplicado se versiona en `sql/`.
 - Code modifica el código, hace commit y push a GitHub.
 - Vercel despliega automáticamente la web tras el push.
-- Luis solo interviene en Supabase manualmente si el cambio es destructivo o crítico.
+- Luis interviene en el dashboard de Supabase para lo que no se hace por SQL (Authentication, URL Configuration, SMTP, claves) y aprueba en el chat los cambios críticos.
 - Tras cada funcionalidad implementada se prueba manualmente antes de pasar al siguiente bloque.
 - Los prompts para Code siempre indican el repo destino: "Para Code (en HabitApp):" o "Para Code (en habitteam-web):".
 - Instrucciones siempre dentro de bloques de código con triple backtick.
@@ -13,7 +13,7 @@
 
 - Cualquier funcionalidad nueva o cambio de comportamiento existente debe
   evaluarse también desde el punto de vista de `tests/` (ver
-  `tests/README.md`, catálogo de 6 fases): ¿algún test existente queda
+  `tests/README.md`, catálogo de 10 fases, 0 a 9): ¿algún test existente queda
   desactualizado por este cambio? ¿el cambio introduce un caso nuevo que
   merece cobertura?
 - Aplica tanto si el cambio lo pide Luis explícitamente como si sale de una

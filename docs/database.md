@@ -42,8 +42,8 @@ Supabase (PostgreSQL + Auth + Storage). RLS activado en todas las tablas.
 | company_id | uuid | — | FK → companies(id) |
 | created_by | uuid | — | FK → profiles(id) |
 | type | text | — | Tipo de hábito (libre) |
-| recurrence | text | — | 'daily', 'weekly_x', 'monthly_x' o 'once' |
-| is_active | boolean | true | Solo se muestran hábitos activos |
+| recurrence | text | 'daily' | 'daily', 'weekly_x', 'monthly_x' o 'once' |
+| is_active | boolean | — (sin default) | Solo se muestran hábitos activos. **Sin default de columna**: un INSERT que lo omita deja `NULL`, que cuenta como inactivo — la app y los tests lo envían siempre explícito |
 | created_at | timestamptz | now() | — |
 | expires_at | timestamptz | null | Para hábitos 'once': fecha y hora límite combinadas. Si está en el pasado, no se muestra |
 | due_time | time | null | Para hábitos 'daily': hora límite opcional. Si la hora actual la supera y el hábito no está completado, se muestra en naranja |
@@ -80,13 +80,14 @@ Solo los usuarios que aparecen en esta tabla para un `habit_id` dado verán los 
 |---|---|---|---|
 | id | uuid | gen_random_uuid() | PK |
 | habit_id | uuid | — | FK → habits(id) ON DELETE CASCADE |
-| user_id | uuid | — | FK → profiles(id) — quién lo hizo |
+| user_id | uuid | — | FK → profiles(id) ON DELETE CASCADE — quién lo hizo |
 | photo_url | text | — | URL pública en Storage bucket habit-photos |
-| status | text | 'pending' | 'pending', 'validated', 'rejected' |
+| status | text | — (sin default) | 'pending', 'validated', 'rejected'. **Sin default de columna**: `HabitDetailScreen` inserta `'pending'` explícitamente. Ningún trigger lo actualiza después (ver la policy UPDATE de `habit_logs`) |
 | notes | text | null | Nota opcional añadida al completar el hábito |
 | validated_by | uuid | null | FK → profiles(id) — legado, no se usa desde v2 |
 | validated_at | timestamptz | null | Legado, no se usa desde v2 |
 | created_at | timestamptz | now() | — |
+| — | UNIQUE (índice) | — | `habit_logs_one_per_day`: (user_id, habit_id, día UTC de `created_at`) — **un solo log por usuario, hábito y día** |
 
 ### `habit_validations`
 | Campo | Tipo | Default | Notas |
@@ -104,9 +105,10 @@ Solo los usuarios que aparecen en esta tabla para un `habit_id` dado verán los 
 | Campo | Tipo | Default | Notas |
 |---|---|---|---|
 | id | uuid | gen_random_uuid() | PK |
-| habit_id | uuid | — | FK → habits(id) |
+| habit_id | uuid | — | FK → habits(id) ON DELETE CASCADE |
 | streak_target | integer | — | Número de completados necesarios para conseguir la recompensa |
 | description | text | — | Descripción de la recompensa |
+| created_at | timestamptz | now() | — |
 
 Ver cálculo de recompensas recursivas/históricas más abajo.
 
@@ -115,8 +117,8 @@ Ver cálculo de recompensas recursivas/históricas más abajo.
 |---|---|---|---|
 | id | uuid | gen_random_uuid() | PK |
 | name | text | — | Nombre de la categoría |
-| icon | text | 'ellipsis-horizontal' | Nombre del icono Ionicons |
-| color | text | '#9E9E9E' | Color hex para el badge |
+| icon | text | — (NOT NULL, sin default) | Nombre del icono Ionicons. Obligatorio en cada INSERT |
+| color | text | — (NOT NULL, sin default) | Color hex para el badge. Obligatorio en cada INSERT |
 | company_id | uuid | null | null = predefinida del sistema; uuid = categoría personalizada de la empresa |
 | created_at | timestamptz | now() | — |
 
@@ -157,7 +159,7 @@ El admin genera un código desde la pestaña Familia de AdminScreen. El código 
 | ip_address | text | — | De `request.headers.x-forwarded-for`, puede ser `null` fuera de PostgREST |
 | attempted_at | timestamptz | now() | — |
 
-Solo la usa `check_activation_code` (capa 2 de rate limiting, por IP — ver más abajo). RLS activado sin policies, igual que `plan_limits`: ningún cliente la lee ni escribe directamente. Filas de más de 1 hora se autolimpian en cada llamada a la función.
+La usan `check_activation_code` (capa 2 de rate limiting, por IP: registra **todas** sus llamadas) y, desde el 2026-09-28, `handle_activation_registration` (solo registra los intentos **fallidos**) — ver más abajo. RLS activado sin policies, igual que `plan_limits`: ningún cliente la lee ni escribe directamente. Filas de más de 1 hora se autolimpian en cada llamada a la función.
 
 ### `plan_limits`
 | Campo | Tipo | Default | Notas |
@@ -216,7 +218,9 @@ teams        ──── habits            (1:N, team_id, nullable)
 
 ---
 
-## Funciones SQL (RPCs SECURITY DEFINER)
+## Funciones SQL (RPCs)
+
+Todas son `SECURITY DEFINER` salvo `keepalive()`, que es `SECURITY INVOKER` (ver su sección).
 
 ### `handle_new_user_registration` → void
 Crea empresa nueva y perfil de administrador en una sola transacción. Se llama desde la app tras `auth.signUp` (SignUpScreen, modo "crear grupo"), **con la sesión que devuelve `signUp`** — requiere la confirmación de email desactivada en el dashboard (si no, `signUp` no devuelve sesión). Reescrita el 2026-09-28 (`sql/2026-09-28_registro_seguro.sql`, ver `tests/README.md`): antes era ejecutable por `anon` y se fiaba de `user_id`/`user_email` del cliente.
@@ -269,7 +273,7 @@ Protege contra reintentos repetidos sobre UN código concreto ya existente pero 
 
 `activation_attempts` tiene RLS activado sin policies (igual que `plan_limits`): solo la toca esta función `SECURITY DEFINER`, ningún cliente puede leerla/escribirla directamente.
 
-Ambos mensajes de bloqueo llegan al cliente vía `error.message` de Supabase y ya tienen dónde mostrarse: `SignUpScreen.onCheckCode` hace `if (error) throw error`, capturado por el `catch` que llama a `setFormError(e?.message ...)` — el mismo mecanismo que usa `handle_activation_registration` para `limit_members_reached`. No ha hecho falta tocar la pantalla en ninguna de las dos capas.
+Ambos mensajes de bloqueo llegan al cliente vía `error.message` de Supabase. Desde el 2026-09-28, `SignUpScreen.js` los traduce con `normalizeRegistrationError` (clave `signup.code_locked`, ES/EN) en `onCheckCode`, `onSignUp` y `onActivate`; igual `limit_members_reached`, `invalid_code` y `profile_already_exists`. Cualquier otro error muestra `signup.error_generic` y el texto crudo solo va a la consola.
 
 ⚠️ Si `x-forwarded-for` llegara vacío (no debería pasar en tráfico real vía Supabase, pero sí al probar la función directamente en el SQL Editor sin pasar por PostgREST), `v_ip` es `NULL` y `ip_address = NULL` nunca iguala nada en SQL — ese tráfico quedaría sin límite por IP. Para probarlo en el SQL Editor hay que fijar `request.headers` manualmente con `select set_config('request.headers', '{"x-forwarded-for":"1.2.3.4"}', true)` antes de llamar a la función.
 
@@ -296,7 +300,7 @@ Devuelve `plan, history_days, advanced_stats, max_members, max_active_habits` de
 Elimina un hábito 'once' ya caducado (SECURITY DEFINER, bypasea RLS). Usada en `screens/ValidateHabitScreen.js`, pestaña "caducados", desde el botón de borrar de cada tarjeta.
 
 ### `update_member_avatar(member_id uuid, new_avatar_url text)`
-Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` cuando un admin cambia la foto de perfil de otro miembro. Ver nota en la política UPDATE de `profiles` más abajo: esta RPC existe para ese campo, pero `full_name`/`email`/`role` de otro miembro se actualizan con un UPDATE directo desde el cliente en el mismo flujo — inconsistente con pasar por RPC solo para el avatar; pendiente de aclarar si la política real de `profiles` ya contempla una excepción de admin. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): `new_avatar_url` debe ser null o del bucket `avatars` en la carpeta del propio miembro (`invalid_avatar_url`).
+Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea RLS). Usada en `screens/AdminScreen.js` cuando un admin cambia la foto de perfil de otro miembro. El resto de campos de otro miembro (`full_name`, `role`) se actualizan con un UPDATE directo desde el cliente, que permite la policy `admins can update same company profiles` (ver políticas de `profiles` más abajo); la RPC solo existe para el avatar. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): `new_avatar_url` debe ser null o del bucket `avatars` en la carpeta del propio miembro (`invalid_avatar_url`).
 
 ### `update_member_profile(member_id, new_full_name, new_email, new_role)`
 **Sin llamadas en la app ni en la web** (la edición de miembros es un UPDATE directo sobre `profiles`). Admin de la misma empresa. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): `new_role` ∈ {`admin`, `usuario`} (`invalid_role`), `new_full_name` no vacío y ≤100; `new_email` se ignora (el email lo fija el trigger de sincronización con Auth).
@@ -321,7 +325,7 @@ Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-
 ### `profiles`
 - **SELECT:** `id = auth.uid() OR company_id = my_company_id()` — el propio perfil o el de un compañero de la misma empresa
 - **INSERT:** solo via funciones RPC (SECURITY DEFINER) — no existe policy de INSERT directo
-- **UPDATE:** `auth.uid() = id` (propio usuario) o `is_admin() AND company_id = my_company_id()` (admin editando a un miembro de su misma empresa — cubre el UPDATE directo de `full_name`/`email`/`role` que hacen `AdminScreen.js` y `Members.jsx`)
+- **UPDATE:** `auth.uid() = id` (propio usuario) o `is_admin() AND company_id = my_company_id()` (admin editando a un miembro de su misma empresa — cubre el UPDATE directo de `full_name`/`role` de `AdminScreen.js` y de `role` de `Members.jsx`). El `email` no se edita desde ningún cliente desde el 2026-09-29, y un UPDATE de `email` no tiene efecto: lo fija el trigger `profiles_email_from_auth`
 
 ### `companies`
 - **SELECT:** `id = my_company_id()` — solo tu propia empresa
@@ -422,6 +426,8 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 | habits | company_id | Filtrar hábitos por empresa/grupo |
 | habits | is_active | Filtrar hábitos activos |
 | profiles | company_id | Filtrar miembros por grupo |
+| habit_logs | (user_id, habit_id, día UTC) — UNIQUE | `habit_logs_one_per_day`: regla de negocio, un log por usuario, hábito y día |
+| activation_attempts | (ip_address, attempted_at) | Rate limiting por IP de `check_activation_code` / `handle_activation_registration` |
 
 ---
 

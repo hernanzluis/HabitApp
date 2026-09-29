@@ -65,7 +65,7 @@ Configuración en `src/i18n.js`: `i18next` + `react-i18next` (`initReactI18next`
 - Detección: `order: ['localStorage', 'navigator']`, `lookupLocalStorage: 'habitteam_lang'`, `caches: ['localStorage']`.
 - **Lógica adicional:** tras inicializar, si el idioma detectado no empieza por `'es'`, se fuerza `i18n.changeLanguage('en')` — es decir, cualquier locale del navegador que no sea español cae en inglés (no se intenta mapear francés/alemán/etc. a nada más).
 - `interpolation.escapeValue: false`.
-- `src/locales/es.json` / `en.json` (123 líneas cada uno): claves de primer nivel `banner`, `nav`, `hero`, `howItWorks`, `features`, `pricing`, `cta`, `footer`. `pricing.plans` es un array de 3 objetos (`name`, `price`, `period`, `featured`, `features[]`).
+- `src/locales/es.json` / `en.json` (124 líneas cada uno): claves de primer nivel `banner`, `nav`, `hero`, `howItWorks`, `features`, `pricing`, `cta`, `footer`. `pricing.plans` es un array de 3 objetos (`name`, `price`, `period`, `featured`, `features[]`).
 - Selector de idioma en `Nav.jsx`: botones ES|EN que llaman a `i18n.changeLanguage(lang)` y además hacen `localStorage.setItem('habitteam_lang', lang)` manualmente (redundante con el cacheo propio de i18next, pero explícito en el código).
 
 **Uso real de `useTranslation()`** (confirmado por grep en todo `src/`): solo en `Nav.jsx`, `Home.jsx`, `Privacy.jsx`, `Terms.jsx`, `Cookies.jsx` — es decir, únicamente las páginas públicas y legales. **Todo el panel de administración** (`Acceder.jsx`, `Admin.jsx`, `MemberDetail.jsx`, y los 4 componentes de `components/admin/`) tiene strings en español hardcodeados sin i18n en absoluto.
@@ -228,7 +228,7 @@ Color por defecto de categoría nueva: `#4CAF50`. Modal con preview en vivo (ini
 
 Mismo patrón de verificación de sesión/rol/plan que `Admin.jsx` (`checkAuth` propio: sesión → `profiles.select('role, company_id')` con `role === 'admin'` → `companies.select('plan')` con `plan === 'empresa'`, cualquier fallo redirige a `/acceder`), ya que es una ruta de nivel superior con su propio guard independiente del de `Admin.jsx`.
 
-> **Seguridad implementada:** se comprueba que el `userId` de la URL pertenece a la empresa del admin logueado antes de mostrar cualquier dato; si no coincide, redirige a `/admin`.
+> **Seguridad implementada:** se comprueba que el `userId` de la URL pertenece a la empresa del admin logueado antes de mostrar cualquier dato; si no coincide, redirige a `/admin`. Desde el 2026-09-28 esto lo garantiza además el servidor: las policies SELECT de todas las tablas filtran por la empresa del usuario (`docs/database.md`, políticas RLS), así que un admin de otra empresa no recibiría ningún dato aunque saltara esta comprobación de cliente.
 
 **Queries:**
 1. `profiles.select('id, full_name, email, avatar_url, created_at, company_id').eq('id', userId).single()`
