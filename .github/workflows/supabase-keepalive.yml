@@ -7,7 +7,7 @@
 #
 # Configuración en GitHub (Settings → Secrets and variables → Actions):
 #   - Secret   SUPABASE_ANON_KEY  → anon key (publishable) del proyecto
-#   - Variable SUPABASE_URL       → https://<ref>.supabase.co
+#   - Variable SUPABASE_URL       → https://uvsngemnftpysjvxslhu.supabase.co (literal)
 #
 # OJO: en un repositorio público GitHub desactiva los workflows programados
 # tras 60 días sin actividad en el repo (avisa por email antes). Ver
@@ -38,6 +38,17 @@ jobs:
           set -euo pipefail
           if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
             echo "::error::Faltan la variable SUPABASE_URL o el secret SUPABASE_ANON_KEY en Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          # Validar el formato antes de llamar: un valor de ejemplo sin
+          # sustituir (p. ej. https://<ref>.supabase.co) hacía fallar curl con
+          # un críptico "exit code 3" (Run #1, 2026-09-29).
+          if ! [[ "${SUPABASE_URL}" =~ ^https://[a-z0-9]+\.supabase\.co/?$ ]]; then
+            echo "::error::La variable SUPABASE_URL no tiene el formato https://<id-del-proyecto>.supabase.co (valor actual: ${SUPABASE_URL})"
+            exit 1
+          fi
+          if [[ "${SUPABASE_ANON_KEY}" == sb_secret_* ]]; then
+            echo "::error::SUPABASE_ANON_KEY contiene una clave secreta (sb_secret_…): usa la anon key publishable (sb_publishable_…)"
             exit 1
           fi
           body=$(curl --silent --show-error --fail-with-body \

@@ -89,7 +89,7 @@ Lo que no vive en el código ni en el esquema de Supabase (no se puede reproduci
   - Si la petición falla o no devuelve `1`, el job falla y GitHub avisa por email.
 - Configuración en GitHub (repo HabitApp → Settings → Secrets and variables → Actions), creada por Luis:
   - **Secret** `SUPABASE_ANON_KEY`: la anon key publishable del proyecto (nunca la service role key).
-  - **Variable** `SUPABASE_URL`: `https://<ref>.supabase.co`.
+  - **Variable** `SUPABASE_URL`: `https://uvsngemnftpysjvxslhu.supabase.co` (el valor literal; el workflow valida el formato antes de llamar).
 - **Ojo:** el repo es público y GitHub desactiva los workflows programados tras **60 días sin actividad** en el repo (avisa por email antes). Si pasa, se reactiva desde la pestaña Actions.
 
 ---
