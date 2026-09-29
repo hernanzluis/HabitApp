@@ -25,7 +25,7 @@ verificado, no cuando se ha hecho.
 - [ ] **Avatar de miembro por el admin** — el `upsert` de AdminScreen sobre un avatar ya existente falla por RLS (no hay policy UPDATE de admin en Storage). Anterior al 2026-09-28; necesita una policy nueva aprobada.
 - [x] **Email editable en el modal de miembro (AdminScreen)** — quitado el 2026-09-29 (el email se sincroniza con Auth por trigger; editarlo ahí no tenía efecto). habitteam-web no tenía ese campo. Pendiente de probar en dispositivo: `manual-testing.md`, bloque 9.
 - [ ] **Borrado de cuenta y Storage** — `delete_member` no limpia los ficheros del miembro borrado (el borrado de la propia cuenta sí lo intenta desde el cliente): origen de los 80 huérfanos borrados el 2026-09-28.
-- [x] **Tests tras el cierre de seguridad** — hecho el 2026-09-29: Fase 4 test 5 invertido, tests 0/4/5/6 ajustados y Fase 9 nueva (71 tests). Fases 0-9 dos veces seguidas: 218/218 en ambas, sin residuos. Ese mismo día la Fase 9 pasó a 72 tests (control de `keepalive()`): total actual 219. Detalle en `tests/README.md`.
+- [x] **Tests tras el cierre de seguridad** — hecho el 2026-09-29: Fase 4 test 5 invertido, tests 0/4/5/6 ajustados y Fase 9 nueva (71 tests). Fases 0-9 dos veces seguidas: 218/218 en ambas, sin residuos. Ese mismo día la Fase 9 pasó a 72 tests (control de `keepalive()`) y, con el refuerzo de la barrera de limpieza (Fase 0: 12 tests; Fase 8: 42), el total actual es 226. Detalle en `tests/README.md`.
 
 ## Camino a la App Store (iOS)
 

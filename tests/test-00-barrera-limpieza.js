@@ -7,6 +7,9 @@
 //   A) canario sin profile (la vía de "huérfanos" de cleanupTestData)
 //   B) canario CON profile, miembro de una company zztest- (la vía de userIds
 //      que parte de "miembros de una company de test", sea cual sea su email)
+//   C) company SIN prefijo cuyo admin_id es un usuario de test (refuerzo del
+//      2026-09-29): se limpia si no tiene miembros reales (test 4) y la
+//      limpieza aborta si los tiene (test 5). Sus nombres empiezan por fase0-.
 // Hasta el 2026-09-28 el caso B era un profile con email zztest- sobre un
 // usuario de Auth canary- (desfase profiles.email ≠ auth.users.email, ver
 // tests/README.md, hallazgo de la Fase 0). Desde ese día el trigger
@@ -24,6 +27,7 @@ const {
   TEST_PREFIX,
   supabaseAdmin,
   randomPassword,
+  testEmail,
   cleanupTestData,
   assertEqual,
 } = require('./test-helpers');
@@ -56,6 +60,8 @@ async function run() {
   const canaries = [];
   const canaryProfileIds = [];
   let canaryCompanyId = null;
+  const noPrefixCompanyIds = [];
+  const testAdmins = [];
 
   try {
     // ---- Test 1: canario sin profile ----
@@ -100,11 +106,67 @@ async function run() {
     if (updErr) throw new Error(`UPDATE de email del canario: ${updErr.message}`);
     const { data: bAfter } = await supabaseAdmin.from('profiles').select('email').eq('id', b.id).single();
     check(bAfter.email, b.email, 'Test 3: incluso con la Service Role Key, profiles.email vuelve al email de Auth (trigger profiles_email_from_auth)');
+
+    // Se retira ya el montaje del test 2 (profile del canario B y su company):
+    // si no, las limpiezas de los tests 4 y 5 abortarían por él.
+    await supabaseAdmin.from('profiles').delete().eq('id', b.id).eq('full_name', 'canary');
+    canaryProfileIds.splice(canaryProfileIds.indexOf(b.id), 1);
+    await supabaseAdmin.from('companies').delete().eq('id', company.id).like('name', `${TEST_PREFIX}CanaryCompany-%`);
+    canaryCompanyId = null;
+
+    // ---- Test 4: company SIN prefijo cuyo admin es un usuario de test ----
+    // Refuerzo del 2026-09-29 (ver cleanupTestData): el caso real fue un grupo
+    // con nombre en blanco creado por el test 6a de la Fase 8.
+    console.log('\nTest 4: una company sin el prefijo cuyo admin_id es un usuario de test, sin miembros, se limpia');
+    const { data: u4, error: u4Err } = await supabaseAdmin.auth.admin.createUser({ email: testEmail(), password: randomPassword(), email_confirm: true });
+    if (u4Err) throw new Error(`no se pudo crear el admin de test del test 4: ${u4Err.message}`);
+    testAdmins.push(u4.user.id);
+    const { data: c4, error: c4Err } = await supabaseAdmin.from('companies')
+      .insert({ name: `fase0-sin-prefijo-${Date.now()}`, admin_id: u4.user.id }).select('id').single();
+    if (c4Err) throw new Error(`no se pudo crear la company del test 4: ${c4Err.message}`);
+    noPrefixCompanyIds.push(c4.id);
+    await cleanupTestData();
+    const { data: c4After } = await supabaseAdmin.from('companies').select('id').eq('id', c4.id).maybeSingle();
+    check(c4After, null, 'Test 4a: cleanupTestData() borra la company sin prefijo cuyo admin es un usuario de test');
+    check(await authUserExists(u4.user.id), false, 'Test 4b: y borra también a ese usuario de test');
+
+    // ---- Test 5: la misma situación, pero con un miembro real → abortar ----
+    console.log('\nTest 5: si esa company tiene un miembro real, la limpieza aborta sin borrar nada');
+    const { data: u5, error: u5Err } = await supabaseAdmin.auth.admin.createUser({ email: testEmail(), password: randomPassword(), email_confirm: true });
+    if (u5Err) throw new Error(`no se pudo crear el admin de test del test 5: ${u5Err.message}`);
+    testAdmins.push(u5.user.id);
+    const { data: c5, error: c5Err } = await supabaseAdmin.from('companies')
+      .insert({ name: `fase0-miembro-real-${Date.now()}`, admin_id: u5.user.id }).select('id').single();
+    if (c5Err) throw new Error(`no se pudo crear la company del test 5: ${c5Err.message}`);
+    noPrefixCompanyIds.push(c5.id);
+    const real = await createCanary();
+    canaries.push(real);
+    const { error: realProfErr } = await supabaseAdmin.from('profiles').insert({
+      id: real.id, email: real.email, full_name: 'canary', role: 'usuario', company_id: c5.id,
+    });
+    if (realProfErr) throw new Error(`no se pudo crear el profile del miembro real: ${realProfErr.message}`);
+    canaryProfileIds.push(real.id);
+    let abort5 = null;
+    try {
+      await cleanupTestData();
+    } catch (e) {
+      abort5 = e;
+    }
+    check(!!abort5 && /ABORTADO/.test(abort5.message) && /admin un usuario de test/.test(abort5.message), true,
+      `Test 5a: cleanupTestData() aborta (${abort5 ? abort5.message : 'no abortó'})`);
+    const { data: c5After } = await supabaseAdmin.from('companies').select('id').eq('id', c5.id).maybeSingle();
+    check(!!c5After, true, 'Test 5b: la company con el miembro real sigue existiendo');
+    check(await authUserExists(real.id), true, 'Test 5c: el miembro real sigue existiendo en Auth');
+    check(await authUserExists(u5.user.id), true, 'Test 5d: ni siquiera se borra al admin de test (aborta ANTES de borrar nada)');
   } finally {
     console.log('\nLimpieza de los canarios (por id)...');
     for (const id of canaryProfileIds) {
       const { error } = await supabaseAdmin.from('profiles').delete().eq('id', id).eq('full_name', 'canary');
       if (error) console.error(`  no se pudo borrar el profile del canario ${id}: ${error.message}`);
+    }
+    for (const id of noPrefixCompanyIds) {
+      const { error } = await supabaseAdmin.from('companies').delete().eq('id', id).like('name', 'fase0-%');
+      if (error) console.error(`  no se pudo borrar la company ${id}: ${error.message}`);
     }
     if (canaryCompanyId) {
       const { error } = await supabaseAdmin.from('companies').delete().eq('id', canaryCompanyId).like('name', `${TEST_PREFIX}CanaryCompany-%`);
@@ -115,6 +177,8 @@ async function run() {
       const { error } = await supabaseAdmin.auth.admin.deleteUser(c.id);
       if (error && !/not.*found/i.test(error.message)) console.error(`  no se pudo borrar el canario ${c.email}: ${error.message}`);
     }
+    // Los admins de test de los tests 4 y 5 (zztest-) que sigan vivos.
+    if (testAdmins.length) await cleanupTestData();
     console.log('OK');
   }
 

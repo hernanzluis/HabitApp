@@ -314,6 +314,35 @@ async function cleanupTestData() {
     .filter((u) => u.email && u.email.startsWith(TEST_PREFIX) && !userIds.includes(u.id))
     .map((u) => u.id);
 
+  // Refuerzo 2026-09-29: companies SIN el prefijo cuyo admin_id es un usuario
+  // de test que se va a borrar ahora. Caso real: el test 6a de la Fase 8,
+  // ejecutado antes del SQL de registro seguro, creó un grupo con nombre en
+  // blanco ('   ', no puede llevar prefijo: es lo que prueba) y la limpieza
+  // borró a su admin de test pero dejó la company, porque solo buscaba por
+  // nombre. Se buscan en la MISMA limpieza que borra al admin: después ya no
+  // quedaría rastro de que admin_id era un usuario de test. Barrera: si esa
+  // company tiene algún miembro cuyo email no lleva el prefijo, se aborta sin
+  // borrar nada. Lo vigila tests/test-00-barrera-limpieza.js (tests 4 y 5).
+  const testAuthIds = [...new Set([...userIds, ...orphanedTestUserIds])];
+  if (testAuthIds.length) {
+    const { data: adminCompanies, error: adminCompaniesErr } = await supabaseAdmin
+      .from('companies').select('id, name, admin_id').in('admin_id', testAuthIds);
+    if (adminCompaniesErr) throw new Error(`cleanupTestData: no se pudo leer companies por admin_id: ${adminCompaniesErr.message}`);
+    for (const c of adminCompanies ?? []) {
+      if (companyIds.includes(c.id)) continue;
+      const { data: members, error: mErr } = await supabaseAdmin.from('profiles').select('id, email').eq('company_id', c.id);
+      if (mErr) throw new Error(`cleanupTestData: no se pudo leer miembros de la company ${c.id}: ${mErr.message}`);
+      const realMembers = (members ?? []).filter((m) => !m.email || !m.email.startsWith(TEST_PREFIX));
+      if (realMembers.length) {
+        throw new Error(
+          `cleanupTestData: ABORTADO sin borrar nada — la company ${c.id} ("${c.name}") tiene como admin un usuario de test ` +
+          `pero también ${realMembers.length} miembro(s) sin el prefijo "${TEST_PREFIX}" (p. ej. ${realMembers[0].id})`
+        );
+      }
+      companyIds.push(c.id);
+    }
+  }
+
   if (userIds.length === 0 && companyIds.length === 0 && orphanedTestUserIds.length === 0) {
     return { deleted: false, reason: 'no había datos de test que limpiar' };
   }

@@ -216,6 +216,32 @@ ese recuento y no se borró. El `return` temprano está corregido y cubierto
 indirectamente: ahora los huérfanos se buscan antes de decidir si hay algo
 que limpiar.
 
+## 🟡 Company en blanco que la limpieza no reconoció — 2026-09-29
+
+**Qué se encontró:** al revisar la documentación contra la base el
+2026-09-29 apareció una segunda company, con nombre `'   '` (tres espacios),
+0 miembros y un `admin_id` que ya no existía en Auth. La creó el test 6a de la
+Fase 8, ejecutado el 2026-09-28 **antes** de aplicar el SQL de registro
+seguro: el test prueba precisamente un nombre en blanco (no puede llevar el
+prefijo `zztest-`) y la RPC antigua lo aceptaba. `cleanupTestData()` borró a su
+admin de test y su profile, pero no la company, porque solo reconocía las
+companies por el nombre. Se borró el 2026-09-29 con aprobación de Luis (copia
+en `~/habitapp-backups/2026-09-29-empresa-huerfana/`).
+
+**Refuerzos (2026-09-29):**
+- `cleanupTestData()` borra también las companies **sin** prefijo cuyo
+  `admin_id` es un usuario de test que se borra en esa misma limpieza, y
+  aborta sin borrar nada si alguna tiene un miembro real. Tiene que ser en la
+  misma limpieza: una vez borrado el admin, ya no queda rastro de que era de
+  test. Vigilado por la Fase 0, tests 4 y 5.
+- Fase 8, test 6c: además de que la RPC rechace el nombre en blanco, comprueba
+  que no se ha creado ninguna company con ese `admin_id`.
+
+**Límite que queda:** una company huérfana cuyo admin de test ya se borró en
+una limpieza anterior no se puede identificar después (sin FK en
+`companies.admin_id`, ese id no apunta a nada). Las FK propuestas el
+2026-09-29 (pendientes de decisión) lo harían visible como `admin_id = NULL`.
+
 ## 1. Qué es esto y por qué existe
 
 Scripts de test de backend que corren contra el **Supabase real de producción** —
@@ -305,7 +331,7 @@ Cada script, en este orden:
 
 ## 4. Índice de fases
 
-### Fase 0 — `test-00-barrera-limpieza.js` (6 tests)
+### Fase 0 — `test-00-barrera-limpieza.js` (12 tests)
 
 Canario de la barrera de seguridad de `cleanupTestData()` (punto 5). Crea con
 la Service Role Key usuarios de Auth con email `canary-…@habitapp-test.local`
@@ -326,6 +352,8 @@ test 2 vigila ahora esa vía.
 | 1 | Un usuario de Auth sin prefijo y sin profile sobrevive a la limpieza | Vía de "huérfanos" |
 | 2 (×4) | Un usuario de Auth sin prefijo, **miembro de una company `zztest-`**, hace que la limpieza aborte sin borrar nada: sigue en Auth, conserva su profile y la company sigue ahí | Vía de "miembros de una company de test" de la barrera |
 | 3 | Un UPDATE de `profiles.email` a un valor `zztest-` (incluso con la Service Role Key) no desincroniza el email: vuelve al de Auth | Confirma que el hueco del 2026-09-28 (ver sección destacada) ya no se puede reproducir en datos |
+| 4 (×2) | Una company **sin** el prefijo cuyo `admin_id` es un usuario de test, sin miembros, se borra en la limpieza junto con ese usuario | Refuerzo del 2026-09-29 (ver hallazgo "Company en blanco que la limpieza no reconoció") |
+| 5 (×4) | La misma company, pero con un miembro real (canario): la limpieza aborta sin borrar nada — ni la company, ni el miembro, ni el admin de test | Misma barrera que el resto: nunca borrar si hay algo real colgando |
 
 ### Fase 1 — `test-01-alta.js` (8 tests)
 
@@ -464,7 +492,7 @@ correo real y abrir el enlace desde el dispositivo (`Linking`/deep link real,
 `useLinkingURL()`, la navegación de `RootNavigator.js` hacia
 `ResetPasswordScreen`) — eso queda en `docs/manual-testing.md`, bloque 2.
 
-### Fase 8 — `test-08-registro-seguro.js` (41 tests)
+### Fase 8 — `test-08-registro-seguro.js` (42 tests)
 
 Seguridad de las dos RPCs de alta tras `sql/2026-09-28_registro_seguro.sql`.
 Ver la sección destacada al principio de este documento.
@@ -477,7 +505,7 @@ Ver la sección destacada al principio de este documento.
 | 3 (×4) | A no puede registrar el `user_id` de B en ninguna de las dos | `user_id` venía del cliente |
 | 4 (×5) | `user_email` distinto del autenticado → `email_mismatch`; un código emitido para otro email → `invalid_code`, sin sumar `failed_attempts` (no se puede usar para bloquear el código de otro) | Código ligado al email del invitado |
 | 5 (×2) | Segunda llamada con profile ya existente → `profile_already_exists`, sigue habiendo una sola company | Antes fallaba igual, pero con un error de PK crudo y tras insertar la company |
-| 6 (×2) | `company_name` en blanco o >100 caracteres rechazado | Validación que antes no existía |
+| 6 (×3) | `company_name` en blanco o >100 caracteres rechazado, y ninguna de las dos llamadas deja una company creada con ese `admin_id` (6c, añadido el 2026-09-29) | Validación que antes no existía. El 6c existe porque el 6a, ejecutado antes del fix, sí creó un grupo con nombre en blanco que la limpieza no reconoció (ver hallazgo) |
 | 7 (×3) | El código queda `used = true` sin ningún UPDATE del cliente; tras borrar la cuenta, una cuenta nueva con el mismo email no puede reutilizarlo | Marcado atómico dentro de la RPC |
 | 8 (×11) | 5 códigos inventados por llamada directa → `invalid_code` y 5 filas en `activation_attempts`; el 6º se bloquea y no inserta (no alarga la ventana); con la IP bloqueada, un código **válido para tu propio email** sí se canjea; 5 intentos sobre un código usado → `failed_attempts = 5` y `locked_until` futuro, que bloquea aun con la IP limpia; una activación legítima no gasta cupo extra; y (8j/8k) tras 4 errores + 1 acierto en `check_activation_code`, el paso 2 no bloquea al usuario | El rate limiting ya no se esquiva llamando a la RPC directamente, y no frena a quien tiene un código bueno — ver hallazgo "cupo de IP en el paso 2" |
 | 9 | Un código emitido como `"  EMAIL  "` lo canjea el usuario con `email` | El admin puede teclear el email con mayúsculas o espacios |
@@ -917,7 +945,7 @@ nueva. Índice para quien llegue a este documento por primera vez:
 
 | Fase | Fichero | Tests | Tema |
 |---|---|---|---|
-| 0 | `test-00-barrera-limpieza.js` | 6 | Canario de la barrera de `cleanupTestData()` (usuario sin prefijo, sin profile y miembro de una company de test; desfase de email imposible) |
+| 0 | `test-00-barrera-limpieza.js` | 12 | Canario de la barrera de `cleanupTestData()` (usuario sin prefijo, sin profile y miembro de una company de test; desfase de email imposible) |
 | 1 | `test-01-alta.js` | 8 | Alta de admin y de miembro, condición real de "family setup" |
 | 2 | `test-02-habitos.js` | 10 | Hábitos, asignación, validadores (RLS) |
 | 3 | `test-03-rachas.js` | 18 | Rachas y recompensas (`calculateStreak`/`calculateTotalCompleted`, recursividad, `featuredReward`) |
@@ -925,9 +953,9 @@ nueva. Índice para quien llegue a este documento por primera vez:
 | 5 | `test-05-limites.js` | 11 | Límites de plan (`plan_limits`, `check_member_limit`, `check_habit_limit`, `history_days`) |
 | 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
-| 8 | `test-08-registro-seguro.js` | 41 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
+| 8 | `test-08-registro-seguro.js` | 42 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
 | 9 | `test-09-aislamiento.js` | 72 | Aislamiento de la API pública: anon, entre empresas, Storage, RPCs de gestión de miembros |
-| **Total** | **10 ficheros** | **219** | |
+| **Total** | **10 ficheros** | **226** | |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos

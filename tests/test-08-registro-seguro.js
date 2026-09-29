@@ -182,6 +182,14 @@ async function run() {
     checkRejected(blankErr, 'Test 6a: company_name en blanco', /invalid_company_name/);
     const { error: longErr } = await registerAdmin(userD.client, { userId: userD.userId, email: userD.email, companyName: `${TEST_PREFIX}${'x'.repeat(100)}` });
     checkRejected(longErr, 'Test 6b: company_name de más de 100 caracteres', /invalid_company_name/);
+    // No basta con que la RPC falle: hay que confirmar que no dejó ninguna
+    // company a medias. El nombre en blanco no puede llevar el prefijo
+    // zztest-, así que si se creara, la limpieza no la reconocería por nombre
+    // (pasó el 2026-09-28, antes del SQL de registro seguro).
+    const { count: dCompanies, error: dCompaniesErr } = await supabaseAdmin
+      .from('companies').select('id', { count: 'exact', head: true }).eq('admin_id', userD.userId);
+    if (dCompaniesErr || dCompanies === null) throw new Error(`Test 6c: no se pudo contar companies: ${dCompaniesErr?.message}`);
+    check(dCompanies, 0, 'Test 6c: ninguna de las dos llamadas rechazadas ha creado una company con ese admin_id');
 
     // ---- Test 7: marcado atómico y reutilización ----
     console.log('\nTest 7: el código se marca usado dentro de la RPC y no se puede reutilizar');
