@@ -1,6 +1,6 @@
 # HabitApp — Checklist de tests manuales
 
-Cubre lo que `tests/` (backend, 10 fases, 218 tests automáticos) no puede ver:
+Cubre lo que `tests/` (backend, 10 fases, 219 tests automáticos) no puede ver:
 UI real, gestos, cámara, permisos del sistema, estados visuales y timing de
 cliente. Ver [tests/README.md](../tests/README.md) para el catálogo
 automático — donde un ítem de aquí verifica el resultado visible de algo que

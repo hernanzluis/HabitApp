@@ -483,7 +483,7 @@ Ver la sección destacada al principio de este documento.
 | 9 | Un código emitido como `"  EMAIL  "` lo canjea el usuario con `email` | El admin puede teclear el email con mayúsculas o espacios |
 | 10 (×4) | Tras borrar la policy UPDATE no-admin: un miembro no puede marcar como usado un código pendiente de su grupo; el admin sigue editando nombre/email (`AdminScreen.handleSavePending`) y cancelando (DELETE, `AdminScreen` y `Members.jsx`) | El único UPDATE de cliente sobre `activation_codes` que queda es el del admin |
 
-### Fase 9 — `test-09-aislamiento.js` (71 tests)
+### Fase 9 — `test-09-aislamiento.js` (72 tests)
 
 Aislamiento de la API pública tras el cierre de seguridad del 2026-09-28
 (`sql/2026-09-28c`–`h`, `docs/security-inventory-2026-09-28.md`). Convierte en
@@ -494,7 +494,7 @@ sí las ve.
 | Test | Qué verifica | Por qué importa |
 |---|---|---|
 | 1 (×14) | Sin sesión (solo anon key), ninguna de las 14 tablas de `public` se puede leer (`permission denied`) | Antes se leían sin sesión `habits`, `habit_logs` (con `photo_url` y notas), asignaciones, validadores, recompensas, categorías e invitaciones |
-| 2 (×15) | Sin sesión no se ejecuta ninguna función (14) salvo `check_activation_code` (control) | Antes todas salvo las dos RPCs de alta eran ejecutables por anon |
+| 2 (×16) | Sin sesión no se ejecuta ninguna función (14) salvo `check_activation_code` y `keepalive()` (controles; `keepalive` devuelve 1) | Antes todas salvo las dos RPCs de alta eran ejecutables por anon. `keepalive()` (añadida el 2026-09-29, `sql/2026-09-29_keepalive.sql`) es el ping del workflow anti-pausa: `SECURITY INVOKER`, no lee ni escribe ninguna tabla |
 | 3 (×22) | Un miembro de B no lee de A ninguna de 11 tablas (hábitos, logs, asignaciones, validadores, recompensas, validaciones, categorías, profiles, companies, códigos, team_members); controles: el miembro de A sí lee las suyas, el admin de A sus códigos, y B las categorías predefinidas | Aislamiento entre empresas, que hasta el 2026-09-28 dependía de filtrar en el cliente |
 | 4 (×4) | `check_habit_limit` / `check_member_limit` de otra empresa → `forbidden`; `get_company_plan_info` → vacío; control: el plan propio sí | Antes respondían para cualquier empresa, incluso sin sesión |
 | 5 (×5) | Storage: B no ve la carpeta del miembro de A en la raíz, ni lista sus fotos ni su avatar; controles: el admin de A sí lista ambos | Antes cualquier autenticado listaba todo el bucket |
@@ -926,8 +926,8 @@ nueva. Índice para quien llegue a este documento por primera vez:
 | 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
 | 8 | `test-08-registro-seguro.js` | 41 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
-| 9 | `test-09-aislamiento.js` | 71 | Aislamiento de la API pública: anon, entre empresas, Storage, RPCs de gestión de miembros |
-| **Total** | **10 ficheros** | **218** | |
+| 9 | `test-09-aislamiento.js` | 72 | Aislamiento de la API pública: anon, entre empresas, Storage, RPCs de gestión de miembros |
+| **Total** | **10 ficheros** | **219** | |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos

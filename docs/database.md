@@ -301,12 +301,15 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 ### `update_member_profile(member_id, new_full_name, new_email, new_role)`
 **Sin llamadas en la app ni en la web** (la edición de miembros es un UPDATE directo sobre `profiles`). Admin de la misma empresa. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): `new_role` ∈ {`admin`, `usuario`} (`invalid_role`), `new_full_name` no vacío y ≤100; `new_email` se ignora (el email lo fija el trigger de sincronización con Auth).
 
+### `keepalive()` → integer
+Devuelve siempre `1`. `SECURITY INVOKER`, `STABLE`, no lee ni escribe ninguna tabla. Ejecutable por `anon` y `authenticated` (no por `public`). Añadida el 2026-09-29 (`sql/2026-09-29_keepalive.sql`) como ping del workflow `.github/workflows/supabase-keepalive.yml`, que evita que el proyecto se pause por inactividad (ver `project.md`, "Configuración externa"). Cubierta por la Fase 9, test 2.
+
 ### Helpers de policies: `is_admin()`, `my_company_id()`, `is_my_company_habit(habit_id)`, `is_my_company_log(log_id)`
 `SECURITY DEFINER`, `STABLE`. Los dos últimos se añadieron el 2026-09-28 para las policies SELECT de las tablas hijas (evitan RLS anidado).
 
 ### Permisos de EXECUTE y `search_path` (desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`))
 - Todas las funciones de `public` tienen `search_path = public, pg_temp`.
-- `anon` y `public` solo pueden ejecutar `check_activation_code` (paso 1 del alta con código, antes del signUp). Todas las demás: solo `authenticated`. Las funciones de trigger (`prevent_self_role_company_escalation`, `profiles_email_from_auth`, `sync_profile_email_from_auth`) no las ejecuta ningún cliente.
+- `anon` solo puede ejecutar `check_activation_code` (paso 1 del alta con código, antes del signUp) y, desde el 2026-09-29, `keepalive()` (ver abajo). Todas las demás: solo `authenticated`. Las funciones de trigger (`prevent_self_role_company_escalation`, `profiles_email_from_auth`, `sync_profile_email_from_auth`) no las ejecuta ningún cliente.
 - Default privileges del rol `postgres` en `public`: las funciones futuras nacen sin EXECUTE para `anon`/`public`.
 
 ---

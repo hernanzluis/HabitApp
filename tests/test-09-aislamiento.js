@@ -3,7 +3,8 @@
 // Ejecutar con: node tests/test-09-aislamiento.js
 //
 // Convierte en tests la verificación manual que se hizo ese día con dos
-// empresas zztest-: anon no lee ni ejecuta nada (salvo check_activation_code),
+// empresas zztest-: anon no lee ni ejecuta nada (salvo check_activation_code y
+// keepalive),
 // una empresa no ve nada de otra (tablas, funciones, listado de Storage), y
 // las RPCs de gestión de miembros validan lo que reciben. Cada bloqueo lleva
 // su control positivo: un 0 filas solo demuestra algo si el dueño sí las ve.
@@ -113,8 +114,10 @@ async function run() {
 
     // ============================================================
     // Test 2 — anon no ejecuta ninguna función salvo check_activation_code
+    // y keepalive (ping del workflow .github/workflows/supabase-keepalive.yml,
+    // añadida el 2026-09-29: sql/2026-09-29_keepalive.sql)
     // ============================================================
-    console.log('\nTest 2: sin sesión solo se ejecuta check_activation_code');
+    console.log('\nTest 2: sin sesión solo se ejecutan check_activation_code y keepalive');
     const anonCalls = [
       ['check_habit_limit', { p_company_id: adminA.companyId }],
       ['check_member_limit', { p_company_id: adminA.companyId }],
@@ -138,6 +141,8 @@ async function run() {
     await resetActivationRateLimit();
     const { error: chkErr } = await anon.rpc('check_activation_code', { p_code: 'zz0000' });
     check(chkErr, null, 'Test 2: control — anon SÍ ejecuta check_activation_code (paso 1 del alta con código)');
+    const { data: ping, error: pingErr } = await anon.rpc('keepalive');
+    check([ping, pingErr], [1, null], 'Test 2: control — anon SÍ ejecuta keepalive() y devuelve 1 (ping anti-pausa de Supabase)');
 
     // ============================================================
     // Test 3 — un miembro de B no lee nada de A (y los de A sí)

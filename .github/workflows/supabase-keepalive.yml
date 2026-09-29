@@ -1,0 +1,52 @@
+# Evita que el proyecto de Supabase (plan gratuito) se pause tras 7 días sin
+# actividad: cada 3 días llama a la función public.keepalive() con la anon key
+# (sql/2026-09-29_keepalive.sql). La anon key no puede leer ninguna tabla desde
+# el cierre de seguridad del 2026-09-28, por eso se usa esa función y no un
+# SELECT sobre una tabla. Si la petición falla o no devuelve 1, el job falla y
+# GitHub avisa por email.
+#
+# Configuración en GitHub (Settings → Secrets and variables → Actions):
+#   - Secret   SUPABASE_ANON_KEY  → anon key (publishable) del proyecto
+#   - Variable SUPABASE_URL       → https://<ref>.supabase.co
+#
+# OJO: en un repositorio público GitHub desactiva los workflows programados
+# tras 60 días sin actividad en el repo (avisa por email antes). Ver
+# docs/project.md, "Configuración externa".
+
+name: Supabase keepalive
+
+on:
+  schedule:
+    # 09:00 UTC los días 1, 4, 7… de cada mes: nunca más de 3 días entre dos
+    # ejecuciones (el cambio de mes solo acorta el intervalo). GitHub puede
+    # retrasar las ejecuciones programadas; el margen hasta 7 días lo absorbe.
+    - cron: '0 9 */3 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping a public.keepalive()
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "::error::Faltan la variable SUPABASE_URL o el secret SUPABASE_ANON_KEY en Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          body=$(curl --silent --show-error --fail-with-body \
+            --max-time 30 --retry 2 --retry-delay 10 --retry-all-errors \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            "${SUPABASE_URL%/}/rest/v1/rpc/keepalive")
+          echo "Respuesta: ${body}"
+          if [ "${body}" != "1" ]; then
+            echo "::error::keepalive no devolvió 1 (respuesta: ${body})"
+            exit 1
+          fi

@@ -82,6 +82,16 @@ Lo que no vive en el código ni en el esquema de Supabase (no se puede reproduci
 - **Site URL:** `https://habitteam.app`. Redirect URLs: `habitapp://reset-password` (deep link de recuperación de contraseña).
 - **Enable custom SMTP: activado**, con la integración de Resend (sustituye al SMTP por defecto de Supabase, que solo entregaba a miembros de la organización y con un límite de 2 correos/hora).
 
+### Supabase — evitar la pausa por inactividad (GitHub Actions)
+- El plan gratuito pausa el proyecto tras 7 días sin actividad. Lo evita el workflow **`.github/workflows/supabase-keepalive.yml`** (repo HabitApp), añadido el 2026-09-29:
+  - Se ejecuta a las 09:00 UTC los días 1, 4, 7… de cada mes (`cron: '0 9 */3 * *'`, nunca más de 3 días entre ejecuciones) y también a mano desde la pestaña **Actions → Supabase keepalive → Run workflow** (`workflow_dispatch`).
+  - Hace un GET a `<SUPABASE_URL>/rest/v1/rpc/keepalive` con la anon key. `public.keepalive()` (`sql/2026-09-29_keepalive.sql`) devuelve `1`, es `SECURITY INVOKER` y no lee ni escribe ninguna tabla; existe porque desde el cierre de seguridad del 2026-09-28 anon no puede leer ninguna tabla.
+  - Si la petición falla o no devuelve `1`, el job falla y GitHub avisa por email.
+- Configuración en GitHub (repo HabitApp → Settings → Secrets and variables → Actions), creada por Luis:
+  - **Secret** `SUPABASE_ANON_KEY`: la anon key publishable del proyecto (nunca la service role key).
+  - **Variable** `SUPABASE_URL`: `https://<ref>.supabase.co`.
+- **Ojo:** el repo es público y GitHub desactiva los workflows programados tras **60 días sin actividad** en el repo (avisa por email antes). Si pasa, se reactiva desde la pestaña Actions.
+
 ---
 
 ## Comandos
