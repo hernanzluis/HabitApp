@@ -1,6 +1,6 @@
 # HabitApp — Checklist de tests manuales
 
-Cubre lo que `tests/` (backend, 10 fases, 226 tests automáticos) no puede ver:
+Cubre lo que `tests/` (backend, 10 fases, 235 tests automáticos) no puede ver:
 UI real, gestos, cámara, permisos del sistema, estados visuales y timing de
 cliente. Ver [tests/README.md](../tests/README.md) para el catálogo
 automático — donde un ítem de aquí verifica el resultado visible de algo que
@@ -61,6 +61,12 @@ cubrirá en un checklist separado más adelante.
 - [ ] Crear un hábito **Una vez** con fecha y hora límite → se ve la fecha de caducidad; pasada esa fecha, el hábito deja de aparecer en `HomeScreen` (`HomeScreen.js:283`, filtro de `expires_at`)
 - [ ] Asignar una categoría con icono/color propios → el icono correcto (Ionicons) se ve tanto en el selector del modal como en la tarjeta del hábito en `HomeScreen`
 - [ ] Un hábito sin categoría asignada → se muestra el icono por defecto `help-circle-outline`
+
+### Asignados y validadores (desde el 2026-09-30; en TestFlight a partir del build 4)
+
+- [ ] En el modal de crear hábito de `AdminScreen`, marcar a una persona como asignada e intentar marcarla también como validadora → aparece el aviso "No se puede…" y la casilla no se marca; en la lista de validadores esa persona se ve en gris con la etiqueta "asignado" (y al revés, "validador") → cross-ref **Fase 2, test 8**
+- [ ] Editar un hábito e **intercambiar los papeles** de dos personas en una sola edición (la asignada pasa a validadora y viceversa) → se guarda sin error y el hábito queda con los papeles cambiados → cross-ref **Fase 2, tests 8e-8g**. En el **build 3** esto falla con "Una misma persona no puede estar asignada…" (limitación conocida, ver `release.md`)
+- [ ] En la web (`/admin` → Hábitos → editar), marcar como asignado a quien era validador → deja de estar marcado como validador; la casilla de validador de un asignado está desactivada
 
 ## 4. Límites de plan (Familiar)
 

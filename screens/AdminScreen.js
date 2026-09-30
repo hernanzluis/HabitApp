@@ -424,7 +424,24 @@ export default function AdminScreen() {
     setCreateModalVisible(true);
   };
 
+  // Una misma persona no puede estar asignada y validar el mismo hábito: nadie
+  // podría validar sus logs (ValidateHabit excluye los propios). La base de
+  // datos también lo impide (sql/2026-09-30_asignado_no_validador.sql).
+  const warnAssigneeValidatorConflict = () => {
+    Alert.alert(t('admin.assignee_validator_conflict_title'), t('admin.assignee_validator_conflict'));
+  };
+
+  const habitSaveErrorMessage = (e) => (
+    e?.code === '23514' || /validadora/.test(e?.message ?? '')
+      ? t('admin.assignee_validator_conflict')
+      : e?.message || t('admin.error_create')
+  );
+
   const toggleMember = (userId) => {
+    if (!selectedMembers.has(userId) && validatorIds.has(userId)) {
+      warnAssigneeValidatorConflict();
+      return;
+    }
     setSelectedMembers((prev) => {
       const next = new Set(prev);
       next.has(userId) ? next.delete(userId) : next.add(userId);
@@ -433,6 +450,10 @@ export default function AdminScreen() {
   };
 
   const toggleValidator = (userId) => {
+    if (!validatorIds.has(userId) && selectedMembers.has(userId)) {
+      warnAssigneeValidatorConflict();
+      return;
+    }
     setValidatorIds((prev) => {
       const next = new Set(prev);
       next.has(userId) ? next.delete(userId) : next.add(userId);
@@ -501,7 +522,7 @@ export default function AdminScreen() {
       setCreateModalVisible(false);
       loadData();
     } catch (e) {
-      setModalError(e?.message || t('admin.error_create'));
+      setModalError(habitSaveErrorMessage(e));
     } finally {
       setSavingHabit(false);
     }
@@ -581,17 +602,20 @@ export default function AdminScreen() {
         .from('habits').update(updatedFields).eq('id', editingHabit.id);
       if (updateError) throw updateError;
 
+      // Borrar las DOS listas antes de insertar: si se intercambian los papeles
+      // de dos personas, insertar los asignados con los validadores antiguos
+      // aún presentes lo rechazaría la base de datos.
       const { error: delAssignError } = await supabase.from('habit_assignments').delete().eq('habit_id', editingHabit.id);
       if (delAssignError) throw delAssignError;
+      const { error: delValidError } = await supabase.from('habit_validators').delete().eq('habit_id', editingHabit.id);
+      if (delValidError) throw delValidError;
+
       if (selectedMembers.size > 0) {
         const { error: assignError } = await supabase.from('habit_assignments').insert(
           [...selectedMembers].map((userId) => ({ habit_id: editingHabit.id, user_id: userId }))
         );
         if (assignError) throw assignError;
       }
-
-      const { error: delValidError } = await supabase.from('habit_validators').delete().eq('habit_id', editingHabit.id);
-      if (delValidError) throw delValidError;
       if (validatorIds.size > 0) {
         const { error: validError } = await supabase.from('habit_validators').insert(
           [...validatorIds].map((userId) => ({ habit_id: editingHabit.id, user_id: userId }))
@@ -616,7 +640,7 @@ export default function AdminScreen() {
       setEditModalVisible(false);
       setEditingHabit(null);
     } catch (e) {
-      setModalError(e?.message || t('admin.error_create'));
+      setModalError(habitSaveErrorMessage(e));
     } finally {
       setSavingHabit(false);
     }
@@ -927,7 +951,10 @@ export default function AdminScreen() {
       onPress={() => toggleMember(member.id)}
       activeOpacity={0.7}
     >
-      <Text style={styles.memberName}>{member.full_name || '—'}</Text>
+      <Text style={[styles.memberName, validatorIds.has(member.id) && styles.memberNameInOtherList]}>
+        {member.full_name || '—'}
+        {validatorIds.has(member.id) ? ` · ${t('admin.tag_validator')}` : ''}
+      </Text>
       <View style={[styles.checkbox, selectedMembers.has(member.id) && styles.checkboxActive]}>
         {selectedMembers.has(member.id) && (
           <Ionicons name="checkmark" size={14} color={WHITE} />
@@ -943,7 +970,10 @@ export default function AdminScreen() {
       onPress={() => toggleValidator(member.id)}
       activeOpacity={0.7}
     >
-      <Text style={styles.memberName}>{member.full_name || '—'}</Text>
+      <Text style={[styles.memberName, selectedMembers.has(member.id) && styles.memberNameInOtherList]}>
+        {member.full_name || '—'}
+        {selectedMembers.has(member.id) ? ` · ${t('admin.tag_assigned')}` : ''}
+      </Text>
       <View style={[styles.checkbox, validatorIds.has(member.id) && styles.checkboxActive]}>
         {validatorIds.has(member.id) && (
           <Ionicons name="checkmark" size={14} color={WHITE} />
@@ -2172,6 +2202,7 @@ const styles = StyleSheet.create({
   pillTextActive: { color: WHITE },
   memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   memberName: { fontSize: 15, fontWeight: '500', color: TEXT },
+  memberNameInOtherList: { color: GRAY },
   checkbox: { width: 24, height: 24, borderRadius: 4, borderWidth: 1.5, borderColor: '#D0D0D0', alignItems: 'center', justifyContent: 'center' },
   checkboxActive: { backgroundColor: BLUE, borderColor: BLUE },
   saveBtn: { marginTop: 20, minHeight: 48, borderRadius: 6, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },

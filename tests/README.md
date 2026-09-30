@@ -371,7 +371,7 @@ lleva a la pestaña Familia.
 
 **No incluye** el test 5 originalmente previsto (`authFlags.skipNextRedirect`) — ver punto 6.
 
-### Fase 2 — `test-02-habitos.js` (10 tests)
+### Fase 2 — `test-02-habitos.js` (19 tests)
 
 Hábitos, asignación (`habit_assignments`) y validadores (`habit_validators`),
 centrado en el comportamiento real de sus políticas RLS — las mismas que se
@@ -383,10 +383,10 @@ endurecieron en la auditoría de seguridad de este mismo proyecto.
 | 2 | Un miembro normal NO puede crear un hábito directamente (rechazado por RLS) | Confirma que `habits` INSERT exige `is_admin()`, tal como quedó tras el fix de la ronda 2 de RLS |
 | 3 | El admin asigna al miembro a un hábito (`habit_assignments`) | Camino "feliz" normal, el que usa `AdminScreen.js` al crear/editar un hábito |
 | 4 | Un miembro normal **SÍ** puede auto-asignarse a un hábito de su empresa | Ver hallazgo en el punto 7 — la policy real no exige ser admin para `habit_assignments` INSERT, solo que el hábito sea de tu empresa |
-| 5 | El admin añade al miembro como validador (`habit_validators`) | Camino "feliz" normal |
-| 6 | Un miembro normal NO puede añadirse a sí mismo como validador (rechazado por RLS) | A diferencia de `habit_assignments`, `habit_validators` INSERT sí exige `is_admin()` — asimetría real entre las dos tablas, no un descuido de este test |
+| 5 | El admin se añade como validador del hábito 2 (`habit_validators`), en el que el miembro está asignado | Camino "feliz" normal. Hasta el 2026-09-30 el validador era el mismo miembro asignado; desde ese día la base lo rechaza (test 8) |
+| 6 | Un miembro normal NO puede añadirse a sí mismo como validador (rechazado **por RLS**, se comprueba el motivo) — sobre un hábito donde no está asignado | A diferencia de `habit_assignments`, `habit_validators` INSERT sí exige `is_admin()` — asimetría real entre las dos tablas, no un descuido de este test |
 | 7 | Un admin de OTRA empresa no puede asignar a nadie a un hábito ajeno (rechazado por RLS) | Confirma el aislamiento multi-tenant (`company_id = my_company_id()`) en `habit_assignments` |
-| 8 | Nada en la base de datos impide que el mismo usuario sea asignado Y validador del mismo hábito a la vez | Ver hallazgo en el punto 7 — es una regla solo de UI, no de datos |
+| 8 (×10) | **Nadie puede ser asignado Y validador del mismo hábito** (invertido el 2026-09-30): asignado→validador y validador→asignado rechazados sin dejar fila (8a-8d); intercambio de papeles en el orden antiguo de AdminScreen rechazado (8e) y en el orden corregido, correcto (8f-8g); un UPDATE desde cliente no llega (sin policy UPDATE, 0 filas) y con la Service Role Key lo frena el trigger (8h-8i); tampoco se salta al insertar con la Service Role Key (8j) | Caso real del 2026-09-30 (ver hallazgo de la Fase 2 en el punto 7): un hábito sin nadie que pudiera validarlo |
 
 ### Fase 3 — `test-03-rachas.js` (18 tests)
 
@@ -741,6 +741,29 @@ tabla (`habit_assignments_habit_id_user_id_key`,
 `habit_validators_habit_id_user_id_key`), nada que las relacione entre sí. Es
 puramente una regla de UI. El test 8 de la Fase 2 lo deja explícito.
 
+**RESUELTO el 2026-09-30, tras un caso real.** La premisa de arriba era falsa
+para la app: `AdminScreen.js` **nunca** hizo excluyentes las dos listas
+(`toggleMember` y `toggleValidator` eran independientes). Luis creó un
+hábito con Lucia asignada y también validadora; como `ValidateHabitScreen`
+excluye los logs propios y el fallback del admin solo cubre hábitos sin
+ningún validador, nadie podía validarlo. La web (`Habits.jsx`) sí era
+excluyente al crear, pero no al editar. Cerrado en tres capas:
+- **Base de datos:** `sql/2026-09-30_asignado_no_validador.sql` — un trigger
+  `BEFORE INSERT OR UPDATE` en `habit_assignments` y otro en
+  `habit_validators` (función `prevent_assignee_as_validator`,
+  `SECURITY DEFINER`, con bloqueo por pareja hábito-persona) rechazan la
+  misma persona en las dos tablas para el mismo hábito, en cualquier orden y
+  también al editar. Error `check_violation` con mensaje legible.
+- **App:** `AdminScreen.js` no deja marcar a la misma persona en las dos
+  listas (aviso traducido `admin.assignee_validator_conflict`), marca en gris
+  a quien ya está en la otra lista, traduce el error de la base y, al
+  editar, borra las dos listas **antes** de insertar (si no, intercambiar los
+  papeles de dos personas lo rechazaría el trigger). **Llega a los usuarios de
+  TestFlight con el build 4**: el proyecto no tiene `expo-updates`.
+- **Web:** `Habits.jsx` aplica también en la edición la misma exclusión que
+  ya tenía la creación.
+El test 8 se invirtió y cubre los casos A-D más UPDATE y Service Role Key.
+
 ### Fase 3 — `calculateHabitStreak` de `HomeScreen.js` ya no existe
 
 **Se esperaba** (el plan original de la Fase 3 lo pedía explícitamente):
@@ -947,7 +970,7 @@ nueva. Índice para quien llegue a este documento por primera vez:
 |---|---|---|---|
 | 0 | `test-00-barrera-limpieza.js` | 12 | Canario de la barrera de `cleanupTestData()` (usuario sin prefijo, sin profile y miembro de una company de test; desfase de email imposible) |
 | 1 | `test-01-alta.js` | 8 | Alta de admin y de miembro, condición real de "family setup" |
-| 2 | `test-02-habitos.js` | 10 | Hábitos, asignación, validadores (RLS) |
+| 2 | `test-02-habitos.js` | 19 | Hábitos, asignación, validadores (RLS) |
 | 3 | `test-03-rachas.js` | 18 | Rachas y recompensas (`calculateStreak`/`calculateTotalCompleted`, recursividad, `featuredReward`) |
 | 4 | `test-04-permisos.js` | 14 | Permisos de `profiles` y aislamiento entre empresas |
 | 5 | `test-05-limites.js` | 11 | Límites de plan (`plan_limits`, `check_member_limit`, `check_habit_limit`, `history_days`) |
@@ -955,7 +978,7 @@ nueva. Índice para quien llegue a este documento por primera vez:
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
 | 8 | `test-08-registro-seguro.js` | 42 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
 | 9 | `test-09-aislamiento.js` | 72 | Aislamiento de la API pública: anon, entre empresas, Storage, RPCs de gestión de miembros |
-| **Total** | **10 ficheros** | **226** | |
+| **Total** | **10 ficheros** | **235** | |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos
@@ -972,8 +995,7 @@ verificados contra la base de datos real antes de darlos por buenos):
 aceptado, decisión de producto pendiente, o fuera del alcance de estos
 tests): la condición real de "family setup" depende de hábitos activos y no
 del nº de miembros (Fase 1); `habit_assignments` no exige admin pero
-`habit_validators` sí (Fase 2); nada impide ser asignado y validador del
-mismo hábito (Fase 2); `calculateHabitStreak` se movió/corrigió a
+`habit_validators` sí (Fase 2); `calculateHabitStreak` se movió/corrigió a
 `HabitDetailScreen.js` en otra tarea de esta sesión (Fase 3); "conseguida"
 es cálculo de cliente puro sin persistencia (Fase 3); `featuredReward` no
 elige por `streak_target` menor sino por `daysToNext` menor (Fase 3);

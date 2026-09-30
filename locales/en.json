@@ -279,7 +279,11 @@
     "reward_days": "streak days",
     "reward_placeholder": "E.g: Family dinner",
     "limit_habits_reached": "You've reached your plan's active habits limit",
-    "limit_members_reached": "You've reached your plan's members limit"
+    "limit_members_reached": "You've reached your plan's members limit",
+    "assignee_validator_conflict_title": "Not allowed",
+    "assignee_validator_conflict": "The same person can't be assigned to a habit and also validate it: nobody could validate their photos. Remove them from the other list first.",
+    "tag_assigned": "assigned",
+    "tag_validator": "validator"
   },
   "nav": {
     "home": "Home",

@@ -141,11 +141,11 @@
 - Para `monthly_x`: mismo stepper que `weekly_x` pero con rango 1–28, para `monthly_target`
 - Para `once`: selector nativo de fecha + hora (`DateTimePicker` mode='date' y mode='time') para `expires_at` opcional
 - Toggle "Foto obligatoria" → guarda en `habits.photo_required` (default true)
-- Lista de miembros del grupo con checkboxes para asignar
+- Lista de miembros del grupo con checkboxes para asignar, y otra para elegir validadores. **Excluyentes** desde el 2026-09-30: si se intenta marcar en una lista a quien ya está en la otra, aparece un aviso (`admin.assignee_validator_conflict`) y no se marca; en cada lista, quien ya está en la otra se ve en gris con la etiqueta "validador"/"asignado". La base de datos también lo impide (triggers, ver database.md)
 - **Sección Recompensas:** lista editable "🎯 X días → descripción" + formulario inline para añadir
 - Al guardar: INSERT en `habits` (con `weekly_target` si `recurrence = 'weekly_x'`, o `monthly_target` si `recurrence = 'monthly_x'`) + INSERT en `habit_assignments` por cada miembro seleccionado
 
-**Modal editar asignaciones:** al pulsar "X asignado(s)" de un hábito → lista de miembros con estado actual → al guardar: DELETE todas asignaciones del hábito + INSERT nuevas
+**Modal editar asignaciones:** al pulsar "X asignado(s)" de un hábito → lista de miembros con estado actual → al guardar: DELETE de todas las asignaciones **y** de todos los validadores del hábito, y después INSERT de las nuevas (orden necesario desde el 2026-09-30 para poder intercambiar papeles; build 4)
 
 #### Pestaña Familia
 - **Recibe `initialTab: 'family'`** como parámetro de navegación (enviado por HomeScreen en el primer arranque del admin) → `useEffect` lo lee y llama `setActiveTab('family')`

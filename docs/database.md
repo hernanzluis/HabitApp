@@ -73,7 +73,7 @@ Un hábito solo aparece en HomeScreen si existe una fila en esta tabla con `user
 | created_at | timestamptz | now() | — |
 | — | UNIQUE | — | (habit_id, user_id) |
 
-Solo los usuarios que aparecen en esta tabla para un `habit_id` dado verán los logs pendientes de ese hábito en ValidateHabitScreen. Un usuario asignado al hábito (`habit_assignments`) no debe añadirse también como validador.
+Solo los usuarios que aparecen en esta tabla para un `habit_id` dado verán los logs pendientes de ese hábito en ValidateHabitScreen. Un usuario asignado al hábito (`habit_assignments`) **no puede** ser también su validador: lo impiden desde el 2026-09-30 los triggers `habit_assignments_not_validator` y `habit_validators_not_assignee` (ver "Triggers de asignación/validación" en Funciones SQL). Sin esa regla nadie podría validar sus logs: ValidateHabit excluye los propios y el fallback del admin solo cubre hábitos sin ningún validador.
 
 ### `habit_logs`
 | Campo | Tipo | Default | Notas |
@@ -307,6 +307,9 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 
 ### `keepalive()` → integer
 Devuelve siempre `1`. `SECURITY INVOKER`, `STABLE`, no lee ni escribe ninguna tabla. Ejecutable por `anon` y `authenticated` (no por `public`). Añadida el 2026-09-29 (`sql/2026-09-29_keepalive.sql`) como ping del workflow `.github/workflows/supabase-keepalive.yml`, que evita que el proyecto se pause por inactividad (ver `project.md`, "Configuración externa"). Cubierta por la Fase 9, test 2.
+
+### `prevent_assignee_as_validator()` — triggers de asignación/validación
+Función de trigger (`SECURITY DEFINER`, `search_path = public, pg_temp`, sin EXECUTE para ningún cliente), añadida el 2026-09-30 (`sql/2026-09-30_asignado_no_validador.sql`). La usan dos triggers `BEFORE INSERT OR UPDATE OF habit_id, user_id`: `habit_assignments_not_validator` (en `habit_assignments`) y `habit_validators_not_assignee` (en `habit_validators`). Si la misma pareja (`habit_id`, `user_id`) ya está en la otra tabla, lanza `check_violation` con el mensaje *"Una misma persona no puede estar asignada a un hábito y ser también su validadora"*. Toma un `pg_advisory_xact_lock` por pareja para que dos altas simultáneas no se cuelen. Consecuencia para los clientes: al editar, hay que borrar las dos listas antes de insertar las nuevas (AdminScreen.js y Habits.jsx ya lo hacen). Cubierta por la Fase 2, test 8.
 
 ### Helpers de policies: `is_admin()`, `my_company_id()`, `is_my_company_habit(habit_id)`, `is_my_company_log(log_id)`
 `SECURITY DEFINER`, `STABLE`. Los dos últimos se añadieron el 2026-09-28 para las policies SELECT de las tablas hijas (evitan RLS anidado).

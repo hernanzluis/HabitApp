@@ -239,7 +239,11 @@
     "reward_days": "días de racha",
     "reward_placeholder": "Ej: Cena en familia",
     "limit_habits_reached": "Has alcanzado el límite de hábitos activos de tu plan actual",
-    "limit_members_reached": "Has alcanzado el límite de miembros de tu plan actual"
+    "limit_members_reached": "Has alcanzado el límite de miembros de tu plan actual",
+    "assignee_validator_conflict_title": "No se puede",
+    "assignee_validator_conflict": "Una misma persona no puede estar asignada a un hábito y ser también su validadora: nadie podría validar sus fotos. Quítala primero de la otra lista.",
+    "tag_assigned": "asignado",
+    "tag_validator": "validador"
   },
   "history": {
     "header_title": "Historial",
