@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
   Modal,
   Pressable,
@@ -22,6 +23,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LANG_STORAGE_KEY } from '../lib/i18n';
 import { supabase } from '../lib/supabase';
 import usePlanInfo from '../lib/usePlanInfo';
+import {
+  getPushPermission,
+  registerPushTokenIfGranted,
+  requestPushPermission,
+  unregisterPushToken,
+  openSystemNotificationSettings,
+} from '../lib/push';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -134,6 +142,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [pushStatus, setPushStatus] = useState(null); // 'granted' | 'denied' | 'undetermined'
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
@@ -299,12 +308,41 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const refreshPushStatus = useCallback(async () => {
+    try {
+      const { status } = await getPushPermission();
+      setPushStatus(status);
+      if (status === 'granted') await registerPushTokenIfGranted();
+    } catch {
+      // no crítico
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       loadProfile();
       fetchPendingCount();
-    }, [loadProfile, fetchPendingCount])
+      refreshPushStatus();
+    }, [loadProfile, fetchPendingCount, refreshPushStatus])
   );
+
+  // Al volver de los Ajustes del sistema, releer el permiso (y registrar el
+  // token si ahora está concedido).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshPushStatus();
+    });
+    return () => sub.remove();
+  }, [refreshPushStatus]);
+
+  const onNotificationsPress = async () => {
+    if (pushStatus === 'undetermined') {
+      await requestPushPermission().catch(() => {});
+      refreshPushStatus();
+    } else {
+      openSystemNotificationSettings();
+    }
+  };
 
   const filteredLogs = useMemo(() => {
     const cutoff = historyDays != null ? new Date(Date.now() - historyDays * 86400000) : null;
@@ -426,8 +464,8 @@ export default function ProfileScreen() {
 
   const showLanguagePicker = () => {
     Alert.alert(t('profile.language'), undefined, [
-      { text: 'Español', onPress: () => { i18n.changeLanguage('es'); AsyncStorage.setItem(LANG_STORAGE_KEY, 'es').catch(() => {}); } },
-      { text: 'English', onPress: () => { i18n.changeLanguage('en'); AsyncStorage.setItem(LANG_STORAGE_KEY, 'en').catch(() => {}); } },
+      { text: 'Español', onPress: () => { i18n.changeLanguage('es'); AsyncStorage.setItem(LANG_STORAGE_KEY, 'es').catch(() => {}); registerPushTokenIfGranted().catch(() => {}); } },
+      { text: 'English', onPress: () => { i18n.changeLanguage('en'); AsyncStorage.setItem(LANG_STORAGE_KEY, 'en').catch(() => {}); registerPushTokenIfGranted().catch(() => {}); } },
       { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
@@ -436,6 +474,8 @@ export default function ProfileScreen() {
     if (logoutLoading) return;
     setLogoutLoading(true);
     try {
+      // Antes del signOut: después ya no hay sesión para dar de baja el token.
+      await unregisterPushToken();
       await supabase.auth.signOut();
     } catch (e) {
       setError(e?.message || t('profile.error_logout'));
@@ -657,6 +697,23 @@ export default function ProfileScreen() {
                 <Text style={styles.infoLabel}>{t('profile.language')}</Text>
                 <View style={styles.infoValueRow}>
                   <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">{i18n.language === 'es' ? 'Español' : 'English'}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={GRAY} />
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+
+              {/* Notificaciones push */}
+              <TouchableOpacity style={styles.infoRow} onPress={onNotificationsPress} activeOpacity={0.7}>
+                <Text style={styles.infoLabel}>{t('profile.notifications')}</Text>
+                <View style={styles.infoValueRow}>
+                  <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">
+                    {pushStatus === 'granted'
+                      ? t('profile.notifications_on')
+                      : pushStatus === 'undetermined'
+                        ? t('profile.notifications_enable')
+                        : t('profile.notifications_off')}
+                  </Text>
                   <Ionicons name="chevron-forward" size={16} color={GRAY} />
                 </View>
               </TouchableOpacity>

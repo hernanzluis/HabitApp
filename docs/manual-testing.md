@@ -68,6 +68,20 @@ cubrirá en un checklist separado más adelante.
 - [ ] Editar un hábito e **intercambiar los papeles** de dos personas en una sola edición (la asignada pasa a validadora y viceversa) → se guarda sin error y el hábito queda con los papeles cambiados → cross-ref **Fase 2, tests 8e-8g**. En el **build 3** esto falla con "Una misma persona no puede estar asignada…" (limitación conocida, ver `release.md`)
 - [ ] En la web (`/admin` → Hábitos → editar), marcar como asignado a quien era validador → deja de estar marcado como validador; la casilla de validador de un asignado está desactivada
 
+## 3b. Notificaciones push — etapa 2 (build 4 en adelante; nunca en Expo Go)
+
+**Última vez probado:** _(pendiente)_
+
+- [ ] Primer arranque con sesión tras instalar → aparece la explicación propia "¿Activar las notificaciones?" (no directamente el diálogo del sistema). "Ahora no" → no se vuelve a mostrar sola en siguientes arranques
+- [ ] En la explicación, "Activar" → aparece el diálogo de iOS; aceptar → el token queda en `push_tokens` con tu `user_id`, idioma de la app y zona horaria del iPhone (lo comprueba Code en la base) → cross-ref **Fase 10, test 1**
+- [ ] Perfil → fila "Notificaciones" muestra "Activadas"; si se deniega el permiso, "Desactivadas · Ajustes" y al tocarla se abren los Ajustes de iOS; al activarlo allí y volver a la app, la fila pasa a "Activadas" y el token se registra
+- [ ] Cambiar el idioma de la app en Perfil → el `locale` del token en `push_tokens` cambia al nuevo idioma
+- [ ] Envío de prueba de cada tipo (herramienta de push de Expo) con la app **en primer plano**: aparece el banner y, si es "pendiente de validar", el número de la pestaña Validar se actualiza
+- [ ] Lo mismo con la app **en segundo plano** y **cerrada**: la notificación aparece en el centro de notificaciones
+- [ ] Tocar cada tipo abre su pantalla (también desde la app cerrada): pendiente de validar → Validar; resultado de la validación → Estadísticas de ese hábito; hábito asignado y recordatorio → Inicio
+- [ ] Tocar una notificación con la sesión cerrada → la app se queda en Login, sin errores
+- [ ] Cerrar sesión → el token desaparece de `push_tokens` (lo comprueba Code); con otra cuenta en el mismo iPhone, el token queda a nombre de la nueva → cross-ref **Fase 10, tests 5-6**
+
 ## 4. Límites de plan (Familiar)
 
 **Última vez probado:** _(pendiente)_

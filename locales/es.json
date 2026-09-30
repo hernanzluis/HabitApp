@@ -283,7 +283,11 @@
     "delete_account_confirm_title": "¿Seguro que quieres continuar?",
     "delete_account_confirm_message": "Esta es tu última oportunidad para cancelar. Al confirmar, tu cuenta se eliminará de inmediato.",
     "delete_account_confirm_button": "Sí, eliminar mi cuenta",
-    "error_delete_account": "No se pudo eliminar la cuenta. Inténtalo de nuevo."
+    "error_delete_account": "No se pudo eliminar la cuenta. Inténtalo de nuevo.",
+    "notifications": "Notificaciones",
+    "notifications_on": "Activadas",
+    "notifications_off": "Desactivadas · Ajustes",
+    "notifications_enable": "Activar"
   },
   "nav": {
     "home": "Inicio",
@@ -330,5 +334,11 @@
     "months": "{{count}} meses",
     "week_completed": "{{completed}} completados esta semana",
     "member_progress": "{{completed}} de {{total}} días esta semana"
+  },
+  "push": {
+    "primer_title": "¿Activar las notificaciones?",
+    "primer_body": "Te avisaremos cuando te asignen un hábito, cuando tengas algo que validar y cuando validen lo que has completado, y te recordaremos por la tarde lo que te quede pendiente. Puedes cambiarlo cuando quieras en Perfil.",
+    "primer_accept": "Activar",
+    "primer_later": "Ahora no"
   }
 }

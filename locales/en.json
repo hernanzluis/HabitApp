@@ -201,7 +201,11 @@
     "delete_account_confirm_title": "Are you sure you want to continue?",
     "delete_account_confirm_message": "This is your last chance to cancel. Your account will be deleted immediately once confirmed.",
     "delete_account_confirm_button": "Yes, delete my account",
-    "error_delete_account": "Couldn't delete your account. Please try again."
+    "error_delete_account": "Couldn't delete your account. Please try again.",
+    "notifications": "Notifications",
+    "notifications_on": "On",
+    "notifications_off": "Off · Settings",
+    "notifications_enable": "Turn on"
   },
   "admin": {
     "header_title": "Administration",
@@ -330,5 +334,11 @@
     "months": "{{count}} months",
     "week_completed": "{{completed}} completed this week",
     "member_progress": "{{completed}} of {{total}} days this week"
+  },
+  "push": {
+    "primer_title": "Turn on notifications?",
+    "primer_body": "We'll let you know when you're assigned a habit, when you have something to validate and when what you completed gets validated, and remind you in the evening of what's still pending. You can change this anytime in Profile.",
+    "primer_accept": "Turn on",
+    "primer_later": "Not now"
   }
 }

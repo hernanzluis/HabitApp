@@ -1,15 +1,22 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useLinkingURL } from 'expo-linking';
 import { getQueryParams } from 'expo-auth-session/build/QueryParams';
+import * as Notifications from 'expo-notifications';
 
 import { supabase } from '../lib/supabase';
 import { authFlags, registerSetSession, registerRecoveryControls, enterRecoveryMode } from '../lib/authFlags';
+import {
+  registerPushTokenIfGranted,
+  shouldShowPushPrimer,
+  markPushPrimerShown,
+  requestPushPermission,
+} from '../lib/push';
 
 import LoginScreen from '../screens/LoginScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
@@ -28,6 +35,8 @@ const WHITE = '#ffffff';
 const BLUE = '#0A66C2';
 const TEXT = '#1D2226';
 const GRAY = '#666666';
+
+export const navigationRef = createNavigationContainerRef();
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -147,6 +156,13 @@ function TabNavigator() {
     fetchCompanyName();
     fetchPendingCount();
   }, [fetchCompanyName, fetchPendingCount]);
+
+  // Notificación recibida con la app en primer plano: el aviso lo muestra el
+  // handler de lib/push.js; aquí solo se refresca el badge de Validar.
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener(() => { fetchPendingCount(); });
+    return () => sub.remove();
+  }, [fetchPendingCount]);
 
   return (
     <Tab.Navigator
@@ -279,7 +295,9 @@ export default function RootNavigator() {
   const [initializing, setInitializing] = useState(true);
   const [session, setSession] = useState(null);
   const [inRecovery, setInRecovery] = useState(false);
+  const [navReady, setNavReady] = useState(false);
   const url = useLinkingURL();
+  const lastNotificationResponse = Notifications.useLastNotificationResponse();
 
   useEffect(() => {
     // Exponer setSession al singleton para que SignUpScreen (modo activate)
@@ -344,6 +362,49 @@ export default function RootNavigator() {
     })();
   }, [url, t]);
 
+  // Push: con sesión, refrescar el token (si el permiso ya está concedido) y,
+  // solo la primera vez, explicar para qué sirven antes del diálogo del
+  // sistema (iOS lo muestra una única vez). Best-effort: nunca bloquea la app.
+  const userId = session?.user?.id ?? null;
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await registerPushTokenIfGranted();
+        if (cancelled || !(await shouldShowPushPrimer())) return;
+        await markPushPrimerShown();
+        Alert.alert(t('push.primer_title'), t('push.primer_body'), [
+          { text: t('push.primer_later'), style: 'cancel' },
+          { text: t('push.primer_accept'), onPress: () => { requestPushPermission().catch(() => {}); } },
+        ]);
+      } catch (e) {
+        console.warn('push:', e?.message);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, t]);
+
+  // Al tocar una notificación (con la app abierta o desde cerrada): ir a la
+  // pantalla de su tipo. Sin sesión se ignora (se queda en Login).
+  useEffect(() => {
+    if (!lastNotificationResponse || !userId || !navReady || !navigationRef.isReady()) return;
+    const data = lastNotificationResponse.notification?.request?.content?.data ?? {};
+    Notifications.clearLastNotificationResponseAsync().catch(() => {});
+    (async () => {
+      if (data.type === 'validation_pending') {
+        navigationRef.navigate('Tabs', { screen: 'ValidateHabit' });
+      } else if (data.type === 'validation_result' && data.habit_id) {
+        const { data: habit } = await supabase.from('habits').select('*').eq('id', data.habit_id).maybeSingle();
+        if (habit) navigationRef.navigate('HabitStats', { habit, userId });
+        else navigationRef.navigate('Tabs', { screen: 'Home' });
+      } else {
+        // habit_assigned, daily_reminder o tipo desconocido
+        navigationRef.navigate('Tabs', { screen: 'Home' });
+      }
+    })().catch((e) => console.warn('push nav:', e?.message));
+  }, [lastNotificationResponse, userId, navReady]);
+
   if (initializing) {
     return (
       <View style={styles.splash}>
@@ -353,7 +414,7 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onReady={() => setNavReady(true)}>
       {inRecovery && !session ? <RecoveryStack /> : session ? <AppStack /> : <AuthStack />}
     </NavigationContainer>
   );
