@@ -259,8 +259,8 @@ builds nuevos** salvo que cambie la navegación al tocar.
 
 | Etapa | Qué | Dónde | Se prueba así | Build |
 |---|---|---|---|---|
-| 0 | Capacidad Push en el Bundle ID y clave APNs con `eas credentials`; activar la seguridad de envío en EAS | Apple / EAS (Luis) | Aparece la clave en `eas credentials` | No |
-| 1 | Tabla `push_tokens` + RPCs de registro/baja + `notification_log` | SQL (aprobación) | `tests/` (Fase 10) | No |
+| 0 ✅ | Capacidad Push en el Bundle ID y clave APNs con `eas credentials` — **hecha el 2026-09-30** (Push Key `FR8P8WI53K`, activa). La seguridad de envío de EAS se activa en la etapa 3 | Apple / EAS (Luis) | Aparece la clave en `eas credentials` | No |
+| 1 ✅ | Tabla `push_tokens` + RPCs de registro/baja + `notification_log` (+ `push_deliveries`) — **aplicada el 2026-09-30** (`sql/2026-09-30b_push_tokens.sql`) | SQL (aprobada) | `tests/` (Fase 10, 28 tests) | No |
 | 2 | Cliente: permiso en contexto, registro/baja del token, handler de primer plano, navegación al tocar | App | Envío manual desde la herramienta de push de Expo al token guardado; tocar cada `type` | **Sí (build 4, TestFlight interno)** |
 | 3 | Edge Function `push-events` con modo *dry run* (devuelve los mensajes sin enviarlos) + webhook solo para el tipo 2 | Supabase (aprobación) | `tests/` en dry run + un envío real a Luis | No |
 | 4 | Tipo 3 | Supabase | Igual | No |

@@ -310,6 +310,7 @@ node tests/test-06-borrado.js    # Fase 6: borrado de cuenta (delete_own_account
 node tests/test-07-recuperacion.js  # Fase 7: recuperación de contraseña (generateLink, verifyOtp, updateUser)
 node tests/test-08-registro-seguro.js  # Fase 8: registro seguro (auth.uid, email, códigos, rate limiting)
 node tests/test-09-aislamiento.js  # Fase 9: aislamiento de la API pública (anon, entre empresas, Storage, RPCs de miembros)
+node tests/test-10-push-tokens.js  # Fase 10: tokens de push y registro de avisos (etapa 1 de las notificaciones)
 ```
 
 Cada script, en este orden:
@@ -535,6 +536,27 @@ sí las ve.
 `docs/release.md`): el `upsert` del admin sobre el avatar ya existente de un
 miembro (hoy falla por RLS, anterior al 2026-09-28) y la limpieza de Storage al
 borrar un miembro.
+
+### Fase 10 — `test-10-push-tokens.js` (28 tests)
+
+Notificaciones push, etapa 1: almacenamiento
+(`sql/2026-09-30b_push_tokens.sql`, `docs/push-notifications-plan.md`). No
+envía ninguna notificación: los tokens son falsos con formato de Expo
+(`ExponentPushToken[zztest-…]`) y caen en cascada al borrar los usuarios de
+prueba.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 1 (×3) | `register_push_token` guarda el token con plataforma, idioma y zona horaria; repetirlo no duplica | Se llamará en cada arranque con sesión |
+| 2 (×4) | Rechaza token sin formato de Expo, plataforma, idioma y zona horaria no válidos | La zona horaria decide la hora del recordatorio diario |
+| 3 (×4) | Ningún cliente hace INSERT/UPDATE directo en `push_tokens` ni lee `notification_log`/`push_deliveries` | El alta solo por la RPC; los registros de envío, solo las Edge Functions |
+| 4 | Un usuario no ve el token de otro | RLS de `push_tokens` |
+| 5 (×2) | Si en el mismo dispositivo entra otra cuenta, el token pasa a ella (y deja de verlo la anterior) | Que Luis no reciba los avisos de Lucia en un iPhone compartido |
+| 6 (×3) | Solo el dueño da de baja su token | Baja al cerrar sesión |
+| 7 (×2) | Sin sesión no se registra ni se lee nada | Como el resto de la API desde el 2026-09-28 |
+| 8 | Al borrar el usuario de Auth se borran sus tokens | `ON DELETE CASCADE` |
+| 9 | El 11.º dispositivo activo se rechaza | Tope defensivo |
+| 10 (×7) | `notification_log` rechaza un aviso de asignación repetido (p. ej. tras editar el hábito), un segundo resumen de validación del mismo log y un segundo recordatorio el mismo día local; exige fecha local en el recordatorio | Deduplicación del plan, a nivel de datos |
 
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
@@ -959,7 +981,7 @@ antes que un usuario real con un enlace muerto.
 
 ---
 
-## Resumen — catálogo completo de tests (Fases 0 a 9)
+## Resumen — catálogo completo de tests (Fases 0 a 10)
 
 El catálogo original de 6 fases planificadas se cerró con la Fase 6; la Fase 7
 (recuperación de contraseña) se añadió después, siguiendo la misma regla de
@@ -978,7 +1000,8 @@ nueva. Índice para quien llegue a este documento por primera vez:
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
 | 8 | `test-08-registro-seguro.js` | 42 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
 | 9 | `test-09-aislamiento.js` | 72 | Aislamiento de la API pública: anon, entre empresas, Storage, RPCs de gestión de miembros |
-| **Total** | **10 ficheros** | **235** | |
+| 10 | `test-10-push-tokens.js` | 28 | Tokens de push (RLS, RPCs de alta/baja, cambio de cuenta, cascada, tope) y deduplicación de `notification_log` |
+| **Total** | **11 ficheros** | **263** | |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos

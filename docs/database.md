@@ -190,6 +190,25 @@ Tabla de solo lectura vía RPC (`get_company_plan_info`, `SECURITY DEFINER`); no
 | created_at | timestamptz | now() | — |
 | — | UNIQUE | — | (team_id, user_id) — un usuario no puede estar dos veces en el mismo equipo |
 
+### `push_tokens` _(notificaciones push, desde el 2026-09-30)_
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| id | uuid | gen_random_uuid() | PK |
+| user_id | uuid | — | FK → auth.users(id) ON DELETE CASCADE |
+| token | text | — | UNIQUE. Formato `ExponentPushToken[…]` (CHECK). Un token por dispositivo |
+| platform | text | — | 'ios' o 'android' (CHECK) |
+| locale | text | 'es' | 'es' o 'en' (CHECK): idioma en que se le envían los avisos |
+| time_zone | text | 'Europe/Madrid' | Zona horaria IANA (validada contra `pg_timezone_names` en la RPC): hora local del recordatorio diario |
+| enabled | boolean | true | Pasa a false cuando Expo responde `DeviceNotRegistered` |
+| created_at / last_seen_at | timestamptz | now() | `last_seen_at` se renueva en cada registro |
+
+Alta **solo** con la RPC `register_push_token` (hace *upsert* por token y lo reasigna al usuario autenticado si en el mismo dispositivo cambia la cuenta). Baja con `unregister_push_token`. Diseño completo en [push-notifications-plan.md](push-notifications-plan.md).
+
+### `notification_log` y `push_deliveries` _(notificaciones push, desde el 2026-09-30)_
+- **`notification_log`:** un aviso lógico por destinatario: `type` ('habit_assigned', 'validation_pending', 'validation_result', 'daily_reminder'), `recipient_id` (FK auth.users CASCADE), `habit_id` / `log_id` (FK CASCADE), `local_date`, `title`, `body`, `data` (jsonb), `created_at`. CHECK `notification_log_shape` exige el campo que corresponde a cada tipo. **Deduplicación con índices únicos parciales:** un `habit_assigned` por (destinatario, hábito), un `validation_pending` por (destinatario, log), **un solo `validation_result` por log** (aviso resumido) y un `daily_reminder` por (destinatario, día local).
+- **`push_deliveries`:** un envío por token: `notification_id` (FK CASCADE), `push_token_id` (FK SET NULL), `ticket_id`, `status` ('queued', 'ticket_ok', 'ticket_error', 'receipt_ok', 'receipt_error'), `error`, `created_at`, `receipt_checked_at`.
+- Las dos con RLS activado **sin policies** y sin privilegios para `anon`/`authenticated`: solo las escriben y leen las Edge Functions (Service Role Key).
+
 ### `invitations` — eliminada
 Tabla del flujo de invitación por código genérico, sin uso. **Eliminada el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`)** junto con su RPC `handle_invited_user_registration`: tenía 0 filas, se podía leer sin sesión (con los códigos) y la RPC creaba profiles en cualquier empresa sin ninguna comprobación. Su definición está en el backup del 2026-09-28.
 
@@ -305,6 +324,12 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 ### `update_member_profile(member_id, new_full_name, new_email, new_role)`
 **Sin llamadas en la app ni en la web** (la edición de miembros es un UPDATE directo sobre `profiles`). Admin de la misma empresa. Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`): `new_role` ∈ {`admin`, `usuario`} (`invalid_role`), `new_full_name` no vacío y ≤100; `new_email` se ignora (el email lo fija el trigger de sincronización con Auth).
 
+### `register_push_token(p_token, p_platform, p_locale, p_time_zone)` → void
+`SECURITY DEFINER`, solo `authenticated`. Exige sesión; valida el formato del token (`invalid_push_token`), la plataforma (`invalid_platform`), el idioma (`invalid_locale`) y la zona horaria (`invalid_time_zone`); tope de 10 dispositivos activos por usuario (`too_many_push_tokens`). *Upsert* por token: si ya existía (aunque fuera de otro usuario), pasa al usuario autenticado con los datos nuevos, `enabled = true` y `last_seen_at = now()`. Añadida el 2026-09-30 (`sql/2026-09-30b_push_tokens.sql`). Cubierta por la Fase 10.
+
+### `unregister_push_token(p_token)` → boolean
+`SECURITY DEFINER`, solo `authenticated`. Borra el token solo si es del usuario autenticado; devuelve si borró algo. La llamará la app al cerrar sesión, antes del `signOut()`.
+
 ### `keepalive()` → integer
 Devuelve siempre `1`. `SECURITY INVOKER`, `STABLE`, no lee ni escribe ninguna tabla. Ejecutable por `anon` y `authenticated` (no por `public`). Añadida el 2026-09-29 (`sql/2026-09-29_keepalive.sql`) como ping del workflow `.github/workflows/supabase-keepalive.yml`, que evita que el proyecto se pause por inactividad (ver `project.md`, "Configuración externa"). Cubierta por la Fase 9, test 2.
 
@@ -382,6 +407,10 @@ Corregido en 2026-09-16 tras auditoría de RLS — helpers `my_company_id()` e `
 - `team_members` SELECT: el team es de tu empresa (antes `true`); INSERT/DELETE: `is_admin()` y el equipo referenciado pertenece a la empresa del admin
 
 Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verificado en la auditoría de 2026-09-16).
+
+### `push_tokens` / `notification_log` / `push_deliveries` _(desde el 2026-09-30)_
+- `push_tokens` SELECT y DELETE: `user_id = auth.uid()` (`to authenticated`); sin INSERT/UPDATE directos (ni policy ni privilegio): el alta va por `register_push_token`.
+- `notification_log` y `push_deliveries`: RLS sin policies y sin privilegios de cliente; solo la Service Role Key (Edge Functions).
 
 ### Privilegios de tabla (desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`))
 - `anon`: **ningún privilegio** en ninguna tabla de `public` (antes SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER en todas). Nada en la app ni en la web consulta tablas sin sesión: el alta va por RPCs.
