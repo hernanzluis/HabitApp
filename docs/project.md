@@ -199,7 +199,8 @@ HabitApp/
 ## Funcionalidades pendientes (v2)
 
 - **Sistema de equipos:** el admin crea subgrupos dentro del grupo principal; `team_members` ya creada, sin uso activo. Los hábitos podrían asignarse a subgrupos. Requiere extensión de AdminScreen.
-- **Notificaciones push:** recordatorio diario para completar hábitos pendientes; notificación cuando un familiar valida tu hábito
+- **Notificaciones push:** planificadas para la **v1.1** (no la v2): los 4 tipos (hábito asignado, pendiente de validar, resultado de la validación, recordatorio diario) están diseñados en [push-notifications-plan.md](push-notifications-plan.md)
+- **Preferencias por tipo de notificación:** poder desactivar tipos concretos (p. ej. solo los recordatorios) desde la app. Decidido el 2026-09-30 dejarlo fuera de la v1.1, donde solo existe el permiso del sistema
 - **SplashScreen animada** con logo de la app
 - **Mejora de estadísticas en ProfileScreen:** racha actual (días consecutivos con hábito completado), gráfico de actividad mensual
 - **Hábitos personales:** tipo 'personal', visibles solo para el usuario, sin validación

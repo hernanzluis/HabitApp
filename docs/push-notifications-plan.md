@@ -1,8 +1,17 @@
 # Notificaciones push — propuesta para la v1.1
 
 **Estado: PROPUESTA, sin implementar.** Fecha: 2026-09-30. No se ha tocado
-código, base de datos ni builds. Todo lo que exige aprobación (SQL, Edge
-Functions, cambios en `app.json`, builds) se hará por etapas (sección 7).
+código, base de datos ni builds.
+
+**Regla de aprobación (decidida por Luis el 2026-09-30):** cada etapa que
+toque base de datos, Edge Functions o builds necesita su **aprobación expresa
+en el chat antes de aplicarse**, igual que los cambios de seguridad (copia de
+seguridad y ensayo con `ROLLBACK` cuando aplique). Ver sección 7.
+
+**Decisiones tomadas (2026-09-30):** recordatorio a las **20:00 hora local**;
+el tipo 3 manda **un aviso resumido por log, no uno por voto** (sección 4);
+las preferencias por tipo de notificación quedan **fuera de la v1.1**
+(pendiente de v2, en `project.md`).
 
 Cuatro tipos, todos en esta primera versión:
 
@@ -10,7 +19,7 @@ Cuatro tipos, todos en esta primera versión:
 |---|---|---|---|
 | 1 | Te han asignado un hábito nuevo | El asignado | INSERT en `habit_assignments` |
 | 2 | Hay algo pendiente de validar | Validadores del hábito (o el admin si no tiene ninguno) | INSERT en `habit_logs` |
-| 3 | Han aprobado / rechazado tu hábito | Quien completó el hábito | INSERT en `habit_validations` |
+| 3 | Resultado de la validación de tu hábito (resumido) | Quien completó el hábito | INSERT en `habit_validations` (un aviso por log, ver sección 4) |
 | 4 | Recordatorio diario de hábitos pendientes | Cada usuario con hábitos sin completar hoy | Programado (cron) |
 
 ---
@@ -149,8 +158,16 @@ alter table public.push_tokens enable row level security;
 - **Tipo 2 (INSERT `habit_logs`)** → los `habit_validators` del hábito; si no
   tiene ninguno, los admins de la empresa (misma regla de fallback que
   ValidateHabitScreen). Nunca el propio autor del log.
-- **Tipo 3 (INSERT `habit_validations`)** → el autor del log (`habit_logs.user_id`),
-  con el nombre de quien vota y si fue aprobado o rechazado. Un aviso por voto.
+- **Tipo 3 (INSERT `habit_validations`)** → el autor del log
+  (`habit_logs.user_id`), **un solo aviso resumido por log**, no uno por voto:
+  - Se envía cuando **han votado todos** los validadores del hábito (o, si no
+    tiene ninguno, el admin del fallback), con el resumen: "Tu hábito X: 2
+    aprobaciones, 1 rechazo".
+  - Si alguien no llega a votar nunca, el aviso no saldría. Para eso, la
+    pasada de las 20:00 (la misma del recordatorio) manda el resumen de los
+    logs con **al menos un voto** y sin aviso de tipo 3, que tengan más de
+    unas horas.
+  - Nunca más de un tipo 3 por log (control con `notification_log`).
 
 La selección de destinatarios se escribe como **funciones SQL** (p. ej.
 `push_recipients_for_log(log_id)`), llamadas desde la función: así se pueden
@@ -182,6 +199,18 @@ Expo responde con *tickets* y, unos minutos después, con *receipts*. Un cron
 (p. ej. cada 30 min) consulta los receipts de los tickets recientes de
 `notification_log` y, si alguno trae `DeviceNotRegistered`, pone ese token en
 `enabled = false`. Así no se sigue enviando a apps desinstaladas.
+
+### Limitaciones conocidas del diseño
+- **El cron horario no escala a muchas zonas horarias.** Cada hora,
+  `daily-reminder` recorre todos los tokens activos para quedarse con los que
+  están en las 20:00 locales. Con el volumen actual (una familia, una zona
+  horaria) no es ningún problema. Si algún día hubiera muchos usuarios
+  repartidos en muchas zonas, habría que filtrar en SQL por zona horaria antes
+  de recorrer, o precalcular la próxima hora de envío por usuario.
+- **Límite de 2 claves APNs por cuenta de Apple** (ver sección 6). A tener en
+  cuenta si alguna vez hay que **rotar credenciales**: no se puede crear una
+  tercera clave sin revocar una, y revocar la clave en uso corta el push de
+  la app hasta subir la nueva a EAS.
 
 ## 5. Servicio de envío: Expo Push frente a APNs directo
 
@@ -274,10 +303,10 @@ builds nuevos** salvo que cambie la navegación al tocar.
 Lo que nunca es automatizable: la entrega real por APNs, el diálogo del
 sistema y la experiencia al tocar la notificación.
 
-## Decisiones pendientes para Luis
-- Hora del recordatorio diario (propuesta: 20:00 hora local).
-- Si el tipo 3 manda un aviso por cada voto o uno resumido.
-- Si se añade más adelante una pantalla de preferencias por tipo
-  (desactivar solo los recordatorios, etc.); en la v1.1 solo existe el
-  permiso del sistema.
-- Aprobar cada etapa que toca la base de datos, Edge Functions o builds.
+## Decisiones (tomadas el 2026-09-30)
+- Recordatorio diario: **20:00 hora local**.
+- Tipo 3: **un aviso resumido por log**, no uno por voto.
+- Preferencias por tipo de notificación: **no entran en la v1.1**; pendiente
+  de v2 (`project.md`). En la v1.1 solo existe el permiso del sistema.
+- **Cada etapa** que toque base de datos, Edge Functions o builds necesita
+  aprobación expresa de Luis en el chat antes de aplicarse.
