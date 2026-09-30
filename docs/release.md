@@ -38,6 +38,10 @@ verificado, no cuando se ha hecho.
 
 ## Credenciales de Apple (referencia)
 
-- **Clave APNs (push):** Key ID **`66848HN7W9`** — es el identificador real de Apple (Apple Developer → Certificates, Identifiers & Profiles → **Keys**) y el que se usa al firmar los envíos a APNs. Creada el 2026-09-30 por EAS (`eas credentials`). Las claves `.p8` **no caducan**. Es la única clave de la cuenta (límite: 2 por cuenta; ver `push-notifications-plan.md`).
-- **`FR8P8WI53K`:** el valor que `eas credentials` mostró como "Developer Portal ID" junto a la Push Key. **No confirmado qué es**; lo más probable es que sea el **Team ID** de Apple (mismo formato de 10 caracteres, y EAS muestra el equipo junto a las credenciales). Se comprueba en Apple Developer → **Membership details → Team ID**. No confundirlo con el Key ID.
-- **"Expiration: 29 Sep 2027"** que mostró `eas credentials`: no es de la clave APNs. Muy probablemente es la caducidad del **certificado de distribución** (duran un año y el primer build fue el 2026-09-29), **no confirmado**. Si lo es, EAS pedirá renovarlo al hacer un build después de esa fecha.
+Confirmado con la salida de `eas build` del build 4 (2026-09-30):
+
+- **Clave APNs (push):** Key ID **`66848HN7W9`** — identificador real de Apple (Apple Developer → Keys) con el que se firman los envíos a APNs. Creada el 2026-09-30 por EAS. Las claves `.p8` **no caducan**. Es la única de la cuenta (límite: 2 por cuenta; ver `push-notifications-plan.md`).
+- **Team ID:** **`6MG5F4T6DG`** ("Luis Ignacio Hernanz González (Individual)").
+- **Certificado de distribución:** número de serie `37ACE9E446207C007CA33C89317C4BA6`, Developer Portal ID `FBH3AXLB34`, **caduca el 29/09/2027** — esa es la fecha de 2027 que se veía en `eas credentials`. Hay que renovarlo antes: EAS lo pedirá en el primer build después de esa fecha.
+- **Perfil de aprovisionamiento (App Store):** el antiguo (`FR8P8WT53K`) quedó invalidado al activar la capacidad Push; EAS generó uno nuevo, **`YFPNG3ML3V`**, que caduca con el certificado (29/09/2027). El "Developer Portal ID FR8P8W…53K" que mostró `eas credentials` era el de ese perfil antiguo, no el Team ID (la anotación anterior que lo suponía Team ID era incorrecta).
+- **App Store Connect API Key:** guardada en EAS (la usó el build 4 para regenerar el perfil sin pedir el login de Apple).
