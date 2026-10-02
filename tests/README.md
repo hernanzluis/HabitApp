@@ -276,7 +276,11 @@ alta ni asumen cómo se comporta una política, la comprueban.
 - Un fichero **`.env` en la raíz del repo** (no en `tests/`) con:
   ```
   SUPABASE_SERVICE_ROLE_KEY=<la service_role key del proyecto>
+  SUPABASE_DB_URL=<cadena de conexión del pooler>   # solo Fase 11
   ```
+  La Fase 11 usa además `SUPABASE_DB_URL` (con el paquete `pg`, dependencia de
+  desarrollo) para leer de Vault el secreto del webhook de `push-events` y
+  consultar el catálogo; nunca lo imprime.
   Se encuentra en el dashboard de Supabase → Project Settings → API →
   `service_role` (secret). **Nunca hardcodeada en el código, nunca commiteada**
   — `.env` está en `.gitignore` (verificado además contra todo el historial de
@@ -311,6 +315,7 @@ node tests/test-07-recuperacion.js  # Fase 7: recuperación de contraseña (gene
 node tests/test-08-registro-seguro.js  # Fase 8: registro seguro (auth.uid, email, códigos, rate limiting)
 node tests/test-09-aislamiento.js  # Fase 9: aislamiento de la API pública (anon, entre empresas, Storage, RPCs de miembros)
 node tests/test-10-push-tokens.js  # Fase 10: tokens de push y registro de avisos (etapa 1 de las notificaciones)
+node tests/test-11-push-events.js  # Fase 11: aviso push "pendiente de validar" (etapa 3: Edge Function push-events y trigger)
 ```
 
 Cada script, en este orden:
@@ -557,6 +562,32 @@ prueba.
 | 8 | Al borrar el usuario de Auth se borran sus tokens | `ON DELETE CASCADE` |
 | 9 | El 11.º dispositivo activo se rechaza | Tope defensivo |
 | 10 (×7) | `notification_log` rechaza un aviso de asignación repetido (p. ej. tras editar el hábito), un segundo resumen de validación del mismo log y un segundo recordatorio el mismo día local; exige fecha local en el recordatorio | Deduplicación del plan, a nivel de datos |
+
+### Fase 11 — `test-11-push-events.js` (30 tests)
+
+Notificaciones push, etapa 3: aviso "pendiente de validar"
+(`sql/2026-10-02_push_events.sql`, `sql/2026-10-02b_push_events_trigger.sql`,
+`supabase/functions/push-events/`, `docs/push-etapa3-diseno.md`). Llama a la
+Edge Function **desplegada** y, en el test 5, envía de verdad a Expo con
+tokens falsos (`ExponentPushToken[zztest-…]`): Expo responde
+`DeviceNotRegistered` y no llega nada a ningún teléfono. Para las llamadas
+directas crea los logs como `validated` y los pasa a `pending` con un UPDATE,
+así el trigger (que solo escucha INSERT) no interfiere; los logs usan fechas
+distintas por `habit_logs_one_per_day`.
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 1 (×5) | `push_recipients_for_validation`: el validador del hábito; sin validadores, los admins; nunca el autor; nada para un log ya validado; cada empresa, los suyos | La misma regla que la pantalla Validar |
+| 2 (×3) | Ni `anon` ni `authenticated` ejecutan `push_recipients_for_validation` ni `push_webhook_secret_ok` | Solo las usa la Edge Function |
+| 3 (×6) | La función responde 401 sin secreto o con uno falso, 405 a un GET, 400 a un tipo o `log_id` no válidos, y nada de eso registra avisos | Es pública (`verify_jwt = false`): el secreto es su única protección |
+| 4 (×3) | `dry_run` devuelve un mensaje por dispositivo del validador, cada uno en su idioma, sin registrar nada | Textos ES/EN y modo de ensayo |
+| 5 (×4-5) | Envío real: un aviso en `notification_log` para el validador, una entrega por token, ninguna se queda en `queued`; los tokens `DeviceNotRegistered` quedan desactivados | El camino completo hasta Expo |
+| 6 (×2) | Una segunda llamada para el mismo log no registra ni envía nada | Deduplicación (`notification_log_pending_uniq`) |
+| 7 (×2) | La API rechaza el esquema `net` (`PGRST106`) y ninguna función de `public` ejecutable por clientes usa `net` | `pg_net` da permisos a `anon`/`authenticated` que no podemos revocar (ver `database.md`, riesgo conocido) |
+| 8 (×4) | El trigger existe (AFTER INSERT, solo `pending`) y su función no es de clientes; un log `pending` insertado por el autor con su propio cliente genera **un** aviso, solo al validador; uno insertado como `validated`, ninguno | De punta a punta, con `pg_net` real |
+
+Lo único que no cubre: que el aviso **llegue a un iPhone** (APNs); eso va en
+`docs/manual-testing.md`.
 
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 

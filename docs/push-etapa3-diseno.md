@@ -1,9 +1,32 @@
-# Notificaciones push — diseño de la etapa 3 (pendiente de validar)
+# Notificaciones push — diseño de la etapa 3
 
-**Estado: DISEÑO, sin implementar.** Fecha: 2026-10-02. No se ha activado
-nada en EAS, no existe la Edge Function y no se ha tocado la base. Cada paso
-de abajo que toque EAS, Supabase o datos necesita aprobación expresa de Luis
-en el chat (regla de `push-notifications-plan.md`).
+**Estado (2026-10-02): implementada, pendiente de la prueba real.** Hechos
+los pasos 1-4 de "Pasos para aplicarlo" (al final); faltan el 5 (activar la
+exigencia en EAS) y el 6 (Luis y Lucia). Escrito como diseño el mismo día;
+**cambios respecto al diseño** al implementarlo:
+
+- **`PUSH_WEBHOOK_SECRET` vive solo en Vault** (`push_webhook_secret`),
+  generado dentro de la base con `gen_random_bytes` (nadie lo ha visto). No se
+  copia a los secretos de Edge Functions: la función lo comprueba llamando a
+  `push_webhook_secret_ok` (solo `service_role`). Así no hizo falta ningún
+  paso de Luis para este secreto. La comparación es en SQL, no en tiempo
+  constante (no explotable con la latencia de red de por medio).
+- **Deduplicación:** PostgREST no puede expresar `ON CONFLICT` sobre un
+  índice único **parcial**, así que la función inserta cada aviso y trata el
+  error `23505` (duplicado) como "ya avisado": a ese destinatario no se le
+  envía. Mismo efecto.
+- **La función está en JavaScript** (`index.js`, con `entrypoint` en
+  `supabase/config.toml`): un `.ts` en el repo hacía que Expo instalara
+  TypeScript y creara `tsconfig.json` en la app.
+- El texto guardado en `notification_log` va en el idioma del dispositivo del
+  destinatario usado más recientemente; los mensajes, uno por dispositivo en
+  su propio idioma.
+- **`pg_net` da permisos a `anon`/`authenticated` que no podemos revocar**:
+  riesgo conocido y regla permanente en `database.md` ("Notificaciones push
+  por eventos"), comprobado siempre por la Fase 11, test 7.
+- Expo responde a un token inexistente con un ticket `DeviceNotRegistered`
+  ("is not a valid Expo push token"): la Fase 11 lo usa para probar la
+  desactivación de tokens.
 
 Objetivo: cuando alguien completa un hábito, sus validadores reciben
 automáticamente un aviso "pendiente de validar". Es el primero de los tres
@@ -215,15 +238,22 @@ comprobar ningún test.
 
 ## Pasos para aplicarlo (cada uno con aprobación)
 
-1. **Luis:** genera el token de acceso en expo.dev (*Enhanced Push Security*,
+1. ✅ **Luis:** genera el token de acceso en expo.dev (*Enhanced Push Security*,
    **sin activar todavía la exigencia**) y lo fija como secreto
    `EXPO_ACCESS_TOKEN` en Supabase (sección 1).
-2. **Code (aprobación):** instalar `pg_net`; crear
+2. ✅ **Code (aprobación):** instalar `pg_net`; crear
    `push_recipients_for_validation`; generar `PUSH_WEBHOOK_SECRET` y
    guardarlo en Vault y en los secretos de la función. Con ensayo y copia.
-3. **Code (aprobación):** código de `supabase/functions/push-events` y
-   despliegue; pruebas 1-3 de la sección 4; Fase 11.
-4. **Code (aprobación):** el trigger; prueba 4 de la sección 4; Fase 11
-   completa, fases 0-11 dos veces.
+   **Hecho el 2026-10-02** (`sql/2026-10-02_push_events.sql`; ensayo con
+   ROLLBACK, copia en `~/habitapp-backups/2026-10-02-pre-push-events/`).
+3. ✅ **Code (aprobación):** código de `supabase/functions/push-events` y
+   despliegue; pruebas 1-3 de la sección 4; Fase 11. **Hecho el
+   2026-10-02** (desplegada con `npx supabase functions deploy push-events
+   --project-ref uvsngemnftpysjvxslhu --no-verify-jwt --use-api`).
+4. ✅ **Code (aprobación):** el trigger; prueba 4 de la sección 4; Fase 11
+   completa, fases 0-11 dos veces. **Hecho el 2026-10-02**
+   (`sql/2026-10-02b_push_events_trigger.sql`, copia en
+   `~/habitapp-backups/2026-10-02-pre-push-trigger/`; se aplicó directamente,
+   sin ensayo con ROLLBACK previo, y se verificó con la Fase 11: 30/30).
 5. **Luis:** activar la exigencia de *Enhanced Push Security* en EAS.
 6. **Luis y Lucia:** la prueba real (sección 4, punto 5).

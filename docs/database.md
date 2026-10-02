@@ -208,6 +208,7 @@ Alta **solo** con la RPC `register_push_token` (hace *upsert* por token y lo rea
 - **`notification_log`:** un aviso lógico por destinatario: `type` ('habit_assigned', 'validation_pending', 'validation_result', 'daily_reminder'), `recipient_id` (FK auth.users CASCADE), `habit_id` / `log_id` (FK CASCADE), `local_date`, `title`, `body`, `data` (jsonb), `created_at`. CHECK `notification_log_shape` exige el campo que corresponde a cada tipo. **Deduplicación con índices únicos parciales:** un `habit_assigned` por (destinatario, hábito), un `validation_pending` por (destinatario, log), **un solo `validation_result` por log** (aviso resumido) y un `daily_reminder` por (destinatario, día local).
 - **`push_deliveries`:** un envío por token: `notification_id` (FK CASCADE), `push_token_id` (FK SET NULL), `ticket_id`, `status` ('queued', 'ticket_ok', 'ticket_error', 'receipt_ok', 'receipt_error'), `error`, `created_at`, `receipt_checked_at`.
 - Las dos con RLS activado **sin policies** y sin privilegios para `anon`/`authenticated`: solo las escriben y leen las Edge Functions (Service Role Key).
+- Desde el 2026-10-02 las escribe la Edge Function `push-events` (aviso `validation_pending`, ver "Notificaciones push por eventos" más abajo).
 
 ### `invitations` — eliminada
 Tabla del flujo de invitación por código genérico, sin uso. **Eliminada el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-09-28.md`)** junto con su RPC `handle_invited_user_registration`: tenía 0 filas, se podía leer sin sesión (con los códigos) y la RPC creaba profiles en cualquier empresa sin ninguna comprobación. Su definición está en el backup del 2026-09-28.
@@ -330,11 +331,20 @@ Actualiza el `avatar_url` de otro miembro del grupo (SECURITY DEFINER, bypasea R
 ### `unregister_push_token(p_token)` → boolean
 `SECURITY DEFINER`, solo `authenticated`. Borra el token solo si es del usuario autenticado; devuelve si borró algo. La llamará la app al cerrar sesión, antes del `signOut()`.
 
+### `push_recipients_for_validation(p_log_id)` → `recipient_id`
+`SECURITY DEFINER`, `STABLE`, solo `service_role`. A quién avisar de un log pendiente: los validadores del hábito; si no tiene ninguno, los admins de su empresa; nunca el autor y siempre de la misma empresa. Si el log no existe o no está `pending`, ninguno. Misma regla que `ValidateHabitScreen`. Añadida el 2026-10-02 (`sql/2026-10-02_push_events.sql`). Cubierta por la Fase 11.
+
+### `push_webhook_secret_ok(p_secret)` → boolean
+`SECURITY DEFINER`, `STABLE`, solo `service_role`. Compara la cabecera `x-webhook-secret` que recibe la Edge Function `push-events` con el secreto `push_webhook_secret` de Vault (el secreto vive solo en Vault: se generó dentro de la base y nadie lo ha visto). Añadida el 2026-10-02. Cubierta por la Fase 11.
+
 ### `keepalive()` → integer
 Devuelve siempre `1`. `SECURITY INVOKER`, `STABLE`, no lee ni escribe ninguna tabla. Ejecutable por `anon` y `authenticated` (no por `public`). Añadida el 2026-09-29 (`sql/2026-09-29_keepalive.sql`) como ping del workflow `.github/workflows/supabase-keepalive.yml`, que evita que el proyecto se pause por inactividad (ver `project.md`, "Configuración externa"). Cubierta por la Fase 9, test 2.
 
 ### `prevent_assignee_as_validator()` — triggers de asignación/validación
 Función de trigger (`SECURITY DEFINER`, `search_path = public, pg_temp`, sin EXECUTE para ningún cliente), añadida el 2026-09-30 (`sql/2026-09-30_asignado_no_validador.sql`). La usan dos triggers `BEFORE INSERT OR UPDATE OF habit_id, user_id`: `habit_assignments_not_validator` (en `habit_assignments`) y `habit_validators_not_assignee` (en `habit_validators`). Si la misma pareja (`habit_id`, `user_id`) ya está en la otra tabla, lanza `check_violation` con el mensaje *"Una misma persona no puede estar asignada a un hábito y ser también su validadora"*. Toma un `pg_advisory_xact_lock` por pareja para que dos altas simultáneas no se cuelen. Consecuencia para los clientes: al editar, hay que borrar las dos listas antes de insertar las nuevas (AdminScreen.js y Habits.jsx ya lo hacen). Cubierta por la Fase 2, test 8.
+
+### `notify_push_validation_pending()` — trigger `habit_logs_push_validation_pending`
+Función de trigger (`SECURITY DEFINER`, sin EXECUTE para clientes), añadida el 2026-10-02 (`sql/2026-10-02b_push_events_trigger.sql`). `AFTER INSERT ON habit_logs FOR EACH ROW WHEN (new.status = 'pending')`: lee `push_webhook_secret` de Vault y encola con `net.http_post` (asíncrono, tras el commit, timeout 5 s) una llamada a la Edge Function `push-events` con `{type: 'validation_pending', log_id}`. Cualquier error propio se convierte en WARNING: el INSERT del log nunca falla por el aviso. Cubierta por la Fase 11, test 8.
 
 ### Helpers de policies: `is_admin()`, `my_company_id()`, `is_my_company_habit(habit_id)`, `is_my_company_log(log_id)`
 `SECURITY DEFINER`, `STABLE`. Los dos últimos se añadieron el 2026-09-28 para las policies SELECT de las tablas hijas (evitan RLS anidado).
@@ -508,3 +518,17 @@ Tabla `habit_rewards`: `streak_target` (número de completados necesarios), `des
 - Nuevo logro detectado cuando: `Math.floor(newTotal / target) > Math.floor((newTotal - 1) / target)`
 
 El comportamiento en cada pantalla (chip en HomeScreen, overlay de celebración en HabitDetailScreen, badges en HabitStatsScreen, gestión en AdminScreen) está descrito en [navigation.md](navigation.md).
+
+## Notificaciones push por eventos (desde el 2026-10-02)
+
+- **Cadena:** INSERT en `habit_logs` con `status = 'pending'` → trigger `habit_logs_push_validation_pending` → `pg_net` → Edge Function `push-events` (`supabase/functions/push-events/index.js`, `verify_jwt = false`, protegida por la cabecera `x-webhook-secret`) → Expo Push. Diseño completo: `docs/push-etapa3-diseno.md`.
+- **Secretos:** `push_webhook_secret` en **Vault** (solo base de datos); `EXPO_ACCESS_TOKEN` (Enhanced Push Security de EAS) como secreto de Edge Functions. Ninguno en el repo.
+- **Diagnóstico (solo lectura):** `net._http_response` guarda la respuesta de cada llamada del trigger **durante 6 horas**; `notification_log` + `push_deliveries` guardan el resultado de cada aviso y de cada envío a Expo.
+
+### ⚠️ Riesgo conocido: permisos de `pg_net` que no podemos revocar
+
+- Al instalarse (2026-10-02), `pg_net` concede, mediante el trigger de eventos de Supabase `grant_pg_net_access` y con `supabase_admin` como otorgante: `USAGE` sobre el esquema `net` a `anon`, `authenticated` y `PUBLIC`; lectura y escritura en `net.http_request_queue` y `net._http_response` a `PUBLIC`; y ejecución de todas sus funciones (incluida `net.http_post`) a `PUBLIC`.
+- **Nuestra conexión (`postgres`) no puede revocarlo:** no es superusuario ni miembro de `supabase_admin`, y en Postgres solo se retira lo que uno mismo concedió (`REVOKE … ON SCHEMA net` responde *"no privileges could be revoked"*; probado en ensayo con ROLLBACK). Pasaría lo mismo desde el SQL Editor del dashboard.
+- **La protección real es que `net` no está en los esquemas expuestos de la API** (PostgREST solo expone `public` y `graphql_public`; pedir `net` devuelve `PGRST106`, comprobado el 2026-10-02), y que ninguna función de `public` ejecutable por clientes usa `net`. Lo comprueba siempre la Fase 11, test 7.
+- **Regla permanente: nunca añadir `net` a los esquemas expuestos de PostgREST** (Dashboard → API settings → Exposed schemas), ni crear una función ejecutable por `anon`/`authenticated` que llame a `net.*`. Haría alcanzables desde la app la cola de peticiones (que lleva el secreto del webhook en sus cabeceras unos instantes) y `net.http_post` (peticiones HTTP arbitrarias salientes desde la base).
+

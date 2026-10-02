@@ -45,3 +45,57 @@ Confirmado con la salida de `eas build` del build 4 (2026-09-30):
 - **Certificado de distribución:** número de serie `37ACE9E446207C007CA33C89317C4BA6`, Developer Portal ID `FBH3AXLB34`, **caduca el 29/09/2027** — esa es la fecha de 2027 que se veía en `eas credentials`. Hay que renovarlo antes: EAS lo pedirá en el primer build después de esa fecha.
 - **Perfil de aprovisionamiento (App Store):** el antiguo (`FR8P8WT53K`) quedó invalidado al activar la capacidad Push; EAS generó uno nuevo, **`YFPNG3ML3V`**, que caduca con el certificado (29/09/2027). **Confirmado del todo el 2026-10-02:** `FR8P8WT53K` es el Developer Portal ID de ese perfil de aprovisionamiento antiguo, tal como lo muestra `eas credentials` al iniciar sesión. No es el Team ID ni la clave APNs.
 - **App Store Connect API Key:** guardada en EAS (la usó el build 4 para regenerar el perfil sin pedir el login de Apple).
+
+## Hallazgos de proceso
+
+### 🟠 Trigger de push aplicado sin ensayo con ROLLBACK — 2026-10-02
+
+- **Qué se esperaba:** como en todos los cambios de base anteriores, un ensayo
+  del SQL dentro de una transacción terminada en `ROLLBACK` y, solo después,
+  la aplicación con copia de seguridad. Luis había aprobado aplicar el trigger
+  (`sql/2026-10-02b_push_events_trigger.sql`), pero el ensayo era un paso
+  previo obligatorio.
+- **Qué pasó:** el fichero estaba bien escrito como fichero de *aplicación*,
+  con su propio `begin; … commit;`, igual que todos los SQL versionados. El
+  fallo estuvo en cómo Code montó el ensayo: abrió una transacción en psql
+  (`begin;`) e incluyó el fichero con `\i`, suponiendo que esa transacción
+  exterior lo envolvería. No fue así. El `begin;` del fichero solo produjo un
+  aviso (*"there is already a transaction in progress"*) y su `commit;`
+  confirmó la transacción abierta: el trigger quedó aplicado. Además, el
+  ensayo ni siquiera terminaba en `ROLLBACK`.
+  - En el ensayo de la parte 1 (`2026-10-02_push_events.sql`), una hora
+    antes, sí se había hecho bien: se quitó el `commit;` con `sed` y se añadió
+    `rollback;` al final.
+  - `ON_ERROR_STOP` no lo paró porque era un aviso, no un error.
+- **Daño:** ninguno. El cambio estaba aprobado, la copia
+  (`~/habitapp-backups/2026-10-02-pre-push-trigger/`) se hizo antes y la
+  Fase 11 lo verificó (30/30). Pero se saltó una salvaguarda acordada, y con
+  un SQL no aprobado el resultado habría sido un cambio en producción sin
+  aprobación.
+- **Causa de fondo:** el mismo fichero servía para ensayar y para aplicar, y
+  convertirlo en ensayo dependía de transformarlo a mano en cada ocasión.
+  Cada vez se hacía de una forma distinta.
+- **Salvaguarda (aprobada por Luis y adoptada el 2026-10-02):**
+  - Los SQL nuevos no llevan `begin`/`commit`/`rollback`: solo el cambio en
+    sí. La transacción la ponen siempre los scripts.
+  - `scripts/sql-ensayo.sh <fichero>` lo ejecuta entre `BEGIN` y `ROLLBACK`.
+    Da el ensayo por fallido ante cualquier error, ante un aviso de
+    transacción (*"already a transaction in progress"* / *"there is no
+    transaction in progress"*), si la última orden no fue `ROLLBACK`, o si la
+    huella del catálogo cambia entre antes y después: funciones con su cuerpo
+    y permisos, tablas, columnas, restricciones, triggers, policies,
+    extensiones, esquemas y nombres de secretos de Vault.
+  - `scripts/sql-aplica.sh <fichero>` hace la copia de seguridad en
+    `~/habitapp-backups/AAAA-MM-DD-pre-<nombre>/` y ejecuta el fichero en una
+    sola transacción (`psql --single-transaction`, `ON_ERROR_STOP`).
+  - Los dos rechazan el fichero **antes de conectarse** si contiene, fuera de
+    comentarios, cadenas y cuerpos `$$…$$`, sentencias `BEGIN`, `COMMIT`,
+    `ROLLBACK`, `END`, `ABORT`, `START TRANSACTION`, `SAVEPOINT`, `RELEASE` o
+    `PREPARE TRANSACTION`, o metacomandos de psql (`\i`, `\c`, …). Lo hace
+    `scripts/sql-sin-transaccion.py`. Probado con el fichero del trigger
+    (rechazado por su `begin`/`commit`, no por el `begin`/`end` de plpgsql),
+    con variantes (`COMMIT` en mayúsculas, `\i`, `start transaction`), con un
+    ensayo inocuo (OK, catálogo sin cambios) y con un ensayo con error
+    (fallido).
+  - Regla en `workflow.md`: en la base solo se ensaya y se aplica con esos
+    dos scripts. Los SQL ya aplicados se quedan tal cual, como historial.

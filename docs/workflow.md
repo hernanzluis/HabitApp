@@ -1,7 +1,7 @@
 # Forma de trabajo
 
 - Claude (asistente) diseña los cambios y produce prompts para Claude Code.
-- Code ejecuta el SQL en Supabase directamente, con acceso SQL propio (`SUPABASE_DB_URL` en `.env`, nunca en el repo ni en el chat). Las consultas de solo lectura son libres. **Cualquier cambio de esquema, funciones, policies, grants o borrado de datos que no sean de test requiere aprobación expresa de Luis en el chat**, y se aplica con copia de seguridad previa (`~/habitapp-backups/`, fuera del repo) y ensayo con `BEGIN … ROLLBACK`. El SQL aplicado se versiona en `sql/`.
+- Code ejecuta el SQL en Supabase directamente, con acceso SQL propio (`SUPABASE_DB_URL` en `.env`, nunca en el repo ni en el chat). Las consultas de solo lectura son libres. **Cualquier cambio de esquema, funciones, policies, grants o borrado de datos que no sean de test requiere aprobación expresa de Luis en el chat**, y se aplica con copia de seguridad previa (`~/habitapp-backups/`, fuera del repo) y ensayo con `BEGIN … ROLLBACK`. El SQL aplicado se versiona en `sql/`. **Desde el 2026-10-02, en la base solo se ensaya con `scripts/sql-ensayo.sh` y solo se aplica con `scripts/sql-aplica.sh`, nunca a mano.** Los SQL nuevos no llevan `begin`/`commit`/`rollback` ni metacomandos de psql: la transacción la ponen los scripts, que rechazan cualquier fichero que la controle por sí mismo. El ensayo falla también ante un aviso de transacción o si la huella del catálogo cambia (ver `release.md`, "Hallazgos de proceso"). Los SQL anteriores, con su propio `begin; … commit;`, se quedan tal cual como historial.
 - Code modifica el código, hace commit y push a GitHub.
 - Vercel despliega automáticamente la web tras el push.
 - Luis interviene en el dashboard de Supabase para lo que no se hace por SQL (Authentication, URL Configuration, SMTP, claves) y aprueba en el chat los cambios críticos.
@@ -13,7 +13,7 @@
 
 - Cualquier funcionalidad nueva o cambio de comportamiento existente debe
   evaluarse también desde el punto de vista de `tests/` (ver
-  `tests/README.md`, catálogo de 10 fases, 0 a 9): ¿algún test existente queda
+  `tests/README.md`, catálogo de 12 fases, 0 a 11): ¿algún test existente queda
   desactualizado por este cambio? ¿el cambio introduce un caso nuevo que
   merece cobertura?
 - Aplica tanto si el cambio lo pide Luis explícitamente como si sale de una

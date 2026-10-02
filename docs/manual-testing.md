@@ -82,6 +82,16 @@ cubrirá en un checklist separado más adelante.
 - [ ] Tocar una notificación con la sesión cerrada → la app se queda en Login, sin errores
 - [ ] Cerrar sesión → el token desaparece de `push_tokens` (lo comprueba Code); con otra cuenta en el mismo iPhone, el token queda a nombre de la nueva → cross-ref **Fase 10, tests 5-6**
 
+## 3c. Notificaciones push — etapa 3, "pendiente de validar" (servidor; build 4 en adelante)
+
+**Pendiente de probar** (la parte automática está en la **Fase 11**, 30/30 el 2026-10-02). Requiere que Luis sea validador de un hábito asignado a Lucia, y los dos con el permiso de notificaciones aceptado.
+
+- [ ] Lucia completa ese hábito en su iPhone → a Luis le llega "Pendiente de validar" con el nombre de Lucia y el del hábito, en el idioma de su app → cross-ref **Fase 11, test 8**
+- [ ] A Lucia (la autora) no le llega nada
+- [ ] Tocarla abre Validar con el log de Lucia
+- [ ] Code comprueba en la base: una fila en `notification_log` para Luis, su entrega en `push_deliveries` como `ticket_ok`, y `200` en `net._http_response`
+- [ ] Tras activar la exigencia de *Enhanced Push Security* en EAS, repetir: sigue llegando (la función envía con `EXPO_ACCESS_TOKEN`)
+
 ## 4. Límites de plan (Familiar)
 
 **Última vez probado:** _(pendiente)_

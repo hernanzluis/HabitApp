@@ -1,0 +1,11 @@
+# Configuración mínima para desplegar Edge Functions con el CLI de Supabase.
+# El esquema de la base NO se gestiona desde aquí: se versiona en sql/.
+project_id = "uvsngemnftpysjvxslhu"
+
+# La llama el trigger de habit_logs (pg_net), no un usuario: sin JWT. Se
+# protege con la cabecera x-webhook-secret (secreto en Vault).
+[functions.push-events]
+verify_jwt = false
+# JavaScript en vez de TypeScript: un .ts en el repo hace que Expo instale
+# TypeScript y cree tsconfig.json en la app.
+entrypoint = "./functions/push-events/index.js"
