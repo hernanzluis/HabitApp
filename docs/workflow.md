@@ -62,3 +62,21 @@
   (`tests/README.md` o `docs/manual-testing.md`, según toque) con el mismo
   nivel de detalle que ya se ha usado en los huecos existentes: qué se
   encontró, por qué se pospone, y qué haría falta para cerrarlo.
+
+## Separar los pasos de Luis de los de Code
+
+- Cuando una tarea tiene pasos que le corresponden a Luis (acciones en
+  paneles externos: Apple Developer, App Store Connect, expo.dev, Namecheap,
+  GitHub, etc., o cualquier cosa que solo él pueda hacer con su propia sesión
+  o credencial) y pasos que le corresponden a Code, se entregan en mensajes
+  separados, nunca mezclados en una misma instrucción.
+- El mensaje con los pasos de Luis no incluye instrucciones para Code en el
+  mismo bloque, y viceversa.
+- El orden de los mensajes sigue el orden real de ejecución: si un paso de
+  Luis tiene que completarse antes de que Code pueda continuar (como generar
+  un secreto que Code nunca ve), ese paso se entrega primero, solo, y la
+  parte de Code se entrega después, cuando Luis confirme que lo ha hecho.
+- Esto aplica también a Code si necesita pedirle a Luis una acción a mitad de
+  una tarea que está ejecutando: para la tarea, pide solo esa acción en un
+  mensaje propio, y no sigue con el resto hasta que Luis confirme que está
+  hecha.
