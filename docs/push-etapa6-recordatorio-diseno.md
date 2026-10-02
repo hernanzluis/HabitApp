@@ -1,7 +1,19 @@
 # Notificaciones push — diseño del recordatorio diario (tipo 4)
 
-**Estado: DISEÑO, sin implementar** (2026-10-02). No se ha instalado
-`pg_cron` ni se ha escrito SQL. Es la última pieza del plan
+**Estado (2026-10-02): diseño aprobado por Luis; paso 1 de 3 hecho.**
+- **Paso 1 hecho:** `sql/2026-10-02d_push_recordatorio_funciones.sql`, ensayado
+  y aplicado con los scripts; `push-events` con el tipo `daily_reminder`,
+  desplegada; Fase 11, test 11 (12 comprobaciones, 57/57 en total).
+- **Pasos 2 (instalar `pg_cron` y programar las tareas) y 3 (primeras
+  ejecuciones reales y prueba manual):** pendientes, cada uno con su
+  aprobación.
+- **Decisión de Luis sobre el punto 5:** el resumen de validaciones sin votar
+  queda **fuera**, como quinta pieza aparte, hasta que se decidan cuántas
+  horas esperar y a qué hora enviarlo.
+- **Nota de implementación:** en los tests, los tokens falsos se registran
+  después de que se procesen los avisos "hábito asignado" del montaje. Si no,
+  Expo los rechaza y la función los desactiva antes de comprobar el
+  recordatorio. Es la última pieza del plan
 (`push-notifications-plan.md`, etapa 6). Se mantiene el patrón de las
 anteriores (`push-etapa3-diseno.md`, `push-etapa3b-diseno.md`): funciones
 SQL testeables, la Edge Function `push-events` ampliada, el secreto en Vault

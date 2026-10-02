@@ -1,7 +1,8 @@
-// Fase 11: notificaciones push, etapa 3 — avisos por evento: "pendiente de
-// validar" (tests 1-8), "hábito asignado" (9) y "resultado de la validación"
-// (10). sql/2026-10-02_push_events.sql, 2026-10-02b, 2026-10-02c,
-// supabase/functions/push-events, docs/push-etapa3-diseno.md y 3b.
+// Fase 11: notificaciones push — avisos por evento: "pendiente de validar"
+// (tests 1-8), "hábito asignado" (9), "resultado de la validación" (10) y el
+// recordatorio diario (11, con la hora simulada: p_now / "now").
+// sql/2026-10-02_push_events.sql, 2026-10-02b, 2026-10-02c, 2026-10-02d,
+// supabase/functions/push-events, docs/push-etapa3-diseno.md, 3b y etapa6.
 // Ejecutar con: node tests/test-11-push-events.js
 //
 // Llama a la Edge Function desplegada. Los tokens son falsos
@@ -54,9 +55,9 @@ async function addMember(admin, label) {
   return { ...m, client: await getClientForUser(m.email, m.password) };
 }
 
-async function registerToken(client, locale) {
+async function registerToken(client, locale, timeZone = 'Europe/Madrid') {
   const token = tok(locale);
-  await must(client.rpc('register_push_token', { p_token: token, p_platform: 'ios', p_locale: locale, p_time_zone: 'Europe/Madrid' }));
+  await must(client.rpc('register_push_token', { p_token: token, p_platform: 'ios', p_locale: locale, p_time_zone: timeZone }));
   return token;
 }
 
@@ -353,6 +354,123 @@ async function run() {
     check(trg2.map((r) => [r.tgname, r.after_insert, r.auth_exec]),
       [['habit_assignments_push_assigned', true, false], ['habit_validations_push_result', true, false]],
       'Test 10h: los dos triggers existen, AFTER INSERT, y sus funciones no son de clientes');
+
+    // ---- Test 11: recordatorio diario, con la hora simulada ----
+    // Toda llamada lleva user_ids zztest-: con un "now" inventado, sin ese
+    // filtro, el recordatorio podría llegar a usuarios reales.
+    console.log('\nTest 11: recordatorio diario (hora simulada)');
+    const candidatesAt = async (now, userIds) =>
+      must(supabaseAdmin.rpc('push_reminder_candidates', { p_now: now, p_user_ids: userIds }));
+    const pendingAt = async (userId, tz, now) =>
+      (await must(supabaseAdmin.rpc('pending_habits_for_user', { p_user_id: userId, p_time_zone: tz, p_now: now }))).map((x) => x.title);
+    const logAt = (habitId, userId, iso) =>
+      must(supabaseAdmin.from('habit_logs').insert({ habit_id: habitId, user_id: userId, status: 'validated', created_at: iso }));
+    const assign = (habitId, userId) => must(supabaseAdmin.from('habit_assignments').insert({ habit_id: habitId, user_id: userId }));
+
+    // Empresa C propia: A ya está en el tope de miembros de su plan.
+    const C = await createTestCompanyAndAdmin(`${TEST_PREFIX}CompanyPushRecC-${Date.now()}`);
+    const tokyo = await addMember(C, 'Tokio');
+    const kolkata = await addMember(C, 'Calcuta');
+    const madrid = await addMember(C, 'Madrid');
+    const ny = await addMember(C, 'NuevaYork');
+    const nyDone = await addMember(C, 'NuevaYorkHecho');
+    const daily = await newHabit(C.companyId, C.userId, `${TEST_PREFIX}Diario`);
+    for (const u of [tokyo, kolkata, madrid, nyDone]) await assign(daily.id, u.userId);
+
+    // Pendientes en hora local de Nueva York. "Ahora" = 2026-10-08T00:30Z = miércoles 7/10 20:30 EDT.
+    // Cada caso está elegido para que un cálculo con fechas UTC dé otro resultado.
+    const NOW_NY = '2026-10-08T00:30:00Z';
+    const nyHabit = async (title, extra) => {
+      const x = await newHabit(C.companyId, C.userId, `${TEST_PREFIX}${title}`, extra);
+      await assign(x.id, ny.userId);
+      return x;
+    };
+    const d1 = await nyHabit('D1-hecho-hoy');
+    await logAt(d1.id, ny.userId, '2026-10-07T23:30:00Z');            // 19:30 local de hoy (día UTC: mañana)
+    const d2 = await nyHabit('D2-hecho-ayer');
+    await logAt(d2.id, ny.userId, '2026-10-07T03:00:00Z');            // 23:00 local del martes
+    const o1 = await nyHabit('O1-una-vez', { recurrence: 'once' });
+    await logAt(o1.id, ny.userId, '2026-10-01T12:00:00Z');
+    const w1 = await nyHabit('W1-semana-2-de-3', { recurrence: 'weekly_x', weekly_target: 3 });
+    await logAt(w1.id, ny.userId, '2026-10-05T03:00:00Z');            // domingo 4/10 23:00 local: semana anterior
+    await logAt(w1.id, ny.userId, '2026-10-06T12:00:00Z');
+    await logAt(w1.id, ny.userId, '2026-10-07T02:00:00Z');            // martes 22:00 local
+    const w2 = await nyHabit('W2-semana-3-de-3', { recurrence: 'weekly_x', weekly_target: 3 });
+    await logAt(w2.id, ny.userId, '2026-10-05T12:00:00Z');
+    await logAt(w2.id, ny.userId, '2026-10-06T12:00:00Z');
+    await logAt(w2.id, ny.userId, '2026-10-07T02:00:00Z');
+    const m1 = await nyHabit('M1-mes-1-de-2', { recurrence: 'monthly_x', monthly_target: 2 });
+    await logAt(m1.id, ny.userId, '2026-10-01T02:00:00Z');            // 30/09 22:00 local: mes anterior
+    await logAt(m1.id, ny.userId, '2026-10-02T12:00:00Z');
+    const m2 = await nyHabit('M2-mes-2-de-2', { recurrence: 'monthly_x', monthly_target: 2 });
+    await logAt(m2.id, ny.userId, '2026-10-02T12:00:00Z');
+    await logAt(m2.id, ny.userId, '2026-10-03T12:00:00Z');
+    await nyHabit('E1-caducado', { expires_at: '2026-10-07T12:00:00Z' });
+    await nyHabit('I1-inactivo', { is_active: false });
+    const xB = await newHabit(B.companyId, B.userId, `${TEST_PREFIX}X1-otra-empresa`);
+    await assign(xB.id, ny.userId);
+    // nyDone: su único hábito diario, hecho hoy en hora local.
+    await logAt(daily.id, nyDone.userId, '2026-10-07T23:00:00Z');
+
+    // Los avisos "hábito asignado" de este montaje van a los tokens que existan
+    // al procesarse; con tokens falsos, Expo los rechaza y la función los
+    // desactiva. Por eso los tokens se registran cuando ya se han procesado.
+    await waitNotices('habit_assigned', { recipient_id: ny.userId }, 8);
+    for (const u of [tokyo, kolkata, madrid, nyDone]) await waitNotices('habit_assigned', { recipient_id: u.userId, habit_id: daily.id });
+    await registerToken(tokyo.client, 'es', 'Asia/Tokyo');
+    await registerToken(kolkata.client, 'es', 'Asia/Kolkata');
+    await registerToken(madrid.client, 'es', 'Europe/Madrid');
+    await registerToken(ny.client, 'es', 'America/New_York');
+    await registerToken(nyDone.client, 'es', 'America/New_York');
+
+    // Franja de las 20 (y la 21 de reintento) en Tokio (UTC+9) y en India (UTC+5:30).
+    const hoursHit = async (user, isoList) =>
+      (await Promise.all(isoList.map((iso) => candidatesAt(iso, [user.userId])))).map((rows) => rows.map((r) => [r.local_date, r.local_hour])[0] ?? null);
+    check(await hoursHit(tokyo, ['2026-10-05T10:00:00Z', '2026-10-05T11:00:00Z', '2026-10-05T12:00:00Z', '2026-10-05T13:00:00Z']),
+      [null, ['2026-10-05', 20], ['2026-10-05', 21], null], 'Test 11a: Tokio: candidato solo a las 20 y a las 21 locales, con su fecha local');
+    check(await hoursHit(kolkata, ['2026-10-05T14:00:00Z', '2026-10-05T15:00:00Z']),
+      [null, ['2026-10-05', 20]], 'Test 11b: India (+5:30): la ejecución de las 15:00 UTC cae a las 20:30 locales');
+
+    // Cambios de hora en Madrid: cada día local, exactamente una hora 20 y una 21.
+    const dstSweep = async (startIso) => {
+      const hits = {};
+      const start = Date.parse(startIso);
+      const runs = await Promise.all(Array.from({ length: 72 }, (_, i) => candidatesAt(new Date(start + i * 3600000).toISOString(), [madrid.userId])));
+      runs.forEach((rows) => rows.forEach((r) => { (hits[r.local_date] ??= []).push(r.local_hour); }));
+      return hits;
+    };
+    check(await dstSweep('2026-10-24T00:00:00Z'), { '2026-10-24': [20, 21], '2026-10-25': [20, 21], '2026-10-26': [20, 21] },
+      'Test 11c: fin del horario de verano (25/10, día de 25 h): una franja de las 20 y una de las 21 por día');
+    check(await dstSweep('2026-03-28T00:00:00Z'), { '2026-03-28': [20, 21], '2026-03-29': [20, 21], '2026-03-30': [20, 21] },
+      'Test 11d: inicio del horario de verano (29/03, día de 23 h): una franja de las 20 y una de las 21 por día');
+
+    check(await pendingAt(ny.userId, 'America/New_York', NOW_NY),
+      [`${TEST_PREFIX}D2-hecho-ayer`, `${TEST_PREFIX}M1-mes-1-de-2`, `${TEST_PREFIX}W1-semana-2-de-3`],
+      'Test 11e: pendientes en día/semana/mes LOCAL (no UTC); sin "once" hechos, metas cumplidas, caducados, inactivos ni otra empresa');
+
+    check(await pendingAt(nyDone.userId, 'America/New_York', NOW_NY), [], 'Test 11f: quien lo tiene todo hecho no tiene pendientes');
+
+    // Edge Function, siempre con user_ids zztest-.
+    const reminder = (extra) => callFunction({ type: 'daily_reminder', now: NOW_NY, user_ids: [ny.userId, nyDone.userId], ...extra }, secret);
+    check([(await reminder({ user_ids: 'x' })).status, (await reminder({ now: 'ayer' })).status], [400, 400], 'Test 11g: parámetros no válidos → 400');
+    const dryRem = await reminder({ dry_run: true });
+    check([dryRem.body?.candidates?.map((c) => [c.user_id, c.local_date, c.pending_count]), [...new Set((dryRem.body?.messages ?? []).map((m) => m.body))]],
+      [[[ny.userId, '2026-10-07', 3]], ['Te quedan 3 hábitos por completar hoy.']], 'Test 11h: dry_run: solo el usuario con pendientes, con su fecha local y el recuento');
+    const sentRem = await reminder();
+    const remRows = await noticesOf('daily_reminder', { recipient_id: ny.userId });
+    check([sentRem.body?.candidates, sentRem.body?.notifications, remRows.map((n) => [n.title, n.body])],
+      [1, 1, [['Recordatorio', 'Te quedan 3 hábitos por completar hoy.']]], 'Test 11i: envío: un recordatorio, para quien le queda algo');
+    check((await noticesOf('daily_reminder', { recipient_id: nyDone.userId })).length, 0, 'Test 11j: nada a quien lo tiene todo hecho');
+    const retryRem = await reminder({ now: '2026-10-08T01:30:00Z' });   // franja de las 21
+    check([retryRem.body?.notifications, (await noticesOf('daily_reminder', { recipient_id: ny.userId })).length], [0, 1],
+      'Test 11k: la ejecución de las 21 no repite el recordatorio del mismo día local');
+
+    const { rows: remFns } = await pg.query(`
+      select proname, has_function_privilege('anon', oid, 'execute') or has_function_privilege('authenticated', oid, 'execute') as client_exec
+        from pg_proc where proname in ('pending_habits_for_user', 'push_reminder_candidates', 'push_cron_tick') order by 1`);
+    check(remFns.map((r) => [r.proname, r.client_exec]),
+      [['pending_habits_for_user', false], ['push_cron_tick', false], ['push_reminder_candidates', false]],
+      'Test 11l: las funciones del recordatorio no son ejecutables por clientes');
   } finally {
     await pg.end();
     console.log('\nLimpieza final...');

@@ -315,7 +315,7 @@ node tests/test-07-recuperacion.js  # Fase 7: recuperación de contraseña (gene
 node tests/test-08-registro-seguro.js  # Fase 8: registro seguro (auth.uid, email, códigos, rate limiting)
 node tests/test-09-aislamiento.js  # Fase 9: aislamiento de la API pública (anon, entre empresas, Storage, RPCs de miembros)
 node tests/test-10-push-tokens.js  # Fase 10: tokens de push y registro de avisos (etapa 1 de las notificaciones)
-node tests/test-11-push-events.js  # Fase 11: avisos push por evento (pendiente de validar, hábito asignado, resultado de la validación)
+node tests/test-11-push-events.js  # Fase 11: avisos push (pendiente de validar, hábito asignado, resultado de la validación, recordatorio diario)
 ```
 
 Cada script, en este orden:
@@ -563,7 +563,7 @@ prueba.
 | 9 | El 11.º dispositivo activo se rechaza | Tope defensivo |
 | 10 (×7) | `notification_log` rechaza un aviso de asignación repetido (p. ej. tras editar el hábito), un segundo resumen de validación del mismo log y un segundo recordatorio el mismo día local; exige fecha local en el recordatorio | Deduplicación del plan, a nivel de datos |
 
-### Fase 11 — `test-11-push-events.js` (45 tests)
+### Fase 11 — `test-11-push-events.js` (57 tests)
 
 Notificaciones push, etapa 3: aviso "pendiente de validar"
 (`sql/2026-10-02_push_events.sql`, `sql/2026-10-02b_push_events_trigger.sql`,
@@ -587,6 +587,7 @@ distintas por `habit_logs_one_per_day`.
 | 8 (×4) | El trigger existe (AFTER INSERT, solo `pending`) y su función no es de clientes; un log `pending` insertado por el autor con su propio cliente genera **un** aviso, solo al validador; uno insertado como `validated`, ninguno | De punta a punta, con `pg_net` real |
 | 9 (×7) | "Hábito asignado": el destinatario es el asignado y nunca quien asigna; con el trigger, un aviso con el nombre del admin; `dry_run` sin actor con texto impersonal; nada a otra empresa, por un hábito inactivo ni al admin que se asigna a sí mismo; **editar el hábito** (borrar y reinsertar, como AdminScreen) no reavisa a quien ya estaba y sí avisa al nuevo | La deduplicación de las ediciones (`notification_log_assigned_uniq`) |
 | 10 (×8) | "Resultado de la validación": con dos validadores, **sin aviso tras el primer voto** y uno solo, para el autor y con los recuentos, tras el segundo; otra llamada no lo repite; `dry_run`; todo en contra → "no validado"; sin validadores, el voto del admin lo cierra; un autor de otra empresa no recibe nada; los dos triggers existen y no son de clientes | Un aviso resumido por log (decisión del 2026-09-30) |
+| 11 (×12) | Recordatorio diario con la **hora simulada** (`p_now` / `now`), en una empresa C propia (A ya está en el tope de miembros de su plan): candidato solo a las 20 y 21 locales (Tokio; India a las 20:30); en los **dos cambios de hora** de Madrid, recorriendo 72 horas, una franja de las 20 y otra de las 21 por día; pendientes en día/semana/mes **local**, con logs elegidos para que un cálculo con fechas UTC dé otro resultado; nada a quien lo tiene todo hecho; parámetros no válidos → 400; `dry_run`, envío y la franja de las 21 sin repetir; funciones no ejecutables por clientes. **Toda llamada lleva `user_ids` zztest-**: con una hora inventada, sin ese filtro, podría llegar a usuarios reales | La hora local, los cambios de hora y la discrepancia del índice UTC |
 
 Lo único que no cubre: que el aviso **llegue a un iPhone** (APNs); eso va en
 `docs/manual-testing.md`.

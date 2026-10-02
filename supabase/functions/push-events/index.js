@@ -8,6 +8,10 @@
 //   { "type": "habit_assigned", "assignment_id": "<uuid>",
 //     "actor_id": "<uuid>" | null }                                 habit_assignments
 //   { "type": "validation_result", "log_id": "<uuid>" }             habit_validations
+//   { "type": "daily_reminder" }                                    pg_cron (push_cron_tick)
+// El recordatorio acepta además "now" (ISO) y "user_ids" (uuid[]): SOLO para
+// los tests, que siempre pasan user_ids zztest- (con un "now" inventado, sin
+// user_ids, el aviso podría llegar a usuarios reales). El tick no los manda.
 // Con "dry_run": true devuelve los mensajes que enviaría sin insertar ni
 // enviar nada.
 //
@@ -23,6 +27,10 @@ const isUuid = (v) => typeof v === 'string' && UUID_RE.test(v);
 const SOMEONE = { es: 'Alguien', en: 'Someone' };
 
 const TEXTS = {
+  daily_reminder: {
+    es: ({ count }) => ({ title: 'Recordatorio', body: count === 1 ? 'Te queda 1 hábito por completar hoy.' : `Te quedan ${count} hábitos por completar hoy.` }),
+    en: ({ count }) => ({ title: 'Reminder', body: count === 1 ? 'You have 1 habit left for today.' : `You have ${count} habits left for today.` }),
+  },
   validation_pending: {
     es: ({ author, habit }) => ({ title: 'Pendiente de validar', body: `${author} ha completado «${habit}». Tienes una prueba por validar.` }),
     en: ({ author, habit }) => ({ title: 'To validate', body: `${author} completed “${habit}”. You have a proof to validate.` }),
@@ -205,7 +213,37 @@ async function handleValidationResult(db, { log_id: logId }, dryRun) {
   }, dryRun);
 }
 
+// ---- daily_reminder: cada hora, a quien tiene las 20 (o las 21) y le queda algo ----
+async function handleDailyReminder(db, { now, user_ids: userIds }, dryRun) {
+  const { data: candidates, error } = await db.rpc('push_reminder_candidates', {
+    p_now: now ?? new Date().toISOString(),
+    p_user_ids: userIds ?? null,
+  });
+  if (error) throw error;
+
+  const total = { candidates: candidates?.length ?? 0, notifications: 0, deliveries: 0, ticket_ok: 0, ticket_error: 0 };
+  const messages = [];
+  for (const c of candidates ?? []) {
+    const r = await notify(db, {
+      type: 'daily_reminder',
+      recipients: [c.user_id],
+      vars: { count: c.pending_count },
+      keys: { local_date: c.local_date },
+      data: { type: 'daily_reminder' },
+    }, dryRun);
+    if (dryRun) messages.push(...r.messages);
+    else for (const k of ['notifications', 'deliveries', 'ticket_ok', 'ticket_error']) total[k] += r[k] ?? 0;
+  }
+  return dryRun ? { dry_run: true, candidates: candidates ?? [], messages } : total;
+}
+
 const HANDLERS = {
+  daily_reminder: {
+    handle: handleDailyReminder,
+    valid: (p) => (p.now == null || (typeof p.now === 'string' && !Number.isNaN(Date.parse(p.now))))
+      && (p.user_ids == null || (Array.isArray(p.user_ids) && p.user_ids.length <= 100 && p.user_ids.every(isUuid))),
+    error: 'invalid_reminder_params',
+  },
   validation_pending: { handle: handleValidationPending, valid: (p) => isUuid(p.log_id), error: 'invalid_log_id' },
   habit_assigned: {
     handle: handleHabitAssigned,
@@ -291,7 +329,7 @@ Deno.serve(async (req) => {
   if (!handler) return json({ error: 'unsupported_type' }, 400);
   if (!handler.valid(payload)) return json({ error: handler.error }, 400);
 
-  const ref = payload.log_id ?? payload.assignment_id;
+  const ref = payload.log_id ?? payload.assignment_id ?? payload.now ?? '';
   try {
     const result = await handler.handle(db, payload, payload.dry_run === true);
     console.log('push-events', payload.type, ref, JSON.stringify(result));
