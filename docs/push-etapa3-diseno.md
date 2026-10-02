@@ -62,8 +62,9 @@ decide aparte.
 - **Evento:** `AFTER INSERT` en `habit_logs`, **`FOR EACH ROW WHEN
   (new.status = 'pending')`**. Solo INSERT: la app crea el log con
   `status = 'pending'` (`HabitDetailScreen`) y **ningún código ni trigger lo
-  actualiza después** (comprobado en la revisión de la documentación del
-  2026-10-01), así que el INSERT es exactamente "hay algo pendiente de
+  actualiza después** (comprobado el 2026-10-02: el único `insert` está en
+  `HabitDetailScreen`, y en la base no hay triggers sobre `habit_logs` ni
+  funciones que hagan `UPDATE habit_logs`), así que el INSERT es exactamente "hay algo pendiente de
   validar". No se escucha UPDATE: si algún día se cambiara el estado, no
   volvería a avisar.
 - **Implementación:** en vez del asistente de Database Webhooks del
