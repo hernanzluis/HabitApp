@@ -9,9 +9,11 @@
 //     "actor_id": "<uuid>" | null }                                 habit_assignments
 //   { "type": "validation_result", "log_id": "<uuid>" }             habit_validations
 //   { "type": "daily_reminder" }                                    pg_cron (push_cron_tick)
-// El recordatorio acepta además "now" (ISO) y "user_ids" (uuid[]): SOLO para
-// los tests, que siempre pasan user_ids zztest- (con un "now" inventado, sin
-// user_ids, el aviso podría llegar a usuarios reales). El tick no los manda.
+// El recordatorio acepta además "now" (ISO), "user_ids" (uuid[]) y
+// "simulate_expo_failure": SOLO para los tests. Un "now" exige user_ids no
+// vacío (400 si no): con una hora inventada y sin ese filtro el aviso podría
+// llegar a usuarios reales. simulate_expo_failure solo vale junto a user_ids.
+// El tick de pg_cron no manda ninguno de los tres.
 // Con "dry_run": true devuelve los mensajes que enviaría sin insertar ni
 // enviar nada.
 //
@@ -103,6 +105,11 @@ async function fullName(db, userId) {
 // - vars: variables de los textos; keys: log_id/habit_id para notification_log
 // Un aviso lógico por destinatario en notification_log: su índice único del
 // tipo es la deduplicación (23505 = ya avisado → a ese no se le envía).
+// notice.releaseOnBatchFailure: si el envío a Expo falla para TODAS las
+// entregas de un aviso por un fallo del lote entero (red, error HTTP), se
+// borra el aviso de notification_log (y sus entregas, en cascada) para que un
+// reintento pueda reenviarlo. Solo el recordatorio diario lo usa: tiene el
+// reintento de las 21:00; los avisos por evento no tienen reintento.
 async function notify(db, notice, dryRun) {
   const { type, recipients, vars, keys, data } = notice;
   if (!recipients.length) return dryRun ? { dry_run: true, recipients: [], messages: [] } : { recipients: 0, notifications: 0, deliveries: 0 };
@@ -142,11 +149,23 @@ async function notify(db, notice, dryRun) {
     const deliveries = own.map((t) => ({ id: crypto.randomUUID(), notification_id: notif.id, push_token_id: t.id, status: 'queued' }));
     const { error: delErr } = await db.from('push_deliveries').insert(deliveries);
     if (delErr) throw delErr;
-    own.forEach((t, i) => messages.push({ deliveryId: deliveries[i].id, token: t, ...texts(type, t.locale, vars), data }));
+    own.forEach((t, i) => messages.push({ deliveryId: deliveries[i].id, notificationId: notif.id, token: t, ...texts(type, t.locale, vars), data }));
   }
 
-  const counts = await sendToExpo(db, messages);
-  return { recipients: recipients.length, notifications, deliveries: messages.length, ...counts };
+  const counts = await sendToExpo(db, messages, notice.simulateExpoFailure === true);
+  const result = { recipients: recipients.length, notifications, deliveries: messages.length, ...counts };
+  if (notice.releaseOnBatchFailure) {
+    const byNotif = new Map();
+    for (const m of messages) byNotif.set(m.notificationId, [...(byNotif.get(m.notificationId) ?? []), m]);
+    const released = [...byNotif].filter(([, ms]) => ms.every((m) => m.batchError)).map(([id]) => id);
+    if (released.length) {
+      console.error('push-events: fallo del lote en Expo, se liberan para reintento', type, released.length, byNotif.get(released[0])[0].batchError);
+      const { error } = await db.from('notification_log').delete().in('id', released);
+      if (error) console.error('push-events: no se pudieron liberar los avisos', error.message);
+      else result.released = released.length;
+    }
+  }
+  return result;
 }
 
 // ---- validation_pending: un log nuevo → sus validadores (o los admins) ----
@@ -214,7 +233,7 @@ async function handleValidationResult(db, { log_id: logId }, dryRun) {
 }
 
 // ---- daily_reminder: cada hora, a quien tiene las 20 (o las 21) y le queda algo ----
-async function handleDailyReminder(db, { now, user_ids: userIds }, dryRun) {
+async function handleDailyReminder(db, { now, user_ids: userIds, simulate_expo_failure: simulateExpoFailure }, dryRun) {
   const { data: candidates, error } = await db.rpc('push_reminder_candidates', {
     p_now: now ?? new Date().toISOString(),
     p_user_ids: userIds ?? null,
@@ -230,9 +249,11 @@ async function handleDailyReminder(db, { now, user_ids: userIds }, dryRun) {
       vars: { count: c.pending_count },
       keys: { local_date: c.local_date },
       data: { type: 'daily_reminder' },
+      releaseOnBatchFailure: true,
+      simulateExpoFailure: simulateExpoFailure === true,
     }, dryRun);
     if (dryRun) messages.push(...r.messages);
-    else for (const k of ['notifications', 'deliveries', 'ticket_ok', 'ticket_error']) total[k] += r[k] ?? 0;
+    else for (const k of ['notifications', 'deliveries', 'ticket_ok', 'ticket_error', 'released']) total[k] = (total[k] ?? 0) + (r[k] ?? 0);
   }
   return dryRun ? { dry_run: true, candidates: candidates ?? [], messages } : total;
 }
@@ -240,8 +261,12 @@ async function handleDailyReminder(db, { now, user_ids: userIds }, dryRun) {
 const HANDLERS = {
   daily_reminder: {
     handle: handleDailyReminder,
-    valid: (p) => (p.now == null || (typeof p.now === 'string' && !Number.isNaN(Date.parse(p.now))))
-      && (p.user_ids == null || (Array.isArray(p.user_ids) && p.user_ids.length <= 100 && p.user_ids.every(isUuid))),
+    valid: (p) => {
+      const hasUsers = Array.isArray(p.user_ids) && p.user_ids.length > 0;
+      return (p.user_ids == null || (hasUsers && p.user_ids.length <= 100 && p.user_ids.every(isUuid)))
+        && (p.now == null || (typeof p.now === 'string' && !Number.isNaN(Date.parse(p.now)) && hasUsers))
+        && (p.simulate_expo_failure == null || (p.simulate_expo_failure === true && hasUsers));
+    },
     error: 'invalid_reminder_params',
   },
   validation_pending: { handle: handleValidationPending, valid: (p) => isUuid(p.log_id), error: 'invalid_log_id' },
@@ -253,7 +278,7 @@ const HANDLERS = {
   validation_result: { handle: handleValidationResult, valid: (p) => isUuid(p.log_id), error: 'invalid_log_id' },
 };
 
-async function sendToExpo(db, messages) {
+async function sendToExpo(db, messages, simulateFailure = false) {
   const counts = { ticket_ok: 0, ticket_error: 0 };
   const accessToken = Deno.env.get('EXPO_ACCESS_TOKEN');
   if (!accessToken) console.warn('push-events: falta EXPO_ACCESS_TOKEN; se envía sin él');
@@ -261,8 +286,8 @@ async function sendToExpo(db, messages) {
   for (let i = 0; i < messages.length; i += EXPO_BATCH) {
     const batch = messages.slice(i, i + EXPO_BATCH);
     let tickets = null;
-    let batchError = null;
-    try {
+    let batchError = simulateFailure ? 'simulated: fallo del lote (test)' : null;
+    if (!simulateFailure) try {
       const res = await fetch(EXPO_SEND_URL, {
         method: 'POST',
         headers: {
@@ -293,6 +318,7 @@ async function sendToExpo(db, messages) {
       } else {
         const code = ticket?.details?.error;
         update = { status: 'ticket_error', error: batchError ?? `${code ?? 'error'}: ${ticket?.message ?? 'sin ticket'}` };
+        if (batchError) m.batchError = batchError;
         counts.ticket_error++;
         if (code === 'DeviceNotRegistered') {
           const { error } = await db.from('push_tokens').update({ enabled: false }).eq('id', m.token.id);

@@ -216,18 +216,27 @@ async function run() {
     check((await notificationsOf(log1)).length, 1, 'Test 6b: sigue habiendo una sola fila en notification_log');
 
     // ---- Test 7: el esquema net (pg_net) no es alcanzable por clientes ----
-    console.log('\nTest 7: pg_net no queda al alcance de anon/authenticated');
+    console.log('\nTest 7: pg_net y pg_cron no quedan al alcance de anon/authenticated');
     const netRes = await fetch(`${SUPABASE_URL}/rest/v1/_http_response?select=id&limit=1`, {
       headers: { apikey: SUPABASE_ANON_KEY, 'Accept-Profile': 'net' },
     });
     const netBody = await netRes.json().catch(() => null);
     check([netRes.status, netBody?.code], [406, 'PGRST106'], 'Test 7a: la API rechaza el esquema net (no está entre los expuestos)');
+    const cronRes = await fetch(`${SUPABASE_URL}/rest/v1/job?select=jobid&limit=1`, {
+      headers: { apikey: SUPABASE_ANON_KEY, 'Accept-Profile': 'cron' },
+    });
+    const cronBody = await cronRes.json().catch(() => null);
+    check([cronRes.status, cronBody?.code], [406, 'PGRST106'], 'Test 7c: la API rechaza el esquema cron (pg_cron)');
+    const { rows: cronUsage } = await pg.query(`
+      select coalesce(bool_or(has_schema_privilege('anon', oid, 'usage') or has_schema_privilege('authenticated', oid, 'usage')), false) as client_usage
+        from pg_namespace where nspname = 'cron'`);
+    check(cronUsage[0].client_usage, false, 'Test 7d: anon/authenticated no tienen acceso al esquema cron (sin él no llegan a cron.schedule ni a cron.job)');
     const { rows: netFns } = await pg.query(`
       select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname = 'public' and p.prosrc ~ '\\mnet\\.'
+       where n.nspname = 'public' and p.prosrc ~ '\\m(net|cron)\\.'
          and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'))
        order by 1`);
-    check(netFns.map((r) => r.proname), [], 'Test 7b: ninguna función de public ejecutable por anon/authenticated usa net');
+    check(netFns.map((r) => r.proname), [], 'Test 7b: ninguna función de public ejecutable por anon/authenticated usa net ni cron');
 
     // ---- Test 8: el trigger, de punta a punta ----
     console.log('\nTest 8: un log pendiente creado desde la app avisa solo al validador');
@@ -452,18 +461,37 @@ async function run() {
 
     // Edge Function, siempre con user_ids zztest-.
     const reminder = (extra) => callFunction({ type: 'daily_reminder', now: NOW_NY, user_ids: [ny.userId, nyDone.userId], ...extra }, secret);
-    check([(await reminder({ user_ids: 'x' })).status, (await reminder({ now: 'ayer' })).status], [400, 400], 'Test 11g: parámetros no válidos → 400');
+    const badParams = [
+      { user_ids: 'x' },
+      { now: 'ayer' },
+      { user_ids: undefined },                  // hora simulada SIN user_ids: alcanzaría a usuarios reales
+      { user_ids: [] },                         // ídem con la lista vacía
+      { now: undefined, user_ids: undefined, simulate_expo_failure: true },
+    ];
+    check(await Promise.all(badParams.map(async (x) => (await reminder(x)).status)), [400, 400, 400, 400, 400],
+      'Test 11g: parámetros no válidos → 400; una hora simulada (o el fallo simulado) sin user_ids no vacío se rechaza');
     const dryRem = await reminder({ dry_run: true });
     check([dryRem.body?.candidates?.map((c) => [c.user_id, c.local_date, c.pending_count]), [...new Set((dryRem.body?.messages ?? []).map((m) => m.body))]],
       [[[ny.userId, '2026-10-07', 3]], ['Te quedan 3 hábitos por completar hoy.']], 'Test 11h: dry_run: solo el usuario con pendientes, con su fecha local y el recuento');
     const sentRem = await reminder();
-    const remRows = await noticesOf('daily_reminder', { recipient_id: ny.userId });
+    // Filtrado por fecha local: si la tarea real de pg_cron se ejecuta durante el test, sus avisos llevan la fecha real.
+    const remRows = await noticesOf('daily_reminder', { recipient_id: ny.userId, local_date: '2026-10-07' });
     check([sentRem.body?.candidates, sentRem.body?.notifications, remRows.map((n) => [n.title, n.body])],
       [1, 1, [['Recordatorio', 'Te quedan 3 hábitos por completar hoy.']]], 'Test 11i: envío: un recordatorio, para quien le queda algo');
-    check((await noticesOf('daily_reminder', { recipient_id: nyDone.userId })).length, 0, 'Test 11j: nada a quien lo tiene todo hecho');
+    check((await noticesOf('daily_reminder', { recipient_id: nyDone.userId, local_date: '2026-10-07' })).length, 0, 'Test 11j: nada a quien lo tiene todo hecho');
     const retryRem = await reminder({ now: '2026-10-08T01:30:00Z' });   // franja de las 21
-    check([retryRem.body?.notifications, (await noticesOf('daily_reminder', { recipient_id: ny.userId })).length], [0, 1],
+    check([retryRem.body?.notifications, (await noticesOf('daily_reminder', { recipient_id: ny.userId, local_date: '2026-10-07' })).length], [0, 1],
       'Test 11k: la ejecución de las 21 no repite el recordatorio del mismo día local');
+
+    // Fallo del lote entero en Expo (simulado): el aviso se libera y el reintento de las 21 lo envía.
+    // Jueves 8/10 en Nueva York; token nuevo, porque el envío del 11i desactivó el anterior.
+    await registerToken(ny.client, 'es', 'America/New_York');
+    const failRem = await reminder({ now: '2026-10-09T00:30:00Z', user_ids: [ny.userId], simulate_expo_failure: true });
+    check([failRem.status, failRem.body?.ticket_error, failRem.body?.released, (await noticesOf('daily_reminder', { recipient_id: ny.userId, local_date: '2026-10-08' })).length],
+      [200, 1, 1, 0], 'Test 11m: si falla el lote entero en Expo, el aviso se borra (liberado para el reintento)');
+    const retryAfterFail = await reminder({ now: '2026-10-09T01:30:00Z', user_ids: [ny.userId] });
+    check([retryAfterFail.body?.notifications, (await noticesOf('daily_reminder', { recipient_id: ny.userId, local_date: '2026-10-08' })).length], [1, 1],
+      'Test 11n: el reintento de las 21 lo envía, una sola vez');
 
     const { rows: remFns } = await pg.query(`
       select proname, has_function_privilege('anon', oid, 'execute') or has_function_privilege('authenticated', oid, 'execute') as client_exec

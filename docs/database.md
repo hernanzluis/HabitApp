@@ -543,11 +543,24 @@ El comportamiento en cada pantalla (chip en HomeScreen, overlay de celebración 
 - **Cadena:** INSERT en `habit_logs` con `status = 'pending'` → trigger `habit_logs_push_validation_pending` → `pg_net` → Edge Function `push-events` (`supabase/functions/push-events/index.js`, `verify_jwt = false`, protegida por la cabecera `x-webhook-secret`) → Expo Push. Diseño completo: `docs/push-etapa3-diseno.md`.
 - **Secretos:** `push_webhook_secret` en **Vault** (solo base de datos); `EXPO_ACCESS_TOKEN` (Enhanced Push Security de EAS) como secreto de Edge Functions. Ninguno en el repo.
 - **Diagnóstico (solo lectura):** `net._http_response` guarda la respuesta de cada llamada del trigger **durante 6 horas**; `notification_log` + `push_deliveries` guardan el resultado de cada aviso y de cada envío a Expo.
+- **Recordatorio diario:** tarea de `pg_cron` `push-reminder-tick` (`0 * * * *` UTC) → `push_cron_tick()` → `push-events` `{type: 'daily_reminder'}`. Si la función no responde o se corta, los usuarios aún no procesados se reintentan en la ejecución de las 21:00 locales. Si falla **el lote entero** en Expo (red o error HTTP), la función borra esos avisos de `notification_log` para que el reintento los reenvíe (solo en el recordatorio). Si Expo rechaza un mensaje concreto, o la función se corta entre registrar el aviso y recibir la respuesta, ese usuario se queda sin recordatorio ese día. Tarea `cron-cleanup` (`30 3 * * *`): borra `cron.job_run_details` de más de 7 días.
+- **Consulta de vigilancia** (solo lectura):
+  ```sql
+  -- entregas atascadas o con error en las últimas 24 h
+  select n.type, d.status, d.error, count(*) from push_deliveries d join notification_log n on n.id = d.notification_id
+   where d.created_at > now() - interval '24 hours' and (d.status = 'ticket_error' or (d.status = 'queued' and d.created_at < now() - interval '10 minutes'))
+   group by 1, 2, 3;
+  -- llamadas de pg_net que no devolvieron 200 (solo se guardan 6 h)
+  select status_code, timed_out, error_msg, left(content, 200), created from net._http_response where status_code is distinct from 200 order by created desc;
+  -- ejecuciones de pg_cron que no terminaron bien
+  select j.jobname, d.status, d.return_message, d.start_time from cron.job_run_details d join cron.job j using (jobid) where d.status <> 'succeeded' order by d.start_time desc limit 20;
+  ```
 
 ### ⚠️ Riesgo conocido: permisos de `pg_net` que no podemos revocar
 
 - Al instalarse (2026-10-02), `pg_net` concede, mediante el trigger de eventos de Supabase `grant_pg_net_access` y con `supabase_admin` como otorgante: `USAGE` sobre el esquema `net` a `anon`, `authenticated` y `PUBLIC`; lectura y escritura en `net.http_request_queue` y `net._http_response` a `PUBLIC`; y ejecución de todas sus funciones (incluida `net.http_post`) a `PUBLIC`.
 - **Nuestra conexión (`postgres`) no puede revocarlo:** no es superusuario ni miembro de `supabase_admin`, y en Postgres solo se retira lo que uno mismo concedió (`REVOKE … ON SCHEMA net` responde *"no privileges could be revoked"*; probado en ensayo con ROLLBACK). Pasaría lo mismo desde el SQL Editor del dashboard.
 - **La protección real es que `net` no está en los esquemas expuestos de la API** (PostgREST solo expone `public` y `graphql_public`; pedir `net` devuelve `PGRST106`, comprobado el 2026-10-02), y que ninguna función de `public` ejecutable por clientes usa `net`. Lo comprueba siempre la Fase 11, test 7.
-- **Regla permanente: nunca añadir `net` a los esquemas expuestos de PostgREST** (Dashboard → API settings → Exposed schemas), ni crear una función ejecutable por `anon`/`authenticated` que llame a `net.*`. Haría alcanzables desde la app la cola de peticiones (que lleva el secreto del webhook en sus cabeceras unos instantes) y `net.http_post` (peticiones HTTP arbitrarias salientes desde la base).
+- **`pg_cron` (desde el 2026-10-02) queda mejor protegido que `pg_net`:** también concede a `PUBLIC` (vía `supabase_admin`) ejecución de `cron.schedule`/`cron.unschedule` y lectura de `cron.job`/`cron.job_run_details`, pero el **esquema `cron` no da `USAGE` a `PUBLIC`, `anon` ni `authenticated`** (solo a `supabase_admin` y `postgres`). Probado en ensayo actuando como `anon` y `authenticated`: las 8 operaciones (leer las dos tablas, programar, desprogramar) dan *"permission denied for schema cron"*. Las tareas se ejecutan como el rol que las programa (`postgres`). Fase 11, test 7.
+- **Regla permanente: nunca añadir `net` a los esquemas expuestos de PostgREST** (Dashboard → API settings → Exposed schemas), ni crear una función ejecutable por `anon`/`authenticated` que llame a `net.*`. **Lo mismo para `cron`.** Haría alcanzables desde la app la cola de peticiones (que lleva el secreto del webhook en sus cabeceras unos instantes) y `net.http_post` (peticiones HTTP arbitrarias salientes desde la base).
 

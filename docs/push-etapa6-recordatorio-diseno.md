@@ -4,9 +4,15 @@
 - **Paso 1 hecho:** `sql/2026-10-02d_push_recordatorio_funciones.sql`, ensayado
   y aplicado con los scripts; `push-events` con el tipo `daily_reminder`,
   desplegada; Fase 11, test 11 (12 comprobaciones, 57/57 en total).
-- **Pasos 2 (instalar `pg_cron` y programar las tareas) y 3 (primeras
-  ejecuciones reales y prueba manual):** pendientes, cada uno con su
-  aprobación.
+- **Paso 2 (2026-10-02):** ensayo de permisos de `pg_cron` — el esquema `cron`
+  no da acceso a `anon`/`authenticated`/`PUBLIC` (8 operaciones bloqueadas,
+  `database.md`). Aprobados por Luis: el guardarraíl (una hora simulada exige
+  `user_ids` no vacío), la liberación del aviso si falla el lote entero en
+  Expo (para el reintento de las 21:00) y programar la tarea **después de las
+  21:59 de Madrid**, para que la primera ejecución real que pueda enviar algo
+  sea el día siguiente a las 20:00. SQL: `sql/2026-10-02e_pg_cron_instalar.sql`
+  y `sql/2026-10-02f_pg_cron_tareas.sql`.
+- **Paso 3 (primeras ejecuciones reales y prueba manual):** pendiente.
 - **Decisión de Luis sobre el punto 5:** el resumen de validaciones sin votar
   queda **fuera**, como quinta pieza aparte, hasta que se decidan cuántas
   horas esperar y a qué hora enviarlo.
