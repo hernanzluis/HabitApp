@@ -70,7 +70,7 @@ cubrirá en un checklist separado más adelante.
 
 ## 3b. Notificaciones push — etapa 2 (build 4 en adelante; nunca en Expo Go)
 
-**Última vez probado:** _(pendiente)_
+**Última vez probado:** 2026-10-02, build 4 (TestFlight), iPhone de Luis. Todos los ítems de este bloque OK salvo el de cambiar de idioma y el de denegar el permiso, que no se probaron. Envíos de prueba hechos a mano con la API de push de Expo (las Edge Functions son de la etapa 3); tickets y receipts `ok` en los 7 envíos.
 
 - [ ] Primer arranque con sesión tras instalar → aparece la explicación propia "¿Activar las notificaciones?" (no directamente el diálogo del sistema). "Ahora no" → no se vuelve a mostrar sola en siguientes arranques
 - [ ] En la explicación, "Activar" → aparece el diálogo de iOS; aceptar → el token queda en `push_tokens` con tu `user_id`, idioma de la app y zona horaria del iPhone (lo comprueba Code en la base) → cross-ref **Fase 10, test 1**
