@@ -1,7 +1,17 @@
 # Notificaciones push — diseño de los avisos "hábito asignado" y "resultado de la validación"
 
-**Estado: DISEÑO, sin implementar** (2026-10-02). No se ha escrito ni
-aplicado ningún SQL. Continúa la etapa 3 (`push-etapa3-diseno.md`, ya
+**Estado (2026-10-02): implementado, pendiente de la prueba manual con dos
+dispositivos.** Decisiones de Luis: relleno de las 2 asignaciones existentes
+(sí), hueco del resumen hasta la etapa del cron (aceptado), un solo fichero
+SQL (`sql/2026-10-02c_push_events_asignado_resultado.sql`, ensayado con
+`sql-ensayo.sh` y aplicado con `sql-aplica.sh`). Función `push-events`
+reorganizada con un envío común y desplegada; Fase 11 ampliada a 45 tests.
+Al implementarlo, el orden real fue: desplegar la función (sin cambios para
+"pendiente de validar", Fase 11 30/30) → ensayo → aplicación → tests 9-10:
+las llamadas directas de los tipos nuevos necesitan sus funciones SQL, que
+iban en el mismo fichero que los triggers.
+
+Texto original del diseño: Continúa la etapa 3 (`push-etapa3-diseno.md`, ya
 aplicada para "pendiente de validar") con los otros dos avisos por evento.
 El recordatorio diario (`pg_cron`) queda para una etapa aparte, al final.
 

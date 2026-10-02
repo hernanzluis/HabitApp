@@ -82,15 +82,24 @@ cubrirá en un checklist separado más adelante.
 - [ ] Tocar una notificación con la sesión cerrada → la app se queda en Login, sin errores
 - [ ] Cerrar sesión → el token desaparece de `push_tokens` (lo comprueba Code); con otra cuenta en el mismo iPhone, el token queda a nombre de la nueva → cross-ref **Fase 10, tests 5-6**
 
-## 3c. Notificaciones push — etapa 3, "pendiente de validar" (servidor; build 4 en adelante)
+## 3c. Notificaciones push — etapa 3, avisos por evento (servidor; build 4 en adelante)
 
-**Pendiente de probar** (la parte automática está en la **Fase 11**, 30/30 el 2026-10-02). Requiere que Luis sea validador de un hábito asignado a Lucia, y los dos con el permiso de notificaciones aceptado.
+**Última vez probado: 2026-10-02 — SUPERADO**, con dos dispositivos reales: iPhone de Luis y iPad de Lucia (build 4 de TestFlight; en el iPad, en modo compatibilidad de iPhone). Los tres avisos por evento llegaron de punta a punta, y Code comprobó en la base 6 entregas reales en `ticket_ok`, sin errores. La parte automática está en la **Fase 11** (45/45). Quedan sin probar los ítems no marcados.
 
-- [ ] Lucia completa ese hábito en su iPhone → a Luis le llega "Pendiente de validar" con el nombre de Lucia y el del hábito, en el idioma de su app → cross-ref **Fase 11, test 8**
+- [x] Lucia completa ese hábito (en el iPad) → a Luis le llega "Pendiente de validar" con el nombre de Lucia y el del hábito, en el idioma de su app → cross-ref **Fase 11, test 8**
 - [ ] A Lucia (la autora) no le llega nada
 - [ ] Tocarla abre Validar con el log de Lucia
-- [ ] Code comprueba en la base: una fila en `notification_log` para Luis, su entrega en `push_deliveries` como `ticket_ok`, y `200` en `net._http_response`
+- [x] Code comprueba en la base: una fila en `notification_log` para Luis, su entrega en `push_deliveries` como `ticket_ok`, y `200` en `net._http_response`
 - [ ] Tras activar la exigencia de *Enhanced Push Security* en EAS, repetir: sigue llegando (la función envía con `EXPO_ACCESS_TOKEN`)
+
+**Con dos dispositivos** (p. ej. Luis en el iPhone, Lucia en el iPad): con un solo dispositivo el destinatario no tiene la sesión abierta cuando ocurre el evento y no hay a quién enviar (comprobado el 2026-10-02).
+
+**"Hábito asignado" y "resultado de la validación"** (Fase 11, tests 9-10):
+
+- [x] Luis (admin) asigna a Lucia un hábito nuevo → a Lucia le llega "Nuevo hábito" ("Luis … te ha asignado «…»"); tocarla abre Inicio
+- [ ] Luis edita ese hábito sin cambiar los asignados → a Lucia **no** le llega nada otra vez
+- [x] Lucia completa un hábito en el que Luis es el único validador → Luis vota → a Lucia le llega "Resultado de la validación" con el recuento; tocarla abre las Estadísticas de ese hábito
+- [ ] Si el hábito tiene dos validadores, el resultado solo llega cuando han votado los dos
 
 ## 4. Límites de plan (Familiar)
 
@@ -192,6 +201,7 @@ Según `project.md`: "iOS primero, Android funcional" — los estilos se prueban
 ## Huecos conocidos en este checklist
 
 - **Renombrar el grupo (bloque 9):** no hay ningún test automático dedicado a esta acción por sí sola — sí está cubierta indirectamente la policy que lo permite (`companies` UPDATE, Fase 4), pero no un test de backend específico de "el admin renombra su company". Pospuesto sin decisión tomada de si merece un test propio en una fase futura — anotado aquí en vez de en `tests/README.md` porque no es un hueco de cobertura *automática* pendiente, es un hueco de este checklist manual.
+- **Resumen de validación cuando alguien no vota (push):** el aviso "resultado de la validación" solo sale cuando han votado **todos** los votantes esperados. Si alguno no vota nunca (o cambian los validadores después de que hayan votado los demás), el autor no recibe el resumen, aunque lo sigue viendo en la app. Aceptado por Luis el 2026-10-02: se cierra con una pasada propia en la etapa del cron (`docs/push-etapa3b-diseno.md`, "Qué pasa con la pasada de las 20:00").
 - **Modal de onboarding con sugerencias:** no existe en el código — ver nota en el bloque 11. No es un hueco de test, es una funcionalidad inexistente.
 - **Envío real de correo (SMTP, entrega, spam, plantillas):** ningún test de `tests/` puede verlo — `generateLink` (Fase 7) prueba el enlace, no que el correo llegue. Solo lo cubre el ítem de "correo real" del bloque 2.
 - **`resetPasswordForEmail` sin revelar si el email existe:** comportamiento correcto de seguridad (no permite enumerar cuentas registradas), documentado aquí para que no se confunda con un fallo al probarlo con un email no registrado y ver el mismo mensaje de éxito.

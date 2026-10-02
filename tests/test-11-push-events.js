@@ -1,6 +1,7 @@
-// Fase 11: notificaciones push, etapa 3 — aviso "pendiente de validar"
-// (sql/2026-10-02_push_events.sql, sql/2026-10-02b_push_events_trigger.sql,
-// supabase/functions/push-events, docs/push-etapa3-diseno.md).
+// Fase 11: notificaciones push, etapa 3 — avisos por evento: "pendiente de
+// validar" (tests 1-8), "hábito asignado" (9) y "resultado de la validación"
+// (10). sql/2026-10-02_push_events.sql, 2026-10-02b, 2026-10-02c,
+// supabase/functions/push-events, docs/push-etapa3-diseno.md y 3b.
 // Ejecutar con: node tests/test-11-push-events.js
 //
 // Llama a la Edge Function desplegada. Los tokens son falsos
@@ -80,11 +81,31 @@ async function callFunction(body, secret) {
 
 const recipientsOf = async (logId) =>
   (await must(supabaseAdmin.rpc('push_recipients_for_validation', { p_log_id: logId }))).map((r) => r.recipient_id).sort();
+// Avisos de un tipo filtrando por columnas (p. ej. { habit_id, recipient_id }).
+const noticesOf = async (type, filters) => {
+  let q = supabaseAdmin.from('notification_log').select('id, recipient_id, type, title, body, data').eq('type', type);
+  for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
+  return must(q);
+};
+// Espera a que el trigger (pg_net → push-events) deje al menos `min` avisos y
+// da un margen por si llegara alguno de más.
+async function waitNotices(type, filters, min = 1) {
+  let rows = [];
+  for (let i = 0; i < 20 && rows.length < min; i++) {
+    await sleep(1000);
+    rows = await noticesOf(type, filters);
+  }
+  await sleep(2000);
+  return noticesOf(type, filters);
+}
+const newHabit = async (companyId, createdBy, title, extra = {}) =>
+  must(supabaseAdmin.from('habits').insert({ title, company_id: companyId, created_by: createdBy, is_active: true, ...extra }).select('id').single());
+
 const notificationsOf = async (logId) =>
   must(supabaseAdmin.from('notification_log').select('id, recipient_id, type, title, body, data').eq('log_id', logId).eq('type', 'validation_pending'));
 
 async function run() {
-  console.log('== Fase 11: aviso push "pendiente de validar" ==\n');
+  console.log('== Fase 11: avisos push por evento ==\n');
   console.log('Limpieza previa...');
   await cleanupTestData();
   console.log('OK\n');
@@ -230,6 +251,108 @@ async function run() {
     await sleep(5000);
     const { count: validatedNotifs } = await supabaseAdmin.from('notification_log').select('id', { count: 'exact', head: true }).eq('log_id', validatedLog.id);
     check(validatedNotifs, 0, 'Test 8d: un log insertado ya validado no genera aviso');
+
+    // ---- Test 9: "hábito asignado" ----
+    console.log('\nTest 9: aviso de hábito asignado');
+    const adminName = `${TEST_PREFIX}Admin`;
+    const habitAsTitle = `${TEST_PREFIX}Asignado`;
+    const habitAs = await newHabit(A.companyId, A.userId, habitAsTitle);
+    // El admin asigna con su propio cliente (camino de AdminScreen): actor = admin.
+    const asAuthor = await must(cA.from('habit_assignments').insert({ habit_id: habitAs.id, user_id: author.userId }).select('id').single());
+    const assignedRecipients = async (assignmentId, actorId) =>
+      (await must(supabaseAdmin.rpc('push_recipients_for_assignment', { p_assignment_id: assignmentId, p_actor_id: actorId }))).map((r) => r.recipient_id);
+    check(await assignedRecipients(asAuthor.id, A.userId), [author.userId], 'Test 9a: destinatario = el asignado');
+    check(await assignedRecipients(asAuthor.id, author.userId), [], 'Test 9b: nunca quien hizo la asignación');
+    const authorAssigned = await waitNotices('habit_assigned', { habit_id: habitAs.id, recipient_id: author.userId });
+    check(authorAssigned.map((n) => [n.title, n.body]), [['Nuevo hábito', `${adminName} te ha asignado «${habitAsTitle}».`]],
+      'Test 9c: con el trigger, un aviso para el asignado, con el nombre de quien asigna');
+
+    // Ensayo con un token recién registrado (los anteriores pueden estar ya desactivados por Expo).
+    await registerToken(author.client, 'es');
+    const dryAs = await callFunction({ type: 'habit_assigned', assignment_id: asAuthor.id, actor_id: null, dry_run: true }, secret);
+    check([dryAs.status, [...new Set((dryAs.body?.messages ?? []).map((m) => m.body))]], [200, [`Te han asignado «${habitAsTitle}».`]],
+      'Test 9d: dry_run sin actor (desde SQL): texto impersonal');
+
+    // El admin se asigna a sí mismo, una asignación entre empresas y un hábito inactivo: sin aviso.
+    const habitOff = await newHabit(A.companyId, A.userId, `${TEST_PREFIX}Inactivo`, { is_active: false });
+    await must(cA.from('habit_assignments').insert({ habit_id: habitAs.id, user_id: A.userId }));
+    const asCross = await must(supabaseAdmin.from('habit_assignments').insert({ habit_id: habitAs.id, user_id: memberB.userId }).select('id').single());
+    const asOff = await must(supabaseAdmin.from('habit_assignments').insert({ habit_id: habitOff.id, user_id: bystander.userId }).select('id').single());
+    check([await assignedRecipients(asCross.id, null), await assignedRecipients(asOff.id, null)], [[], []],
+      'Test 9e: nadie de otra empresa ni por un hábito inactivo');
+    await sleep(5000);
+    const noNotice = [
+      (await noticesOf('habit_assigned', { habit_id: habitAs.id, recipient_id: A.userId })).length,
+      (await noticesOf('habit_assigned', { habit_id: habitAs.id, recipient_id: memberB.userId })).length,
+      (await noticesOf('habit_assigned', { habit_id: habitOff.id })).length,
+    ];
+    check(noNotice, [0, 0, 0], 'Test 9f: con el trigger, ningún aviso al admin que se asigna, a otra empresa ni por un hábito inactivo');
+
+    // Editar el hábito como AdminScreen: borrar todas las asignaciones y reinsertar (autor + uno nuevo).
+    await must(cA.from('habit_assignments').delete().eq('habit_id', habitAs.id));
+    await must(cA.from('habit_assignments').insert([{ habit_id: habitAs.id, user_id: author.userId }, { habit_id: habitAs.id, user_id: bystander.userId }]));
+    const bystanderAssigned = await waitNotices('habit_assigned', { habit_id: habitAs.id, recipient_id: bystander.userId });
+    const authorAfterEdit = await noticesOf('habit_assigned', { habit_id: habitAs.id, recipient_id: author.userId });
+    check([authorAfterEdit.length, bystanderAssigned.length], [1, 1], 'Test 9g: al editar no se reavisa a quien ya estaba y sí al nuevo');
+
+    // ---- Test 10: "resultado de la validación" ----
+    console.log('\nTest 10: aviso de resultado de la validación');
+    const resultOf = async (logId) => (await must(supabaseAdmin.rpc('push_validation_result_for_log', { p_log_id: logId })))[0] ?? null;
+    const habitRTitle = `${TEST_PREFIX}DosValidadores`;
+    const habitR = await newHabit(A.companyId, A.userId, habitRTitle);
+    await must(supabaseAdmin.from('habit_assignments').insert({ habit_id: habitR.id, user_id: author.userId }));
+    await must(supabaseAdmin.from('habit_validators').insert([{ habit_id: habitR.id, user_id: validator.userId }, { habit_id: habitR.id, user_id: bystander.userId }]));
+    const logR = await must(author.client.from('habit_logs').insert({ habit_id: habitR.id, user_id: author.userId, status: 'pending' }).select('id').single());
+
+    await must(validator.client.from('habit_validations').insert({ habit_log_id: logR.id, validator_id: validator.userId, status: 'validated' }));
+    await sleep(5000);
+    const r1 = await resultOf(logR.id);
+    check([r1?.ready, r1?.validated_count, (await noticesOf('validation_result', { log_id: logR.id })).length], [false, 1, 0],
+      'Test 10a: tras el primer voto de dos, sin aviso (falta un validador)');
+
+    await must(bystander.client.from('habit_validations').insert({ habit_log_id: logR.id, validator_id: bystander.userId, status: 'rejected' }));
+    const resR = await waitNotices('validation_result', { log_id: logR.id });
+    check(resR.map((n) => [n.recipient_id, n.title, n.body]), [[author.userId, 'Resultado de la validación', `«${habitRTitle}»: validado (1 a favor, 1 en contra).`]],
+      'Test 10b: tras el segundo voto, un único aviso para el autor con los recuentos');
+    const againR = await callFunction({ type: 'validation_result', log_id: logR.id }, secret);
+    check([againR.status, againR.body?.notifications, (await noticesOf('validation_result', { log_id: logR.id })).length], [200, 0, 1],
+      'Test 10c: otra llamada para el mismo log no repite el aviso');
+    await registerToken(author.client, 'es'); // el envío del 10b ya desactivó los anteriores
+    const dryR = await callFunction({ type: 'validation_result', log_id: logR.id, dry_run: true }, secret);
+    check([...new Set((dryR.body?.messages ?? []).filter((m) => m.locale === 'es').map((m) => m.body))], [`«${habitRTitle}»: validado (1 a favor, 1 en contra).`],
+      'Test 10d: dry_run con el mismo texto');
+
+    // Todo en contra, con un único validador.
+    const habitR2Title = `${TEST_PREFIX}UnValidador`;
+    const habitR2 = await newHabit(A.companyId, A.userId, habitR2Title);
+    await must(supabaseAdmin.from('habit_assignments').insert({ habit_id: habitR2.id, user_id: author.userId }));
+    await must(supabaseAdmin.from('habit_validators').insert({ habit_id: habitR2.id, user_id: validator.userId }));
+    const logR2 = await must(author.client.from('habit_logs').insert({ habit_id: habitR2.id, user_id: author.userId, status: 'pending' }).select('id').single());
+    await must(validator.client.from('habit_validations').insert({ habit_log_id: logR2.id, validator_id: validator.userId, status: 'rejected' }));
+    const resR2 = await waitNotices('validation_result', { log_id: logR2.id });
+    check(resR2.map((n) => n.body), [`«${habitR2Title}»: no validado (1 en contra).`], 'Test 10e: todo en contra → "no validado"');
+
+    // Hábito sin validadores: vota el admin (fallback).
+    const logNoV = await must(author.client.from('habit_logs').insert({ habit_id: habitNoV.id, user_id: author.userId, status: 'pending' }).select('id').single());
+    await must(cA.from('habit_validations').insert({ habit_log_id: logNoV.id, validator_id: A.userId, status: 'validated' }));
+    const resNoV = await waitNotices('validation_result', { log_id: logNoV.id });
+    check(resNoV.map((n) => n.recipient_id), [author.userId], 'Test 10f: sin validadores, el voto del admin cierra el resultado');
+
+    // Autor de otra empresa (log forzado con la clave de servicio): nunca recibe nada.
+    const logCross = await must(supabaseAdmin.from('habit_logs').insert({ habit_id: habitR2.id, user_id: memberB.userId, status: 'pending', created_at: daysAgo(1) }).select('id').single());
+    await must(supabaseAdmin.from('habit_validations').insert({ habit_log_id: logCross.id, validator_id: validator.userId, status: 'validated' }));
+    await sleep(5000);
+    check([await resultOf(logCross.id), (await noticesOf('validation_result', { log_id: logCross.id })).length], [null, 0],
+      'Test 10g: un autor de otra empresa no tiene resultado ni aviso');
+
+    // Catálogo de los dos triggers nuevos.
+    const { rows: trg2 } = await pg.query(`
+      select t.tgname, has_function_privilege('authenticated', t.tgfoid, 'execute') as auth_exec,
+             pg_get_triggerdef(t.oid) ~ 'AFTER INSERT' as after_insert
+        from pg_trigger t where t.tgname in ('habit_assignments_push_assigned', 'habit_validations_push_result') order by 1`);
+    check(trg2.map((r) => [r.tgname, r.after_insert, r.auth_exec]),
+      [['habit_assignments_push_assigned', true, false], ['habit_validations_push_result', true, false]],
+      'Test 10h: los dos triggers existen, AFTER INSERT, y sus funciones no son de clientes');
   } finally {
     await pg.end();
     console.log('\nLimpieza final...');

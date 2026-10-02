@@ -46,6 +46,21 @@ Confirmado con la salida de `eas build` del build 4 (2026-09-30):
 - **Perfil de aprovisionamiento (App Store):** el antiguo (`FR8P8WT53K`) quedó invalidado al activar la capacidad Push; EAS generó uno nuevo, **`YFPNG3ML3V`**, que caduca con el certificado (29/09/2027). **Confirmado del todo el 2026-10-02:** `FR8P8WT53K` es el Developer Portal ID de ese perfil de aprovisionamiento antiguo, tal como lo muestra `eas credentials` al iniciar sesión. No es el Team ID ni la clave APNs.
 - **App Store Connect API Key:** guardada en EAS (la usó el build 4 para regenerar el perfil sin pedir el login de Apple).
 
+## Notificaciones push (estado a 2026-10-02)
+
+- **Etapas 0-2 (clave APNs, almacenamiento de tokens, cliente):** completas. El cliente está probado en el build 4 (TestFlight).
+- **Etapa 3, avisos por evento: completa.** Los tres tipos están confirmados de punta a punta el 2026-10-02 con dos dispositivos reales (iPhone de Luis, iPad de Lucia; `manual-testing.md`, bloque 3c), con las entregas en `ticket_ok`:
+  - "pendiente de validar";
+  - "hábito asignado";
+  - "resultado de la validación".
+
+  Piezas: triggers en la base, `pg_net` y la Edge Function `push-events`; cubiertos por la Fase 11 (45 tests). Diseño en `push-etapa3-diseno.md` y `push-etapa3b-diseno.md`.
+- **Pendiente:**
+  - el **recordatorio diario** de las 20:00 (diseño en `push-etapa6-recordatorio-diseno.md`, sin implementar; necesita `pg_cron`);
+  - el **resumen de validación cuando algún validador no vota** (hueco aceptado, irá con el cron);
+  - activar la exigencia de *Enhanced Push Security* en EAS (Luis). Hoy la función ya envía con `EXPO_ACCESS_TOKEN`.
+- **No necesita un build nuevo:** todo lo pendiente es de servidor.
+
 ## Hallazgos de proceso
 
 ### 🟠 Trigger de push aplicado sin ensayo con ROLLBACK — 2026-10-02

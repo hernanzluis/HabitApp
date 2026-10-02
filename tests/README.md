@@ -315,7 +315,7 @@ node tests/test-07-recuperacion.js  # Fase 7: recuperación de contraseña (gene
 node tests/test-08-registro-seguro.js  # Fase 8: registro seguro (auth.uid, email, códigos, rate limiting)
 node tests/test-09-aislamiento.js  # Fase 9: aislamiento de la API pública (anon, entre empresas, Storage, RPCs de miembros)
 node tests/test-10-push-tokens.js  # Fase 10: tokens de push y registro de avisos (etapa 1 de las notificaciones)
-node tests/test-11-push-events.js  # Fase 11: aviso push "pendiente de validar" (etapa 3: Edge Function push-events y trigger)
+node tests/test-11-push-events.js  # Fase 11: avisos push por evento (pendiente de validar, hábito asignado, resultado de la validación)
 ```
 
 Cada script, en este orden:
@@ -563,7 +563,7 @@ prueba.
 | 9 | El 11.º dispositivo activo se rechaza | Tope defensivo |
 | 10 (×7) | `notification_log` rechaza un aviso de asignación repetido (p. ej. tras editar el hábito), un segundo resumen de validación del mismo log y un segundo recordatorio el mismo día local; exige fecha local en el recordatorio | Deduplicación del plan, a nivel de datos |
 
-### Fase 11 — `test-11-push-events.js` (30 tests)
+### Fase 11 — `test-11-push-events.js` (45 tests)
 
 Notificaciones push, etapa 3: aviso "pendiente de validar"
 (`sql/2026-10-02_push_events.sql`, `sql/2026-10-02b_push_events_trigger.sql`,
@@ -585,6 +585,8 @@ distintas por `habit_logs_one_per_day`.
 | 6 (×2) | Una segunda llamada para el mismo log no registra ni envía nada | Deduplicación (`notification_log_pending_uniq`) |
 | 7 (×2) | La API rechaza el esquema `net` (`PGRST106`) y ninguna función de `public` ejecutable por clientes usa `net` | `pg_net` da permisos a `anon`/`authenticated` que no podemos revocar (ver `database.md`, riesgo conocido) |
 | 8 (×4) | El trigger existe (AFTER INSERT, solo `pending`) y su función no es de clientes; un log `pending` insertado por el autor con su propio cliente genera **un** aviso, solo al validador; uno insertado como `validated`, ninguno | De punta a punta, con `pg_net` real |
+| 9 (×7) | "Hábito asignado": el destinatario es el asignado y nunca quien asigna; con el trigger, un aviso con el nombre del admin; `dry_run` sin actor con texto impersonal; nada a otra empresa, por un hábito inactivo ni al admin que se asigna a sí mismo; **editar el hábito** (borrar y reinsertar, como AdminScreen) no reavisa a quien ya estaba y sí avisa al nuevo | La deduplicación de las ediciones (`notification_log_assigned_uniq`) |
+| 10 (×8) | "Resultado de la validación": con dos validadores, **sin aviso tras el primer voto** y uno solo, para el autor y con los recuentos, tras el segundo; otra llamada no lo repite; `dry_run`; todo en contra → "no validado"; sin validadores, el voto del admin lo cierra; un autor de otra empresa no recibe nada; los dos triggers existen y no son de clientes | Un aviso resumido por log (decisión del 2026-09-30) |
 
 Lo único que no cubre: que el aviso **llegue a un iPhone** (APNs); eso va en
 `docs/manual-testing.md`.

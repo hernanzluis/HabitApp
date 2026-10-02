@@ -343,6 +343,15 @@ Devuelve siempre `1`. `SECURITY INVOKER`, `STABLE`, no lee ni escribe ninguna ta
 ### `prevent_assignee_as_validator()` — triggers de asignación/validación
 Función de trigger (`SECURITY DEFINER`, `search_path = public, pg_temp`, sin EXECUTE para ningún cliente), añadida el 2026-09-30 (`sql/2026-09-30_asignado_no_validador.sql`). La usan dos triggers `BEFORE INSERT OR UPDATE OF habit_id, user_id`: `habit_assignments_not_validator` (en `habit_assignments`) y `habit_validators_not_assignee` (en `habit_validators`). Si la misma pareja (`habit_id`, `user_id`) ya está en la otra tabla, lanza `check_violation` con el mensaje *"Una misma persona no puede estar asignada a un hábito y ser también su validadora"*. Toma un `pg_advisory_xact_lock` por pareja para que dos altas simultáneas no se cuelen. Consecuencia para los clientes: al editar, hay que borrar las dos listas antes de insertar las nuevas (AdminScreen.js y Habits.jsx ya lo hacen). Cubierta por la Fase 2, test 8.
 
+### `push_recipients_for_assignment(p_assignment_id, p_actor_id)` → `recipient_id, habit_id`
+`SECURITY DEFINER`, `STABLE`, solo `service_role`. Destinatario del aviso "hábito asignado": el asignado, si el hábito está activo, es de su misma empresa y no es quien hizo la asignación (`p_actor_id`, el `auth.uid()` de la petición; `null` desde SQL). Añadida el 2026-10-02 (`sql/2026-10-02c_push_events_asignado_resultado.sql`). Cubierta por la Fase 11, test 9.
+
+### `push_validation_result_for_log(p_log_id)` → `recipient_id, habit_id, validated_count, rejected_count, ready`
+`SECURITY DEFINER`, `STABLE`, solo `service_role`. Para el aviso "resultado de la validación": el autor del log (solo si es de la empresa del hábito), los recuentos de votos y `ready` = hay votantes esperados y **todos** han votado. Votantes esperados = `push_recipients_for_validation(log)` (validadores, o admins si no hay ninguno, sin el autor). Añadida el 2026-10-02. Cubierta por la Fase 11, test 10.
+
+### `notify_push_habit_assigned()` / `notify_push_validation_result()` — triggers `habit_assignments_push_assigned` y `habit_validations_push_result`
+Mismo patrón que `notify_push_validation_pending()` (Vault + `net.http_post` a `push-events`, errores propios como WARNING, sin EXECUTE para clientes). `AFTER INSERT FOR EACH ROW` en `habit_assignments` (`{type: 'habit_assigned', assignment_id, actor_id: auth.uid()}`) y en `habit_validations` (`{type: 'validation_result', log_id}`). Ninguna de las dos tablas admite UPDATE desde los clientes, y `habit_validations` tampoco DELETE: no hace falta escuchar otros eventos. Añadidos el 2026-10-02, con un **relleno** de `notification_log` (`data.backfill = true`, sin envío) para las 2 asignaciones que ya existían. Cubiertos por la Fase 11, tests 9-10.
+
 ### `notify_push_validation_pending()` — trigger `habit_logs_push_validation_pending`
 Función de trigger (`SECURITY DEFINER`, sin EXECUTE para clientes), añadida el 2026-10-02 (`sql/2026-10-02b_push_events_trigger.sql`). `AFTER INSERT ON habit_logs FOR EACH ROW WHEN (new.status = 'pending')`: lee `push_webhook_secret` de Vault y encola con `net.http_post` (asíncrono, tras el commit, timeout 5 s) una llamada a la Edge Function `push-events` con `{type: 'validation_pending', log_id}`. Cualquier error propio se convierte en WARNING: el INSERT del log nunca falla por el aviso. Cubierta por la Fase 11, test 8.
 
@@ -521,6 +530,7 @@ El comportamiento en cada pantalla (chip en HomeScreen, overlay de celebración 
 
 ## Notificaciones push por eventos (desde el 2026-10-02)
 
+- **Tres avisos por evento** (desde el 2026-10-02): "pendiente de validar" (INSERT en `habit_logs`), "hábito asignado" (INSERT en `habit_assignments`; al editar un hábito no se reavisa a quien ya estaba, por `notification_log_assigned_uniq`) y "resultado de la validación" (INSERT en `habit_validations`; un único aviso por log cuando han votado todos los votantes esperados). Diseño: `docs/push-etapa3b-diseno.md`.
 - **Cadena:** INSERT en `habit_logs` con `status = 'pending'` → trigger `habit_logs_push_validation_pending` → `pg_net` → Edge Function `push-events` (`supabase/functions/push-events/index.js`, `verify_jwt = false`, protegida por la cabecera `x-webhook-secret`) → Expo Push. Diseño completo: `docs/push-etapa3-diseno.md`.
 - **Secretos:** `push_webhook_secret` en **Vault** (solo base de datos); `EXPO_ACCESS_TOKEN` (Enhanced Push Security de EAS) como secreto de Edge Functions. Ninguno en el repo.
 - **Diagnóstico (solo lectura):** `net._http_response` guarda la respuesta de cada llamada del trigger **durante 6 horas**; `notification_log` + `push_deliveries` guardan el resultado de cada aviso y de cada envío a Expo.
