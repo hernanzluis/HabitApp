@@ -23,8 +23,8 @@ validar_fichero() {
 }
 
 # Huella del catálogo: funciones (con cuerpo y permisos), tablas y columnas,
-# restricciones, triggers, policies, extensiones, esquemas y nombres de
-# secretos de Vault. No cubre filas de datos.
+# restricciones, triggers, policies, extensiones, esquemas, nombres de
+# secretos de Vault y tareas de pg_cron. No cubre otras filas de datos.
 huella_catalogo() {
   "$PSQL" "$SUPABASE_DB_URL" -X -At -v ON_ERROR_STOP=1 <<'SQL'
 select md5(string_agg(x, '|' order by x)) from (
@@ -55,6 +55,15 @@ select md5(string_agg(x, '|' order by x)) from (
   select 'nsp:' || nspname || coalesce(nspacl::text, '') from pg_namespace where nspname not like 'pg\_t%'
   union all
   select 'vault:' || name from vault.secrets
+  union all
+  -- Tareas de pg_cron (son filas, no catálogo): un ensayo no debe dejar
+  -- ninguna programada. query_to_xml para no fallar si pg_cron no existe.
+  select 'cronjob:' || j::text
+    from unnest(xpath('/table/row/j/text()', query_to_xml(
+      case when to_regclass('cron.job') is not null
+           then 'select jobname || '':'' || schedule || '':'' || command || '':'' || active::text || '':'' || username as j from cron.job'
+           else 'select null::text as j where false' end,
+      false, false, ''))) as j
 ) s(x);
 SQL
 }

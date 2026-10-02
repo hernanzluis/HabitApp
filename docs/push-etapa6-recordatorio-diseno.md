@@ -12,7 +12,16 @@
   21:59 de Madrid**, para que la primera ejecución real que pueda enviar algo
   sea el día siguiente a las 20:00. SQL: `sql/2026-10-02e_pg_cron_instalar.sql`
   y `sql/2026-10-02f_pg_cron_tareas.sql`.
-- **Paso 3 (primeras ejecuciones reales y prueba manual):** pendiente.
+  **Aplicado el 2026-10-02 a las 22:01 (Madrid)** con `sql-aplica.sh`: `pg_cron`
+  instalado; tareas `push-reminder-tick` (`0 * * * *`) y `cron-cleanup`
+  (`30 3 * * *`), las dos de `postgres`, sin el secreto en la orden. Al
+  aplicar se vio que la huella de `sql-comun.sh` no incluía las tareas de
+  `cron.job` (son filas): añadidas, para que un ensayo que deje una tarea
+  programada se detecte.
+- **Paso 3 (primeras ejecuciones reales y prueba manual):** pendiente. Primera
+  ejecución que puede enviar algo: **3/10 a las 20:00 de Madrid** (18:00 UTC).
+  Según la simulación de la noche anterior, Lucia (2 pendientes) y Luis (1)
+  serían candidatos si no completan antes esos hábitos.
 - **Decisión de Luis sobre el punto 5:** el resumen de validaciones sin votar
   queda **fuera**, como quinta pieza aparte, hasta que se decidan cuántas
   horas esperar y a qué hora enviarlo.

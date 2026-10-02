@@ -56,7 +56,7 @@ Confirmado con la salida de `eas build` del build 4 (2026-09-30):
 
   Piezas: triggers en la base, `pg_net` y la Edge Function `push-events`; cubiertos por la Fase 11 (45 tests). Diseño en `push-etapa3-diseno.md` y `push-etapa3b-diseno.md`.
 - **Pendiente:**
-  - el **recordatorio diario** de las 20:00 (diseño en `push-etapa6-recordatorio-diseno.md`, sin implementar; necesita `pg_cron`);
+  - la **prueba real del recordatorio diario** de las 20:00. Está implementado y programado con `pg_cron` desde el 2026-10-02 a las 22:01 de Madrid; la primera ejecución que puede enviar algo es el 3/10 a las 20:00 (`push-etapa6-recordatorio-diseno.md`);
   - el **resumen de validación cuando algún validador no vota** (hueco aceptado, irá con el cron);
   - activar la exigencia de *Enhanced Push Security* en EAS (Luis). Hoy la función ya envía con `EXPO_ACCESS_TOKEN`.
 - **No necesita un build nuevo:** todo lo pendiente es de servidor.
