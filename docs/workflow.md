@@ -80,3 +80,23 @@
   una tarea que está ejecutando: para la tarea, pide solo esa acción en un
   mensaje propio, y no sigue con el resto hasta que Luis confirme que está
   hecha.
+
+## Tags por build y CHANGELOG
+
+- Cada build que se envía a TestFlight o a la tienda recibe un **tag anotado
+  `build-N`** sobre el commit **exacto** del que salió, comprobado en EAS
+  (`eas build:list`, campo `gitCommitHash`), nunca de memoria. El mensaje del
+  tag lleva el número de build, la versión y la fecha del envío. Los tags se
+  suben con `git push origin build-N`, nunca con `--force`.
+- Cada build tiene además su **entrada en `CHANGELOG.md`** (raíz del repo):
+  qué cambia para quien usa la app y qué arreglos de seguridad o de datos
+  viajan en él, en lenguaje humano. Al generar el build, la sección "Sin
+  publicar" pasa a ser la entrada de ese build.
+- **El CHANGELOG se actualiza en el mismo commit que cualquier cambio visible
+  para el usuario**, en "Sin publicar". Los cambios de servidor (SQL, Edge
+  Functions, `pg_cron`) van en su sección propia, porque no dependen de
+  ningún build.
+- El repositorio es público: en el CHANGELOG y en los mensajes de los tags,
+  ni secretos, ni correos, ni identificadores de cuentas, ni datos
+  personales. Solo ficheros, commits y descripciones.
+
