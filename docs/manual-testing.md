@@ -101,6 +101,22 @@ cubrirá en un checklist separado más adelante.
 - [x] Lucia completa un hábito en el que Luis es el único validador → Luis vota → a Lucia le llega "Resultado de la validación" con el recuento; tocarla abre las Estadísticas de ese hábito
 - [ ] Si el hábito tiene dos validadores, el resultado solo llega cuando han votado los dos
 
+## 3d. Notificaciones push — recordatorio diario de las 20:00 (servidor; `pg_cron`)
+
+**Última vez probado: 3 y 4/10/2026 — SUPERADO** con datos reales (Luis en el iPhone, Lucia en el iPad). Luis confirmó en el móvil el recordatorio del domingo. Code comprobó en la base, solo con lectura (5/10):
+- `push-reminder-tick` se ejecutó **cada hora sin ningún hueco ni fallo** desde el 2/10 a las 21:00 UTC (59 ejecuciones, todas `succeeded`), y `cron-cleanup` a las 03:30 UTC los días 3, 4 y 5.
+- **3 recordatorios**, todos a las **20:00:0x de Madrid** y todos en `ticket_ok`: 3/10 Lucia («Te quedan 2 hábitos…»); 4/10 Luis («Te queda 1 hábito…») y Lucia («Te quedan 2 hábitos…»). En español, como sus tokens.
+- **Ningún duplicado** por el reintento de las 21:00.
+- La consulta de vigilancia no muestra ninguna entrega en `ticket_error` ni en `queued`.
+- **El sábado 3 Luis no tuvo recordatorio, y era lo correcto:** había completado «Prueba Luis» a las 09:42. Lo que le llegó hacia las 20:01 de ese día fueron dos «Pendiente de validar» (Lucia completó sus dos hábitos a las 20:01, justo después de su recordatorio) y un «Resultado de la validación».
+- Los dos completaron sus hábitos en el minuto siguiente al recordatorio (Lucia el 3/10 a las 20:01, Luis el 4/10 a las 20:00:28).
+
+Checklist:
+- [x] A las 20:00 locales, con algún hábito pendiente, llega «Te quedan N hábitos por completar hoy» con el número correcto → cross-ref **Fase 11, test 11**
+- [x] Un día con todo completado antes de las 20:00, no llega recordatorio (Luis, 3/10)
+- [x] No llega un segundo recordatorio a las 21:00
+- [ ] Tocar el recordatorio abre Inicio (no confirmado explícitamente; el token de Luis se usó 11 s después del aviso del 4/10)
+
 ## 4. Límites de plan (Familiar)
 
 **Última vez probado:** _(pendiente)_

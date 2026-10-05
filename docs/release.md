@@ -56,9 +56,10 @@ Confirmado con la salida de `eas build` del build 4 (2026-09-30):
 
   Piezas: triggers en la base, `pg_net` y la Edge Function `push-events`; cubiertos por la Fase 11 (45 tests). Diseño en `push-etapa3-diseno.md` y `push-etapa3b-diseno.md`.
 - **Pendiente:**
-  - la **prueba real del recordatorio diario** de las 20:00. Está implementado y programado con `pg_cron` desde el 2026-10-02 a las 22:01 de Madrid; la primera ejecución que puede enviar algo es el 3/10 a las 20:00 (`push-etapa6-recordatorio-diseno.md`);
-  - el **resumen de validación cuando algún validador no vota** (hueco aceptado, irá con el cron);
+  - el **resumen de validación cuando algún validador no vota**: hueco aceptado, quinta pieza aparte, pendiente de decidir cuántas horas esperar y a qué hora enviarlo;
+  - la **consulta de *receipts*** de Expo (la confirmación definitiva de Apple), que en el plan iba en la etapa 6 y no entró en el diseño del recordatorio. Hoy los tokens muertos solo se desactivan cuando Expo los rechaza en el ticket;
   - activar la exigencia de *Enhanced Push Security* en EAS (Luis). Hoy la función ya envía con `EXPO_ACCESS_TOKEN`.
+- **Recordatorio diario (etapa 6): completo.** Programado con `pg_cron` desde el 2026-10-02 a las 22:01 de Madrid. La prueba real (3 y 4/10) está superada (`manual-testing.md`, bloque 3d): 3 recordatorios a las 20:00, todos en `ticket_ok`, sin duplicados y sin fallos en las ejecuciones horarias.
 - **No necesita un build nuevo:** todo lo pendiente es de servidor.
 
 ## Hallazgos de proceso

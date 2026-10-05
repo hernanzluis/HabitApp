@@ -18,10 +18,16 @@
   aplicar se vio que la huella de `sql-comun.sh` no incluía las tareas de
   `cron.job` (son filas): añadidas, para que un ensayo que deje una tarea
   programada se detecte.
-- **Paso 3 (primeras ejecuciones reales y prueba manual):** pendiente. Primera
-  ejecución que puede enviar algo: **3/10 a las 20:00 de Madrid** (18:00 UTC).
-  Según la simulación de la noche anterior, Lucia (2 pendientes) y Luis (1)
-  serían candidatos si no completan antes esos hábitos.
+- **Paso 3: superado el 3 y 4/10.** Detalle en `manual-testing.md`, bloque 3d:
+  - ejecuciones horarias sin huecos ni fallos;
+  - recordatorios a Lucia el 3/10 y a Luis y Lucia el 4/10, a las 20:00 y en
+    `ticket_ok`, sin duplicados a las 21:00;
+  - Luis no tuvo recordatorio el 3/10 porque había completado su hábito a las
+    09:42.
+- **Nota:** recalcular después `pending_habits_for_user` para un instante
+  pasado cuenta también los logs de más tarde ese mismo día local, porque
+  cuenta hasta el fin del día. En tiempo real esos logs aún no existen; al
+  revisar envíos pasados, hay que fijarse en la hora de cada log.
 - **Decisión de Luis sobre el punto 5:** el resumen de validaciones sin votar
   queda **fuera**, como quinta pieza aparte, hasta que se decidan cuántas
   horas esperar y a qué hora enviarlo.
