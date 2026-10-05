@@ -36,6 +36,15 @@ verificado, no cuando se ha hecho.
 - [ ] **Ficha de App Store** — metadatos, capturas de iPhone, URL de la política de privacidad (`https://habitteam.app/privacidad`) y cuestionario de privacidad de datos, antes de enviar a revisión.
 - [ ] **Limitación conocida del build 3: intercambiar asignado/validador** — desde el 2026-09-30 la base de datos impide que una misma persona sea asignada y validadora del mismo hábito (`sql/2026-09-30_asignado_no_validador.sql`). El build 3 guarda la edición en un orden (asignados antes de borrar validadores) que choca con esa regla, así que **no se pueden intercambiar los papeles de asignado/validador entre dos personas en una sola edición**: da el error "Una misma persona no puede estar asignada…". Mientras tanto, hacerlo **en dos pasos** (primero quitar a cada persona de su lista y guardar; después marcarlas en la nueva y guardar). Lo corrige `AdminScreen.js` (commit del 2026-09-30), que llega a TestFlight con el **build 4** (no hay `expo-updates`, así que los cambios de JavaScript requieren build). Crear hábitos y editarlos sin intercambiar papeles funciona igual en el build 3. La web ya está corregida (Vercel).
 
+- [ ] **Limitación conocida del build 4: "Todo al día ✓" tapa pendientes nuevos (Validar)** — encontrada por Luis el 2026-10-05 en el iPad de Lucia. Si en una sesión se vacía la lista de Validar (votar el último pendiente → "Todo al día ✓" → Inicio) y **sin cerrar la app** llega un pendiente nuevo, al ir a Validar (tocando el aviso o la pestaña) se sigue viendo "Todo al día ✓" aunque el contador marque 1. Causa: `allDone` (`ValidateHabitScreen.js`) se activaba y nunca volvía a `false` mientras la pantalla siguiera montada, y las pestañas no se desmontan al cambiar de pestaña ni al ir a segundo plano. **Workaround en el build 4: cerrar la app del todo y volver a abrirla.** Deslizar para actualizar **no** lo resuelve: la pantalla de "Todo al día ✓" no tiene esa opción y además tapa la lista aunque se recargue. Además, ninguna pantalla se recargaba al volver a primer plano: con Inicio o Actividad como pestaña activa, los datos se quedaban viejos hasta cambiar de pestaña.
+  - **Arreglado en el código el 2026-10-05, pendiente del build 5** (solo JavaScript; sin `expo-updates`, llega con el próximo build). Tres commits:
+    - `allDone` se resetea en cada carga, y el temporizador de 1 s a Inicio se cancela al recargar, al salir de la pantalla y al desmontar;
+    - recarga común `lib/useReloadOnFocus.js` en Validar, Inicio y Actividad: al enfocar; al volver a primer plano si la pantalla está enfocada y la última carga tiene más de 30 s; siempre al tocar un aviso (parámetro `pushAt` de RootNavigator); nunca dos cargas a la vez. El contador de Validar también se refresca al volver a primer plano;
+    - el contador y la lista usan la misma regla (`lib/pendingValidations.js`).
+  - **Hallazgo del contador del admin:** el número rojo de la pestaña Validar no incluía los hábitos de la empresa **sin ningún validador** (que el admin sí ve en la lista) ni filtraba por empresa, así que a un admin le podía marcar menos de lo que veía. Comprobado el 2026-10-05 con los datos reales (solo lectura): hoy coinciden (Lucia 1, Luis 0) porque Luis no tiene hábitos sin validadores. Efecto secundario del arreglo: el contador de caducados se calcula siempre (antes se saltaba si no había pendientes de validar, y la pestaña podía quedar desactivada con caducados pendientes).
+  - **No confirmado:** en el primer fallo, Luis vio que la lista aparecía "al navegar un poco por la app". Con `allDone` atascado eso no debería ocurrir hasta un arranque en frío; posiblemente iOS reinició la app en segundo plano.
+  - Pruebas manuales: `manual-testing.md`, bloque 3b ("Recarga al tocar un aviso o al volver a primer plano").
+
 ## Credenciales de Apple (referencia)
 
 Confirmado con la salida de `eas build` del build 4 (2026-09-30):
@@ -60,7 +69,7 @@ Confirmado con la salida de `eas build` del build 4 (2026-09-30):
   - la **consulta de *receipts*** de Expo (la confirmación definitiva de Apple), que en el plan iba en la etapa 6 y no entró en el diseño del recordatorio. Hoy los tokens muertos solo se desactivan cuando Expo los rechaza en el ticket;
   - activar la exigencia de *Enhanced Push Security* en EAS (Luis). Hoy la función ya envía con `EXPO_ACCESS_TOKEN`.
 - **Recordatorio diario (etapa 6): completo.** Programado con `pg_cron` desde el 2026-10-02 a las 22:01 de Madrid. La prueba real (3 y 4/10) está superada (`manual-testing.md`, bloque 3d): 3 recordatorios a las 20:00, todos en `ticket_ok`, sin duplicados y sin fallos en las ejecuciones horarias.
-- **No necesita un build nuevo:** todo lo pendiente es de servidor.
+- **Lo pendiente de push no necesita un build nuevo** (es de servidor). El arreglo de la recarga de Validar/Inicio/Actividad sí: va en el build 5 (ver "Limitación conocida del build 4").
 
 ## Hallazgos de proceso
 

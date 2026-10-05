@@ -82,6 +82,17 @@ cubrirá en un checklist separado más adelante.
 - [ ] Tocar una notificación con la sesión cerrada → la app se queda en Login, sin errores
 - [ ] Cerrar sesión → el token desaparece de `push_tokens` (lo comprueba Code); con otra cuenta en el mismo iPhone, el token queda a nombre de la nueva → cross-ref **Fase 10, tests 5-6**
 
+**Recarga al tocar un aviso o al volver a primer plano** (arreglo del 2026-10-05; **requiere el build 5**). Fallo encontrado por Luis en el iPad de Lucia con el build 4: con la app en segundo plano, al tocar "Pendiente de validar" se veía "Todo al día ✓" mientras el contador marcaba 1 (o 2). Causa: `allDone` se quedaba activado tras votar el último pendiente y tapaba la lista mientras la pantalla siguiera montada; además, ninguna pantalla se recargaba al volver a primer plano. Diagnóstico y cambios: `release.md`, "Limitación conocida del build 4".
+
+**Condición previa de las cuatro primeras:** en esa misma sesión, **sin cerrar la app**, haber vaciado la lista de Validar votando el último pendiente (se ve "Todo al día ✓" y la app va a Inicio). Después, otra persona completa un hábito que valida el usuario y llega "Pendiente de validar".
+
+- [ ] **App cerrada del todo** → tocar el aviso → se abre Validar con la lista y el nuevo pendiente
+- [ ] **App en segundo plano con Validar como pestaña activa** → tocar el aviso → aparece el nuevo pendiente (no "Todo al día ✓"); el contador coincide con la lista
+- [ ] **App en segundo plano con otra pestaña activa** (el caso del fallo) → tocar el aviso → Validar muestra el nuevo pendiente; el contador coincide con la lista
+- [ ] **App en primer plano** → llega el aviso → el contador de Validar sube; al entrar en Validar se ve el pendiente
+- [ ] **App en segundo plano con Inicio activo** → el admin asigna un hábito → tocar "Nuevo hábito" → el hábito aparece en Inicio sin tener que cambiar de pestaña
+- [ ] **Volver a primer plano sin tocar ningún aviso** (tras más de 30 s fuera, con algo cambiado mientras tanto) → la pantalla activa (Validar, Inicio o Actividad) se actualiza sola, con el indicador discreto de arriba, y el contador de Validar también
+
 ## 3c. Notificaciones push — etapa 3, avisos por evento (servidor; build 4 en adelante)
 
 **Última vez probado: 2026-10-02 — SUPERADO**, con dos dispositivos reales: iPhone de Luis y iPad de Lucia (build 4 de TestFlight; en el iPad, en modo compatibilidad de iPhone). Los tres avisos por evento llegaron de punta a punta, y Code comprobó en la base 6 entregas reales en `ticket_ok`, sin errores. La parte automática está en la **Fase 11** (45/45). Quedan sin probar los ítems no marcados.
