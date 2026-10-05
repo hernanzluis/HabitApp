@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -161,6 +161,14 @@ function TabNavigator() {
   // handler de lib/push.js; aquí solo se refresca el badge de Validar.
   useEffect(() => {
     const sub = Notifications.addNotificationReceivedListener(() => { fetchPendingCount(); });
+    return () => sub.remove();
+  }, [fetchPendingCount]);
+
+  // Al volver a primer plano: el contador puede haber cambiado mientras tanto.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') fetchPendingCount();
+    });
     return () => sub.remove();
   }, [fetchPendingCount]);
 
@@ -386,21 +394,24 @@ export default function RootNavigator() {
   }, [userId, t]);
 
   // Al tocar una notificación (con la app abierta o desde cerrada): ir a la
-  // pantalla de su tipo. Sin sesión se ignora (se queda en Login).
+  // pantalla de su tipo. Sin sesión se ignora (se queda en Login). `pushAt`
+  // obliga a recargar aunque la pantalla ya fuera la activa
+  // (lib/useReloadOnFocus.js).
   useEffect(() => {
     if (!lastNotificationResponse || !userId || !navReady || !navigationRef.isReady()) return;
     const data = lastNotificationResponse.notification?.request?.content?.data ?? {};
     Notifications.clearLastNotificationResponseAsync().catch(() => {});
     (async () => {
+      const pushAt = Date.now();
       if (data.type === 'validation_pending') {
-        navigationRef.navigate('Tabs', { screen: 'ValidateHabit' });
+        navigationRef.navigate('Tabs', { screen: 'ValidateHabit', params: { pushAt } });
       } else if (data.type === 'validation_result' && data.habit_id) {
         const { data: habit } = await supabase.from('habits').select('*').eq('id', data.habit_id).maybeSingle();
         if (habit) navigationRef.navigate('HabitStats', { habit, userId });
-        else navigationRef.navigate('Tabs', { screen: 'Home' });
+        else navigationRef.navigate('Tabs', { screen: 'Home', params: { pushAt } });
       } else {
         // habit_assigned, daily_reminder o tipo desconocido
-        navigationRef.navigate('Tabs', { screen: 'Home' });
+        navigationRef.navigate('Tabs', { screen: 'Home', params: { pushAt } });
       }
     })().catch((e) => console.warn('push nav:', e?.message));
   }, [lastNotificationResponse, userId, navReady]);

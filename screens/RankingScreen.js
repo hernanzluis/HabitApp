@@ -9,10 +9,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
+import { useReloadOnFocus } from '../lib/useReloadOnFocus';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -428,7 +429,8 @@ export default function RankingScreen() {
     }
   }, [t]);
 
-  useFocusEffect(useCallback(() => { loadActivity(); }, [loadActivity]));
+  // Al enfocar y al volver a primer plano: ver lib/useReloadOnFocus.js.
+  useReloadOnFocus(useCallback(({ background }) => loadActivity(background), [loadActivity]));
 
   // Derived at render time — cheap, avoids storing in state
   const dailyHabitIdsSet = new Set(

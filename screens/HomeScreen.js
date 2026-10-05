@@ -13,11 +13,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { useReloadOnFocus } from '../lib/useReloadOnFocus';
 
 const FAMILY_SETUP_KEY = 'family_setup_done';
 
@@ -430,10 +431,11 @@ export default function HomeScreen() {
     }
   }, [t]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadHomeData();
-    }, [loadHomeData])
+  // Al enfocar, al volver a primer plano y al tocar un aviso que trae a Inicio
+  // (hábito asignado, recordatorio; pushAt): ver lib/useReloadOnFocus.js.
+  useReloadOnFocus(
+    useCallback(({ background }) => loadHomeData(background), [loadHomeData]),
+    route.params?.pushAt
   );
 
   const onCompleteHabit = (habit) => {

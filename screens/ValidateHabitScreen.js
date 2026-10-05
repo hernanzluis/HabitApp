@@ -11,10 +11,11 @@ import {
   View,
   Image,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
+import { useReloadOnFocus } from '../lib/useReloadOnFocus';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -151,6 +152,7 @@ function ValidateCard({ item, onVote, t, locale }) {
 
 export default function ValidateHabitScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'es' ? 'es-ES' : 'en-US';
   const [activeTab, setActiveTab] = useState('validate');
@@ -415,14 +417,16 @@ export default function ValidateHabitScreen() {
     }
   }, [t]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-      loadExpired();
-      // Al salir de la pantalla antes de que venza, no saltar a Inicio después.
-      return clearNavTimeout;
-    }, [loadData, loadExpired, clearNavTimeout])
+  // Al enfocar, al volver a primer plano y al tocar un aviso "pendiente de
+  // validar" (pushAt): ver lib/useReloadOnFocus.js.
+  const reload = useCallback(
+    ({ background }) => Promise.all([loadData(background), loadExpired()]),
+    [loadData, loadExpired]
   );
+  useReloadOnFocus(reload, route.params?.pushAt);
+
+  // Al salir de la pantalla antes de que venza, no saltar a Inicio después.
+  useFocusEffect(useCallback(() => clearNavTimeout, [clearNavTimeout]));
 
   const submitValidation = async (logId, voteStatus, comment, reaction) => {
     try {
