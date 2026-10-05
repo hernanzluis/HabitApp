@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useReloadOnFocus } from '../lib/useReloadOnFocus';
+import { fetchPendingValidations } from '../lib/pendingValidations';
 
 const BG = '#F3F2EF';
 const WHITE = '#ffffff';
@@ -191,130 +192,32 @@ export default function ValidateHabitScreen() {
     setError('');
 
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) throw userError;
-      if (!user) {
+      // Misma regla que el contador de la pestaña (lib/pendingValidations.js).
+      const result = await fetchPendingValidations();
+      if (!result) {
         setError(t('validate.error_no_session'));
         return;
       }
-
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, company_id, role')
-        .eq('id', user.id)
-        .single();
-
-      if (profileError) throw profileError;
-      if (!profile?.company_id) {
+      if (!result.profile?.company_id) {
         setError(t('errors.no_company'));
         setItems([]);
         return;
       }
-
-      const { data: validatorHabits, error: validatorError } = await supabase
-        .from('habit_validators')
-        .select('habit_id')
-        .eq('user_id', user.id);
-      if (validatorError) throw validatorError;
-      let validatorHabitIds = (validatorHabits ?? []).map((v) => v.habit_id);
-
-      // Fallback: el admin ve también como pendientes los hábitos de su propia
-      // empresa que se hayan quedado sin NINGÚN validador explícito (p. ej. el
-      // único validador que tenían se eliminó la cuenta) — sin insertar nada
-      // en habit_validators, es una regla de consulta.
-      if (profile.role === 'admin') {
-        const { data: companyHabits, error: companyHabitsError } = await supabase
-          .from('habits')
-          .select('id')
-          .eq('company_id', profile.company_id);
-        if (companyHabitsError) throw companyHabitsError;
-        const companyHabitIds = (companyHabits ?? []).map((h) => h.id);
-
-        if (companyHabitIds.length) {
-          const { data: validatorsForCompanyHabits, error: validatorsForCompanyHabitsError } = await supabase
-            .from('habit_validators')
-            .select('habit_id')
-            .in('habit_id', companyHabitIds);
-          if (validatorsForCompanyHabitsError) throw validatorsForCompanyHabitsError;
-          const habitsWithValidator = new Set((validatorsForCompanyHabits ?? []).map((v) => v.habit_id));
-          const habitsWithoutValidator = companyHabitIds.filter((id) => !habitsWithValidator.has(id));
-          validatorHabitIds = [...new Set([...validatorHabitIds, ...habitsWithoutValidator])];
-        }
-      }
-
-      if (!validatorHabitIds.length) {
+      const { logs } = result;
+      if (!logs.length) {
         setItems([]);
         return;
       }
 
-      const { data: logsData, error: logsError } = await supabase
-        .from('habit_logs')
-        .select('id, habit_id, user_id, photo_url, status, notes, created_at')
-        .eq('status', 'pending')
-        .neq('user_id', user.id)
-        .in('habit_id', validatorHabitIds)
-        .order('created_at', { ascending: false });
-
-      if (logsError) throw logsError;
-      if (!logsData?.length) {
-        setItems([]);
-        return;
-      }
-
-      const userIds = [...new Set(logsData.map((row) => row.user_id).filter(Boolean))];
-      const habitIds = [...new Set(logsData.map((row) => row.habit_id).filter(Boolean))];
-
-      const logIds = logsData.map((l) => l.id);
-
-      const [
-        { data: profilesData, error: profilesError },
-        { data: habitsData, error: habitsError },
-        { data: validationsData, error: validationsError },
-      ] = await Promise.all([
-        userIds.length
-          ? supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds)
-          : Promise.resolve({ data: [], error: null }),
-        habitIds.length
-          ? supabase.from('habits').select('id, title, description, company_id').in('id', habitIds)
-          : Promise.resolve({ data: [], error: null }),
-        logIds.length
-          ? supabase.from('habit_validations').select('habit_log_id, validator_id, status').in('habit_log_id', logIds)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-
+      const userIds = [...new Set(logs.map((row) => row.user_id).filter(Boolean))];
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', userIds);
       if (profilesError) throw profilesError;
-      if (habitsError) throw habitsError;
-      if (validationsError) throw validationsError;
-
       const profilesMap = new Map((profilesData || []).map((p) => [p.id, p]));
-      const habitsMap = new Map((habitsData || []).map((h) => [h.id, h]));
 
-      const validationsMap = {};
-      (validationsData || []).forEach((v) => {
-        if (!validationsMap[v.habit_log_id]) {
-          validationsMap[v.habit_log_id] = { validatedCount: 0, rejectedCount: 0, userValidated: false, userVote: null };
-        }
-        if (v.status === 'validated') validationsMap[v.habit_log_id].validatedCount++;
-        if (v.status === 'rejected') validationsMap[v.habit_log_id].rejectedCount++;
-        if (v.validator_id === user.id) {
-          validationsMap[v.habit_log_id].userValidated = true;
-          validationsMap[v.habit_log_id].userVote = v.status;
-        }
-      });
-
-      const normalized = logsData
-        .map((log) => ({
-          ...log,
-          companion: profilesMap.get(log.user_id) || null,
-          habit: habitsMap.get(log.habit_id) || null,
-          ...(validationsMap[log.id] || { validatedCount: 0, rejectedCount: 0, userValidated: false, userVote: null }),
-        }))
-        .filter((row) => row.habit && row.habit.company_id === profile.company_id)
-        .filter((row) => !row.userValidated);
+      const normalized = logs.map((log) => ({ ...log, companion: profilesMap.get(log.user_id) || null }));
 
       setItems(normalized);
     } catch (e) {

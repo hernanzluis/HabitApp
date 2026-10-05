@@ -10,6 +10,7 @@ import { getQueryParams } from 'expo-auth-session/build/QueryParams';
 import * as Notifications from 'expo-notifications';
 
 import { supabase } from '../lib/supabase';
+import { fetchPendingValidations } from '../lib/pendingValidations';
 import { authFlags, registerSetSession, registerRecoveryControls, enterRecoveryMode } from '../lib/authFlags';
 import {
   registerPushTokenIfGranted,
@@ -101,33 +102,12 @@ function TabNavigator() {
 
   const fetchPendingCount = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: validatorHabits } = await supabase
-        .from('habit_validators')
-        .select('habit_id')
-        .eq('user_id', user.id);
-      const validatorHabitIds = (validatorHabits ?? []).map((v) => v.habit_id);
-      if (!validatorHabitIds.length) { setPendingCount(0); return; }
-
-      const { data: pendingLogs } = await supabase
-        .from('habit_logs')
-        .select('id')
-        .eq('status', 'pending')
-        .neq('user_id', user.id)
-        .in('habit_id', validatorHabitIds);
-      if (!pendingLogs?.length) { setPendingCount(0); return; }
-
-      const logIds = pendingLogs.map((l) => l.id);
-      const { data: myValidations } = await supabase
-        .from('habit_validations')
-        .select('habit_log_id')
-        .eq('validator_id', user.id)
-        .in('habit_log_id', logIds);
-
-      const alreadyVoted = new Set((myValidations ?? []).map((v) => v.habit_log_id));
-      setPendingCount(pendingLogs.filter((l) => !alreadyVoted.has(l.id)).length);
+      // Misma regla que la lista de Validar (lib/pendingValidations.js),
+      // incluido el admin con hábitos sin validadores.
+      const result = await fetchPendingValidations();
+      if (!result) return;
+      const { user, explicitValidatorHabitIds: validatorHabitIds } = result;
+      setPendingCount(result.logs.length);
 
       // Expired habits: validator OR assigned
       const myAssignmentsRes = await supabase
