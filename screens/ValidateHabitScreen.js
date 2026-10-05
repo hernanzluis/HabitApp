@@ -158,21 +158,29 @@ export default function ValidateHabitScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [items, setItems] = useState([]);
+  // "Todo al día ✓": solo justo después de votar el último pendiente, antes
+  // de que el temporizador lleve a Inicio. Se apaga en cada carga: la pantalla
+  // sigue montada al cambiar de pestaña o ir a segundo plano, y sin ese reset
+  // tapaba la lista en las visitas siguientes (pendientes nuevos invisibles).
   const [allDone, setAllDone] = useState(false);
   const navTimeoutRef = useRef(null);
+  const clearNavTimeout = useCallback(() => {
+    if (navTimeoutRef.current) {
+      clearTimeout(navTimeoutRef.current);
+      navTimeoutRef.current = null;
+    }
+  }, []);
 
   // ── Expired tab state ──────────────────────────────────────────────────
   const [expiredLoading, setExpiredLoading] = useState(false);
   const [expiredItems, setExpiredItems] = useState([]);
   const [expiredError, setExpiredError] = useState('');
 
-  useEffect(() => {
-    return () => {
-      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
-    };
-  }, []);
+  useEffect(() => clearNavTimeout, [clearNavTimeout]);
 
   const loadData = useCallback(async (isRefresh = false) => {
+    setAllDone(false);
+    clearNavTimeout();
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -313,7 +321,7 @@ export default function ValidateHabitScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [clearNavTimeout]);
 
   const loadExpired = useCallback(async () => {
     setExpiredLoading(true);
@@ -411,7 +419,9 @@ export default function ValidateHabitScreen() {
     useCallback(() => {
       loadData();
       loadExpired();
-    }, [loadData, loadExpired])
+      // Al salir de la pantalla antes de que venza, no saltar a Inicio después.
+      return clearNavTimeout;
+    }, [loadData, loadExpired, clearNavTimeout])
   );
 
   const submitValidation = async (logId, voteStatus, comment, reaction) => {
