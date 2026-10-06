@@ -47,13 +47,29 @@ verificado, no cuando se ha hecho.
 
 ## Credenciales de Apple (referencia)
 
-Confirmado con la salida de `eas build` del build 4 (2026-09-30):
+Qué credenciales existen y para qué sirve cada una (comprobado con la salida
+de `eas build` del build 4, el 2026-09-30). **Los identificadores concretos no
+se guardan en este repositorio, que es público.** Se consultan en el panel de
+**Apple Developer** (Certificates, Identifiers & Profiles; Keys) y con
+**`eas credentials`** (EAS los gestiona).
 
-- **Clave APNs (push):** Key ID **`66848HN7W9`** — identificador real de Apple (Apple Developer → Keys) con el que se firman los envíos a APNs. Creada el 2026-09-30 por EAS. Las claves `.p8` **no caducan**. Es la única de la cuenta (límite: 2 por cuenta; ver `push-notifications-plan.md`).
-- **Team ID:** **`6MG5F4T6DG`** ("Luis Ignacio Hernanz González (Individual)").
-- **Certificado de distribución:** número de serie `37ACE9E446207C007CA33C89317C4BA6`, Developer Portal ID `FBH3AXLB34`, **caduca el 29/09/2027** — esa es la fecha de 2027 que se veía en `eas credentials`. Hay que renovarlo antes: EAS lo pedirá en el primer build después de esa fecha.
-- **Perfil de aprovisionamiento (App Store):** el antiguo (`FR8P8WT53K`) quedó invalidado al activar la capacidad Push; EAS generó uno nuevo, **`YFPNG3ML3V`**, que caduca con el certificado (29/09/2027). **Confirmado del todo el 2026-10-02:** `FR8P8WT53K` es el Developer Portal ID de ese perfil de aprovisionamiento antiguo, tal como lo muestra `eas credentials` al iniciar sesión. No es el Team ID ni la clave APNs.
-- **App Store Connect API Key:** guardada en EAS (la usó el build 4 para regenerar el perfil sin pedir el login de Apple).
+- **Clave APNs (push):** la clave `.p8` con la que se firman los envíos a
+  APNs. La creó EAS el 2026-09-30. Las claves `.p8` **no caducan**. Es la
+  única de la cuenta (límite: 2 por cuenta; ver `push-notifications-plan.md`).
+- **Team ID:** el identificador de la cuenta de Apple Developer (cuenta
+  individual de Luis).
+- **Certificado de distribución:** firma los builds de tienda. **Caduca el
+  2027-09-29**: es la fecha de 2027 que se veía en `eas credentials`. Hay que
+  renovarlo antes; EAS lo pedirá en el primer build posterior a esa fecha.
+- **Perfil de aprovisionamiento (App Store):** el anterior quedó invalidado al
+  activar la capacidad Push, y EAS generó uno nuevo con el build 4, que caduca
+  con el certificado (2027-09-29). Una anotación antigua confundió el
+  identificador de ese perfil anterior con el Team ID; se aclaró el
+  2026-10-02 con la salida de `eas credentials`.
+- **App Store Connect API Key:** guardada en EAS. La usó el build 4 para
+  regenerar el perfil sin pedir el login de Apple, y la usa `eas submit`.
+- **Apple ID numérico de la app (`ascAppId`):** está en `eas.json`, porque
+  EAS lo necesita para enviar a TestFlight.
 
 ## Notificaciones push (estado a 2026-10-02)
 
