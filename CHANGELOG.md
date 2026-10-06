@@ -32,6 +32,10 @@ qué deshacer en un rollback.
 Pruebas pendientes en el dispositivo: `docs/manual-testing.md`, bloque 3b
 ("Recarga al tocar un aviso o al volver a primer plano").
 
+### Pendiente para el build 5
+- **Icono propio de la app, aportado por Luis** (hoy es el de plantilla de
+  Expo). Todavía no está en el repo.
+
 ---
 
 ## Build 4 — versión 1.0.0 (`build-4`, commit `ef139fe`)

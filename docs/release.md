@@ -45,6 +45,8 @@ verificado, no cuando se ha hecho.
   - **No confirmado:** en el primer fallo, Luis vio que la lista aparecía "al navegar un poco por la app". Con `allDone` atascado eso no debería ocurrir hasta un arranque en frío; posiblemente iOS reinició la app en segundo plano.
   - Pruebas manuales: `manual-testing.md`, bloque 3b ("Recarga al tocar un aviso o al volver a primer plano").
 
+- [ ] **Icono propio de la app, aportado por Luis (hoy es el de plantilla de Expo)** — pendiente para el build 5. Los cuatro ficheros de `assets/` (`icon.png`, `adaptive-icon.png`, `splash-icon.png`, `favicon.png`) son idénticos, por hash, a los de la plantilla `expo-template-blank` de los SDK 52-54 y no han cambiado desde el commit inicial. Además del icono de iOS, la misma imagen de plantilla aparece en la pantalla de arranque (splash) y en el icono de Android. El icono va dentro del binario: solo llega con un build nuevo. No se sustituye ningún asset sin aprobación de Luis.
+
 ## Credenciales de Apple (referencia)
 
 Qué credenciales existen y para qué sirve cada una (comprobado con la salida
