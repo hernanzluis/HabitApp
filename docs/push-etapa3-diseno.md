@@ -1,8 +1,9 @@
 # Notificaciones push — diseño de la etapa 3
 
-**Estado (2026-10-02): implementada, pendiente de la prueba real.** Hechos
-los pasos 1-4 de "Pasos para aplicarlo" (al final); faltan el 5 (activar la
-exigencia en EAS) y el 6 (Luis y Lucia). Escrito como diseño el mismo día;
+**Estado (2026-10-06): implementada y completa.** Los pasos 1-6 de "Pasos
+para aplicarlo" (al final) están hechos: la prueba real con Luis y Lucia se
+superó el 2026-10-02 (`manual-testing.md`, bloque 3c) y la exigencia de
+*Enhanced Push Security* se activó en EAS el 2026-10-05. Escrito como diseño el mismo día;
 **cambios respecto al diseño** al implementarlo:
 
 - **`PUSH_WEBHOOK_SECRET` vive solo en Vault** (`push_webhook_secret`),
@@ -255,5 +256,5 @@ comprobar ningún test.
    (`sql/2026-10-02b_push_events_trigger.sql`, copia en
    `~/habitapp-backups/2026-10-02-pre-push-trigger/`; se aplicó directamente,
    sin ensayo con ROLLBACK previo, y se verificó con la Fase 11: 30/30).
-5. **Luis:** activar la exigencia de *Enhanced Push Security* en EAS.
-6. **Luis y Lucia:** la prueba real (sección 4, punto 5).
+5. ✅ **Luis:** activar la exigencia de *Enhanced Push Security* en EAS. **Hecho el 2026-10-05**; envíos posteriores en `ticket_ok`.
+6. ✅ **Luis y Lucia:** la prueba real (sección 4, punto 5). **Superada el 2026-10-02.**

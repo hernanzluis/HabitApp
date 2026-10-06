@@ -1,7 +1,7 @@
 # Notificaciones push — diseño de los avisos "hábito asignado" y "resultado de la validación"
 
-**Estado (2026-10-02): implementado, pendiente de la prueba manual con dos
-dispositivos.** Decisiones de Luis: relleno de las 2 asignaciones existentes
+**Estado (2026-10-06): implementado; prueba manual con dos dispositivos
+superada el 2026-10-02** (`manual-testing.md`, bloque 3c). Decisiones de Luis: relleno de las 2 asignaciones existentes
 (sí), hueco del resumen hasta la etapa del cron (aceptado), un solo fichero
 SQL (`sql/2026-10-02c_push_events_asignado_resultado.sql`, ensayado con
 `sql-ensayo.sh` y aplicado con `sql-aplica.sh`). Función `push-events`

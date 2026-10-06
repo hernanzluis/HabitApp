@@ -1,6 +1,6 @@
 # Notificaciones push — diseño del recordatorio diario (tipo 4)
 
-**Estado (2026-10-02): diseño aprobado por Luis; paso 1 de 3 hecho.**
+**Estado (2026-10-06): implementado; los 3 pasos hechos** (prueba real superada el 3 y 4/10). Detalle por paso:
 - **Paso 1 hecho:** `sql/2026-10-02d_push_recordatorio_funciones.sql`, ensayado
   y aplicado con los scripts; `push-events` con el tipo `daily_reminder`,
   desplegada; Fase 11, test 11 (12 comprobaciones, 57/57 en total).

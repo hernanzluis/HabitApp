@@ -1,7 +1,9 @@
 # Notificaciones push — propuesta para la v1.1
 
-**Estado: PROPUESTA, sin implementar.** Fecha: 2026-09-30. No se ha tocado
-código, base de datos ni builds.
+**Estado (2026-10-06): implementado**, salvo la consulta de *receipts* y el
+resumen de validación cuando alguien no vota (pendientes). El estado de cada
+etapa está en la sección 7. Esta propuesta se escribió el 2026-09-30, antes
+de tocar código, base de datos ni builds.
 
 **Regla de aprobación (decidida por Luis el 2026-09-30):** cada etapa que
 toque base de datos, Edge Functions o builds necesita su **aprobación expresa

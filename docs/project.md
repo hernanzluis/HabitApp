@@ -8,7 +8,7 @@ Plataforma de hábitos compartidos con validación social entre miembros del gru
 
 ## Perfil de usuario
 
-- Luis Hernanz (hernanz.luis@gmail.com) — creador y desarrollador principal de HabitApp
+- Luis Hernanz — creador y desarrollador principal de HabitApp
 - Rol admin en el proyecto de Supabase. Solo hay **un** proyecto, el de producción: no existe un entorno de desarrollo separado (los tests de `tests/` también corren contra él, con datos `zztest-`)
 - Trabaja con iOS primero (Mac/iPhone), Android como secundario
 - Usa Expo Go en desarrollo para evitar builds nativos
@@ -223,9 +223,9 @@ Ya implementado (histórico):
 
 ## Usuarios de prueba
 
-| Email | Rol | Empresa | Company ID | Plan actual |
+| Cuenta | Rol | Empresa | Company ID | Plan actual |
 |---|---|---|---|---|
-| hernanz.luis@gmail.com | admin | Familia Hernanz | 0f089219-9130-454d-adf2-6e58847fea28 | familiar |
+| la de Luis | admin | Familia Hernanz | 0f089219-9130-454d-adf2-6e58847fea28 | familiar |
 
 > Las contraseñas no se almacenan en este documento. La confirmación de email está desactivada en el proyecto de Supabase (el único, de producción).
 >
