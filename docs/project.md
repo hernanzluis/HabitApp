@@ -223,10 +223,10 @@ Ya implementado (histórico):
 
 ## Usuarios de prueba
 
-| Cuenta | Rol | Empresa | Company ID | Plan actual |
-|---|---|---|---|---|
-| la de Luis | admin | Familia Hernanz | 0f089219-9130-454d-adf2-6e58847fea28 | familiar |
+| Cuenta | Rol | Plan actual |
+|---|---|---|
+| la de Luis | admin | familiar |
 
 > Las contraseñas no se almacenan en este documento. La confirmación de email está desactivada en el proyecto de Supabase (el único, de producción).
 >
-> **Estado a 2026-09-29:** la cuenta y el grupo se rehicieron el 2026-09-28 (el grupo anterior, `6b7ee546-…`, tenía el plan 'empresa' asignado a mano). El grupo actual está en plan **'familiar'**, el default de los grupos nuevos, así que **el panel web (`/admin`) está bloqueado** para esta cuenta: `habitteam-web/src/pages/Acceder.jsx` rechaza cualquier plan distinto de 'empresa' ("El panel web solo está disponible para el plan Empresa"). Subirlo a 'empresa' es una decisión pendiente, no un fallo.
+> **Estado a 2026-09-29:** la cuenta y el grupo se rehicieron el 2026-09-28 (el grupo anterior tenía el plan 'empresa' asignado a mano). El grupo actual está en plan **'familiar'**, el default de los grupos nuevos, así que **el panel web (`/admin`) está bloqueado** para esta cuenta: `habitteam-web/src/pages/Acceder.jsx` rechaza cualquier plan distinto de 'empresa' ("El panel web solo está disponible para el plan Empresa"). Subirlo a 'empresa' es una decisión pendiente, no un fallo.
