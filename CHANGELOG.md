@@ -29,6 +29,12 @@ qué deshacer en un rollback.
   lista), así que a un administrador le podía marcar menos. Además, el
   aviso de hábitos caducados ahora se calcula siempre (`24e8171`).
 
+### Mantenimiento
+- Parches del SDK 57 de Expo: `expo` 57.0.27, `expo-auth-session` 57.0.14,
+  `expo-constants` 57.0.21, `expo-linking` 57.0.12 y `expo-notifications`
+  57.0.22 (con sus dependencias internas en el lockfile). Sin cambios
+  visibles esperados.
+
 Pruebas pendientes en el dispositivo: `docs/manual-testing.md`, bloque 3b
 ("Recarga al tocar un aviso o al volver a primer plano").
 
