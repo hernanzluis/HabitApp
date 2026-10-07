@@ -252,6 +252,31 @@ async function run() {
     check(okAvatarErr, null, 'Test 9c: control — la URL de avatars/<miembro>/ se acepta');
     const { error: directErr } = await cMemberA.from('profiles').update({ avatar_url: 'https://example.com/x.jpg' }).eq('id', memberA.userId);
     checkError(directErr, /profiles_avatar_url_check/, 'Test 9d: el propio usuario tampoco puede guardarse una URL ajena con un UPDATE directo (CHECK)');
+
+    // ============================================================
+    // Test 10 — reemplazar el avatar EXISTENTE de un miembro (upsert, como
+    // AdminScreen): solo su admin (sql/2026-10-07_avatar_admin_update.sql)
+    // ============================================================
+    console.log('\nTest 10: reemplazar el avatar existente de un miembro');
+    const cAdminB = await getClientForUser(adminB.email, adminB.password);
+    const memberA2 = await addMember(adminA, 'MemberA2');
+    const cMemberA2 = await getClientForUser(memberA2.email, memberA2.password);
+    const avatarContent = async () => {
+      const { data, error } = await supabaseAdmin.storage.from('avatars').download(avatarPath);
+      if (error) throw new Error(error.message);
+      return Buffer.from(await data.arrayBuffer()).toString();
+    };
+    const replaceAs = (client, label) =>
+      client.storage.from('avatars').upload(avatarPath, Buffer.from(label), { contentType: 'image/jpeg', upsert: true });
+
+    const byAdmin = await replaceAs(cAdminA, 'zztest-fase9-admin-A');
+    check([byAdmin.error?.message ?? null, await avatarContent()], [null, 'zztest-fase9-admin-A'],
+      'Test 10a: el admin de A reemplaza el avatar existente de su miembro');
+    const byOtherAdmin = await replaceAs(cAdminB, 'zztest-fase9-admin-B');
+    checkError(byOtherAdmin.error, /row-level security/, 'Test 10b: el admin de B no puede reemplazarlo');
+    const byOtherMember = await replaceAs(cMemberA2, 'zztest-fase9-otro-miembro');
+    checkError(byOtherMember.error, /row-level security/, 'Test 10c: otro miembro de A no puede reemplazarlo');
+    check(await avatarContent(), 'zztest-fase9-admin-A', 'Test 10d: control — tras los intentos denegados, el fichero sigue siendo el del admin de A');
   } finally {
     console.log('\nLimpieza final...');
     for (const [bucket, paths] of Object.entries(uploaded)) {

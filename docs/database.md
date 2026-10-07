@@ -461,10 +461,10 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 - **Tipo:** público
 - **Uso:** fotos de perfil de usuarios
 - **Path:** `{user_id}/avatar.jpg`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
-- **Política INSERT/UPDATE:** solo tu propio path; además, `admins can upload avatar for own company member` permite a un admin subir el avatar de otro miembro (para `update_member_avatar`) siempre que ese miembro sea de su misma empresa (`profiles.company_id = my_company_id()`)
-- **Política DELETE:** propio path — usada por `ProfileScreen.deleteAllUserStorageFiles` al eliminar la propia cuenta
+- **Política INSERT/UPDATE:** solo tu propio path; además, `admins can upload avatar for own company member` (INSERT) y, desde el 2026-10-07, `admins can update avatar for own company member` (UPDATE, `sql/2026-10-07_avatar_admin_update.sql`, misma condición en USING y WITH CHECK) permiten a un admin subir y **reemplazar** el avatar de otro miembro (para `update_member_avatar`) siempre que ese miembro sea de su misma empresa (`profiles.company_id = my_company_id()`)
+- **Política DELETE:** propio path — usada por `ProfileScreen.deleteAllUserStorageFiles` al eliminar la propia cuenta. **El admin no puede borrar** el avatar de sus miembros (pendiente, ligado a limpiar Storage al borrar un miembro; ver `release.md`)
 - **Política SELECT (listar/leer por API):** la misma `members read own company files`. Bucket público: ver nota de `habit-photos`
-- **Limitación conocida (anterior al 2026-09-28):** no hay policy UPDATE de admin, así que el `upsert` de AdminScreen sobre el avatar YA existente de un miembro falla por RLS; solo funciona si el miembro no tenía avatar
+- **Resuelto el 2026-10-07:** antes no había policy UPDATE de admin, así que el `upsert` de AdminScreen sobre el avatar YA existente de un miembro fallaba con *"new row violates row-level security policy"* (403); solo funcionaba si el miembro no tenía avatar. Es solo de servidor: funciona ya con el build 4. Cubierto por la Fase 9, test 10
 - **Nota:** la URL limpia se guarda en `profiles.avatar_url`; en el cliente se añade `?t=Date.now()` para cache-busting inmediato tras la subida
 
 ---

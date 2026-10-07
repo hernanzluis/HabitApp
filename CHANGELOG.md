@@ -140,6 +140,7 @@ previa en cada aplicación) y la Edge Function en `supabase/functions/`.
 | 2026-10-02 | Avisos "Nuevo hábito" y "Resultado de la validación" (triggers en `habit_assignments` y `habit_validations`) | `sql/2026-10-02c_push_events_asignado_resultado.sql` | `5e7249b` |
 | 2026-10-02 | Recordatorio diario a las 20:00 locales: funciones SQL, `pg_cron` y tarea horaria | `sql/2026-10-02d`, `2026-10-02e`, `2026-10-02f` | `7155309`, `2d85606`, `d3272a1` |
 | 2026-10-05 | Seguridad reforzada de push en Expo (exige token de acceso; la función ya lo enviaba). Configuración de la cuenta de Expo, sin cambio de código | — | — |
+| 2026-10-07 | El admin puede reemplazar el avatar existente de un miembro de su empresa (política de UPDATE en Storage; antes fallaba). Funciona con cualquier build | `sql/2026-10-07_avatar_admin_update.sql` | ver `git log -- sql/2026-10-07_avatar_admin_update.sql` |
 
 **Rollback:** el build 3 sigue funcionando con el servidor actual, con la
 limitación ya descrita (intercambiar asignado y validador en dos pasos) y sin

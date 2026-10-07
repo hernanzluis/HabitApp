@@ -517,7 +517,7 @@ Ver la sección destacada al principio de este documento.
 | 9 | Un código emitido como `"  EMAIL  "` lo canjea el usuario con `email` | El admin puede teclear el email con mayúsculas o espacios |
 | 10 (×4) | Tras borrar la policy UPDATE no-admin: un miembro no puede marcar como usado un código pendiente de su grupo; el admin sigue editando nombre/email (`AdminScreen.handleSavePending`) y cancelando (DELETE, `AdminScreen` y `Members.jsx`) | El único UPDATE de cliente sobre `activation_codes` que queda es el del admin |
 
-### Fase 9 — `test-09-aislamiento.js` (72 tests)
+### Fase 9 — `test-09-aislamiento.js` (76 tests)
 
 Aislamiento de la API pública tras el cierre de seguridad del 2026-09-28
 (`sql/2026-09-28c`–`h`, `docs/security-inventory-2026-09-28.md`). Convierte en
@@ -536,11 +536,12 @@ sí las ve.
 | 7 (×2) | `delete_member` sobre uno mismo → `use_delete_own_account`; el admin sigue existiendo | Evita saltarse la regla de "único admin" de `delete_own_account` |
 | 8 (×3) | `update_member_profile` con `new_role='superadmin'` → `invalid_role` y el rol no cambia; el UPDATE directo tampoco (CHECK `profiles_role_check`) | Antes aceptaba cualquier texto como rol |
 | 9 (×4) | `update_member_avatar` rechaza otra URL de dominio y la carpeta de otro usuario (`invalid_avatar_url`), acepta `avatars/<miembro>/` (control); el UPDATE directo del propio usuario con una URL ajena lo frena el CHECK | Antes aceptaba cualquier URL |
+| 10 (×4) | Reemplazar el avatar **existente** de un miembro con `upsert` (como AdminScreen): su admin sí (y el fichero cambia); el admin de otra empresa y otro miembro de la misma empresa no (*row-level security*); control: tras los intentos denegados el fichero sigue siendo el del admin | Policy `admins can update avatar for own company member` (`sql/2026-10-07_avatar_admin_update.sql`); antes el reemplazo fallaba |
 
 **Fuera de esta fase, a propósito** (pendientes de aprobación aparte, ver
-`docs/release.md`): el `upsert` del admin sobre el avatar ya existente de un
-miembro (hoy falla por RLS, anterior al 2026-09-28) y la limpieza de Storage al
-borrar un miembro.
+`docs/release.md`): que el admin pueda **borrar** el avatar de sus miembros y
+la limpieza de Storage al borrar un miembro. (El reemplazo del avatar por el
+admin se resolvió el 2026-10-07: test 10.)
 
 ### Fase 10 — `test-10-push-tokens.js` (28 tests)
 
