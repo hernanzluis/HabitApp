@@ -45,7 +45,11 @@ verificado, no cuando se ha hecho.
   - **No confirmado:** en el primer fallo, Luis vio que la lista aparecía "al navegar un poco por la app". Con `allDone` atascado eso no debería ocurrir hasta un arranque en frío; posiblemente iOS reinició la app en segundo plano.
   - Pruebas manuales: `manual-testing.md`, bloque 3b ("Recarga al tocar un aviso o al volver a primer plano").
 
-- [ ] **Icono propio de la app, aportado por Luis (hoy es el de plantilla de Expo)** — pendiente para el build 5. Los cuatro ficheros de `assets/` (`icon.png`, `adaptive-icon.png`, `splash-icon.png`, `favicon.png`) son idénticos, por hash, a los de la plantilla `expo-template-blank` de los SDK 52-54 y no han cambiado desde el commit inicial. Además del icono de iOS, la misma imagen de plantilla aparece en la pantalla de arranque (splash) y en el icono de Android. El icono va dentro del binario: solo llega con un build nuevo. No se sustituye ningún asset sin aprobación de Luis.
+- [x] **Icono propio de la app en iOS, aportado por Luis** — en el repositorio desde el 2026-10-07 (`assets/icon.png`), llega con el **build 5** (el icono va dentro del binario). Partió de un WebP de 1254×1254 con las esquinas redondeadas dibujadas sobre blanco; se rellenaron las esquinas prolongando el degradado azul marino (método, medidas y comparación con el original en `~/habitapp-icon/`, fuera del repo): PNG 1024×1024, RGB sin canal alfa, sRGB, esquinas en azul marino; el diseño interior es idéntico al original. Los ficheros de plantilla de Expo que quedan (`adaptive-icon.png`, `splash-icon.png`, `favicon.png`) siguen sin cambiar. Pendiente:
+  - [ ] **Pantalla de arranque**: sigue con la imagen de plantilla sobre blanco; necesita el símbolo sin fondo en PNG transparente, que Luis aún no tiene (propuesta: símbolo sobre fondo azul marino en el plugin `expo-splash-screen`).
+  - [ ] **Icono de Android y favicon de la app**: de plantilla. No urgente: la v1 es solo iPhone.
+  - [ ] **Web** (habitteam-web, sin build): `logo192.png`, `logo512.png`, `favicon.ico` y `manifest.json`, que aún dice "React App".
+  - [ ] **Calidad de origen**: el icono procede de un WebP comprimido de 54 KB; si Luis aporta una versión de mejor calidad (PNG o SVG), se repite el relleno con el mismo script.
 
 ## Credenciales de Apple (referencia)
 

@@ -32,9 +32,20 @@ qué deshacer en un rollback.
 Pruebas pendientes en el dispositivo: `docs/manual-testing.md`, bloque 3b
 ("Recarga al tocar un aviso o al volver a primer plano").
 
-### Pendiente para el build 5
-- **Icono propio de la app, aportado por Luis** (hoy es el de plantilla de
-  Expo). Todavía no está en el repo.
+### Nuevo
+- **Icono propio de la app en iOS**, aportado por Luis, en lugar del de
+  plantilla de Expo (`assets/icon.png`). Se ve en la pantalla de inicio y en
+  TestFlight a partir del build 5.
+
+### Pendiente (no entra en el build 5 salvo que se decida antes)
+- La pantalla de arranque sigue con la imagen de plantilla: necesita el
+  símbolo sin fondo en PNG transparente, que Luis aún no tiene.
+- Icono de Android y favicon de la app, de plantilla (no urgente: la v1 es
+  solo iPhone).
+- Web (habitteam-web, sin build): `logo192.png`, `logo512.png`,
+  `favicon.ico` y `manifest.json`, que aún dice "React App".
+- El icono procede de un WebP comprimido de 54 KB: si Luis aporta una versión
+  de mejor calidad, se repite el relleno de las esquinas con el mismo script.
 
 ---
 
