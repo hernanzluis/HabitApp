@@ -38,7 +38,12 @@
     "forgot_password": "Forgot your password?",
     "create_account": "Create account",
     "error_credentials": "Incorrect email or password.",
-    "error_network": "Could not sign in. Check your connection and try again."
+    "error_network": "Could not sign in. Check your connection and try again.",
+    "error_rate_limit": "Too many attempts. Wait a few minutes and try again.",
+    "error_email_not_confirmed": "You need to confirm your email before signing in. Check your inbox.",
+    "error_user_blocked": "This account is blocked. Contact your group's admin.",
+    "error_server": "The service is not available right now. Try again in a few minutes.",
+    "error_unknown": "Could not sign in. Please try again."
   },
   "forgot": {
     "subtitle": "Recover your access",

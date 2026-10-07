@@ -35,13 +35,24 @@ export default function LoginScreen() {
     return '';
   };
 
-  const normalizeSupabaseError = (message) => {
-    if (!message) return t('errors.generic');
-    const msg = String(message);
-    if (/invalid login credentials/i.test(msg)) return t('login.error_credentials');
-    if (/invalid email/i.test(msg)) return t('errors.email_invalid');
+  // Errores de signInWithPassword → siempre un texto traducido; nunca el
+  // mensaje técnico de Supabase (en inglés). Por código de auth-js y, si no
+  // viene, por estado HTTP o por el texto.
+  const normalizeSupabaseError = (error) => {
+    const code = error?.code ?? '';
+    const status = error?.status ?? null;
+    const msg = String(error?.message ?? '');
+    if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return t('login.error_credentials');
+    if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) return t('login.error_email_not_confirmed');
+    if (code === 'user_banned' || /banned/i.test(msg)) return t('login.error_user_blocked');
+    if (code.startsWith('over_') || status === 429 || /rate limit/i.test(msg)) return t('login.error_rate_limit');
+    if (code === 'email_address_invalid' || /invalid email/i.test(msg)) return t('errors.email_invalid');
     if (/password/i.test(msg) && /required|empty/i.test(msg)) return t('errors.password_required');
-    return msg;
+    // Sin conexión o tiempo agotado (AuthRetryableFetchError llega con status 0).
+    if (error?.name === 'AuthRetryableFetchError' || status === 0 || code === 'request_timeout') return t('login.error_network');
+    if (code === 'unexpected_failure' || (status && status >= 500)) return t('login.error_server');
+    console.warn('login: error no reconocido', code || status || msg);
+    return t('login.error_unknown');
   };
 
   const onLogin = async () => {
@@ -54,7 +65,7 @@ export default function LoginScreen() {
 
     try {
       const { error } = await supabase.auth.signInWithPassword({ email: emailTrimmed, password });
-      if (error) { setFormError(normalizeSupabaseError(error.message)); return; }
+      if (error) { setFormError(normalizeSupabaseError(error)); return; }
     } catch {
       setFormError(t('login.error_network'));
     } finally {

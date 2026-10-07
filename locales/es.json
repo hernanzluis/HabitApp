@@ -34,11 +34,16 @@
   },
   "login": {
     "subtitle": "Accede a tu cuenta",
-    "submit": "Login",
+    "submit": "Iniciar sesión",
     "forgot_password": "¿Olvidaste tu contraseña?",
     "create_account": "Crear cuenta",
     "error_credentials": "Email o contraseña incorrectos.",
-    "error_network": "No se pudo iniciar sesión. Revisa tu conexión e inténtalo de nuevo."
+    "error_network": "No se pudo iniciar sesión. Revisa tu conexión e inténtalo de nuevo.",
+    "error_rate_limit": "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
+    "error_email_not_confirmed": "Tienes que confirmar tu email antes de entrar. Revisa tu correo.",
+    "error_user_blocked": "Esta cuenta está bloqueada. Contacta con el administrador de tu grupo.",
+    "error_server": "El servicio no está disponible en este momento. Inténtalo de nuevo en unos minutos.",
+    "error_unknown": "No se pudo iniciar sesión. Inténtalo de nuevo."
   },
   "forgot": {
     "subtitle": "Recupera tu acceso",

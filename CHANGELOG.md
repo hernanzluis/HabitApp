@@ -28,6 +28,12 @@ qué deshacer en un rollback.
   hábitos del grupo sin ningún validador (que el administrador sí ve en la
   lista), así que a un administrador le podía marcar menos. Además, el
   aviso de hábitos caducados ahora se calcula siempre (`24e8171`).
+- **Pantalla de acceso, en español de verdad.** El botón dice "Iniciar
+  sesión" (antes "Login"), y los errores al entrar se muestran siempre con un
+  texto traducido: exceso de intentos, email sin confirmar, cuenta
+  bloqueada, sin conexión o tiempo agotado, servicio no disponible y, para
+  cualquier otro, un mensaje genérico. Antes, los errores no previstos
+  salían tal cual, en inglés.
 
 ### Mantenimiento
 - Parches del SDK 57 de Expo: `expo` 57.0.27, `expo-auth-session` 57.0.14,
