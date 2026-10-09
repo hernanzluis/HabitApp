@@ -113,22 +113,30 @@ async function run() {
     if (assignCount1Err) throw assignCount1Err;
     check(assignCount1, 1, 'Test 3: existe la fila habit_assignments (admin -> miembro, hábito 1)');
 
-    // ---- Test 4: HALLAZGO — un miembro normal SÍ puede auto-asignarse ----
-    // La policy real de habit_assignments INSERT es "cualquier autenticado,
-    // con tal de que el hábito sea de su propia empresa" — no exige ser admin.
-    // Es intencional (documentado en database.md), pero contraintuitivo: uno
-    // esperaría que solo el admin gestionase asignaciones.
-    console.log('\nTest 4: un miembro normal SÍ puede auto-asignarse a un hábito (policy real, no es un bug)');
+    // ---- Test 4: un miembro normal NO puede asignarse hábitos ----
+    // Hasta el 2026-10-09 la policy de INSERT dejaba a cualquier miembro
+    // asignarse (o asignar a otros) hábitos de su empresa, y estaba
+    // documentado como intencional. Desde los avisos push de "hábito
+    // asignado" eso permitía enviar avisos a otros: ahora solo el admin
+    // (sql/2026-10-09b_s2_asignaciones_solo_admin.sql, auditoría S2).
+    console.log('\nTest 4: un miembro normal no puede auto-asignarse un hábito (solo admin)');
     const { error: selfAssignErr } = await clientMemberA
       .from('habit_assignments')
       .insert({ habit_id: habit2.id, user_id: memberA.userId });
-    if (selfAssignErr) throw selfAssignErr;
+    checkRejected(selfAssignErr, 'Test 4: la auto-asignación de un miembro es rechazada por RLS');
 
     const { count: assignCount2, error: assignCount2Err } = await supabaseAdmin
       .from('habit_assignments').select('id', { count: 'exact', head: true })
       .eq('habit_id', habit2.id).eq('user_id', memberA.userId);
     if (assignCount2Err) throw assignCount2Err;
-    check(assignCount2, 1, 'Test 4: el miembro pudo auto-asignarse al hábito 2 (INSERT no exige is_admin())');
+    check(assignCount2, 0, 'Test 4: confirmado en BD — no se creó la asignación');
+
+    // Estado que necesitan los tests siguientes: el miembro asignado al hábito
+    // 2, ahora por el admin (el camino real de AdminScreen).
+    const { error: adminAssignErr } = await clientAdminA
+      .from('habit_assignments')
+      .insert({ habit_id: habit2.id, user_id: memberA.userId });
+    if (adminAssignErr) throw adminAssignErr;
 
     // ---- Test 5: el admin añade un validador ----
     // Hasta el 2026-09-30 aquí se añadía como validador al MISMO miembro que el
