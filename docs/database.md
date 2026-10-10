@@ -82,7 +82,7 @@ Solo los usuarios que aparecen en esta tabla para un `habit_id` dado verán los 
 | habit_id | uuid | — | FK → habits(id) ON DELETE CASCADE |
 | user_id | uuid | — | FK → profiles(id) ON DELETE CASCADE — quién lo hizo |
 | photo_url | text | — | URL pública en Storage bucket habit-photos |
-| status | text | — (sin default) | 'pending', 'validated', 'rejected'. **Sin default de columna**: `HabitDetailScreen` inserta `'pending'` explícitamente. Ningún trigger lo actualiza después (ver la policy UPDATE de `habit_logs`) |
+| status | text | — (sin default) | 'pending', 'validated', 'rejected'. **Sin default de columna**: `HabitDetailScreen` inserta `'pending'` explícitamente y **nada lo modifica después**: desde el 2026-10-09 ningún cliente puede hacer UPDATE en `habit_logs` (auditoría S1). **No es legado:** `status = 'pending'` decide la lista de Validar y su contador (`lib/pendingValidations.js`), los destinatarios del aviso push y la pestaña de caducados |
 | notes | text | null | Nota opcional añadida al completar el hábito |
 | validated_by | uuid | null | FK → profiles(id) — legado, no se usa desde v2 |
 | validated_at | timestamptz | null | Legado, no se usa desde v2 |
@@ -285,9 +285,12 @@ RPC `SECURITY DEFINER` que sustituye al SELECT directo sobre `activation_codes` 
 
 Protege contra reintentos repetidos sobre UN código concreto ya existente pero muerto (usado/expirado). Un código genuinamente válido y no usado siempre tiene éxito y resetea el contador — nunca puede acumular 5 fallos por sí mismo.
 
+**Capa 3, tope global (`activation_lockouts`, desde el 2026-10-10):** si en los últimos 10 minutos hay **30 o más intentos fallidos** (de cualquier IP; `activation_attempts.succeeded = false`), se inserta una fila en `activation_lockouts` (`started_at`, `until`, `failures`) y la comprobación de códigos queda bloqueada **5 minutos** para todos, con el mismo mensaje. Mientras dura no se registran intentos (no alarga el bloqueo). `activation_lockouts` tiene RLS sin policies y sin privilegios para clientes: es el rastro consultable de cada activación. **Riesgo aceptado:** alguien con al menos 6 IPs reales (el límite por IP es de 5) puede provocar el bloqueo repetidamente y retrasar las altas con código; no afecta al alta "Crear grupo" ni a quien ya tiene cuenta. Fase 12 test 6.
+
 **Capa 2, por IP (`activation_attempts`):** cubre justo el hueco de la capa 1 — un atacante probando códigos de 6 dígitos al azar que no coinciden con ninguna fila real, donde no hay ningún `activation_codes.id` al que enganchar un contador.
 1. Al inicio de la función, antes de tocar `activation_codes`: obtiene la IP del cliente con `current_setting('request.headers', true)::json->>'x-forwarded-for'`.
-2. Borra intentos de esa IP en `activation_attempts` de más de 1 hora (limpieza, evita que la tabla crezca sin límite).
+   - **Desde el 2026-10-10 (`sql/2026-10-10_r1_limite_codigos_activacion.sql`, auditoría R1): se usa el ÚLTIMO elemento de la cadena**, el que añade la pasarela de Supabase (`regexp_replace(xff, '^.*,', '')`). Lo anterior lo controla el cliente: hasta ese día la función usaba la cadena entera y bastaba con variar su primera parte para que cada intento contara como una IP nueva. Si la cabecera falta o viene vacía, la clave es `'sin-ip'` (todos esos casos comparten el límite). Fase 12 test 5.
+2. Borra intentos de **cualquier IP** de más de 1 hora (limpieza; hasta el 2026-10-10 solo los de la propia IP, y los demás se acumulaban). Cada intento se guarda con `succeeded = false` y se marca `true` si el código resulta válido.
 3. Cuenta los intentos de esa IP en los últimos 15 minutos. Si son ≥5, `RAISE EXCEPTION` con el mismo mensaje de bloqueo — **sin insertar** un intento nuevo, para no alargar la ventana indefinidamente mientras el atacante sigue llamando.
 4. Si no, inserta una fila nueva (`ip_address`, `attempted_at = now()`) y continúa con la lógica normal (incluida la capa 1). No se borran los intentos de esa IP aunque el código resulte válido — el límite es por IP y ventana de tiempo, no depende de si acertó.
 
@@ -396,7 +399,7 @@ Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-
 
 ### `habit_assignments`
 - **SELECT:** `is_my_company_habit(habit_id)` (antes `true`)
-- **INSERT:** cualquier autenticado (no solo el admin, intencional), acotado a que el hábito referenciado sea de tu propia empresa (`EXISTS (... habits h WHERE h.id = habit_id AND h.company_id = my_company_id())`)
+- **INSERT:** `admins can insert assignments for own company habits` — `is_admin()`, el hábito es de tu empresa **y el asignado también** (`profiles.company_id = my_company_id()`). Desde el 2026-10-09 (`sql/2026-10-09b_s2_asignaciones_solo_admin.sql`, auditoría S2). Antes podía insertar cualquier miembro (documentado como intencional: auto-asignarse), incluso asignando a usuarios de otra empresa; con los avisos push de "hábito asignado" eso permitía enviar avisos a otros. Fase 2 test 4 y Fase 12 test 2
 - **DELETE:** `is_admin()` y el hábito referenciado pertenece a la empresa del admin
 
 ### `habit_validators`
@@ -405,8 +408,8 @@ Desde el 2026-09-28 (`sql/2026-09-28c`–`h`, ver `docs/security-inventory-2026-
 
 ### `habit_logs`
 - **SELECT:** `is_my_company_habit(habit_id)` (antes `true`, con `photo_url` y `notes` legibles sin sesión)
-- **INSERT:** `user_id = auth.uid()` y el hábito referenciado es de tu propia empresa — evita insertar logs a nombre de otro usuario
-- **UPDATE:** el propio dueño del log, un validador asignado a ese hábito (`habit_validators`), o un admin de la empresa del hábito. En la práctica no la usa ningún flujo actual del cliente (la validación social escribe en `habit_validations`, no toca `status` de `habit_logs` directamente — `validated_by`/`validated_at`/`status` son en la práctica legado, ver más abajo)
+- **INSERT:** `users can create logs of own assigned habits` — `user_id = auth.uid()`, el hábito está **asignado al propio usuario** (`habit_assignments`) y es de su empresa. Desde el 2026-10-09 (`sql/2026-10-09c_s3_logs_solo_habitos_asignados.sql`, auditoría S3); antes bastaba con que el hábito fuera de la empresa. Fase 12 test 3
+- **UPDATE: ninguna, y sin privilegio UPDATE para `authenticated`** desde el 2026-10-09 (`sql/2026-10-09a_s1_habit_logs_sin_update.sql`, auditoría S1). La policy anterior dejaba al autor autovalidar su log (`status`), retrofecharlo (`created_at`), poner una foto externa o cambiarlo de hábito, y a un validador cambiar el estado de un log ajeno o apropiárselo (`user_id`). Ni la app ni la web hacen UPDATE sobre `habit_logs` (la validación social va en `habit_validations`); las funciones `SECURITY DEFINER` (de `postgres`) y la Edge Function (clave de servicio) no dependen de ella. Fase 12 test 1. `validated_by`/`validated_at` sí son legado; `status` no (ver la tabla)
 
 ### `habit_validations`
 - **SELECT:** `is_my_company_log(habit_log_id)` (antes `true` para cualquier autenticado)
@@ -451,6 +454,7 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 
 ### Bucket: `habit-photos`
 - **Tipo:** público
+- **Límites (desde el 2026-10-09, `sql/2026-10-09d_s4_limites_buckets.sql`, auditoría S4):** 10 MB por fichero y solo `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif`. Medido ese día: fotos reales jpeg de 467 kB como máximo (el selector comprime con calidad 0,8 pero no redimensiona). Antes no había límites (hasta 50 MB por fichero, el del plan, y de cualquier tipo). Fase 12 test 4
 - **Uso:** fotos de prueba de hábitos completados
 - **Path:** `{user_id}/{habit_id}/{timestamp}.{ext}`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
 - **Política INSERT:** `bucket_id = 'habit-photos' AND (storage.foldername(name))[1] = auth.uid()::text` — solo puedes subir a tu propio path
@@ -459,6 +463,7 @@ Ninguna de las dos tablas tiene código cliente que escriba en ellas hoy (verifi
 
 ### Bucket: `avatars`
 - **Tipo:** público
+- **Límites (desde el 2026-10-09, auditoría S4):** 5 MB por fichero, los mismos tipos de imagen que `habit-photos`. La app sube los avatares siempre como `image/jpeg`. Fase 12 test 4
 - **Uso:** fotos de perfil de usuarios
 - **Path:** `{user_id}/avatar.jpg`, forzado por RLS: `(storage.foldername(name))[1] = auth.uid()::text`
 - **Política INSERT/UPDATE:** solo tu propio path; además, `admins can upload avatar for own company member` (INSERT) y, desde el 2026-10-07, `admins can update avatar for own company member` (UPDATE, `sql/2026-10-07_avatar_admin_update.sql`, misma condición en USING y WITH CHECK) permiten a un admin subir y **reemplazar** el avatar de otro miembro (para `update_member_avatar`) siempre que ese miembro sea de su misma empresa (`profiles.company_id = my_company_id()`)

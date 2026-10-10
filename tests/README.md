@@ -316,6 +316,11 @@ node tests/test-08-registro-seguro.js  # Fase 8: registro seguro (auth.uid, emai
 node tests/test-09-aislamiento.js  # Fase 9: aislamiento de la API pública (anon, entre empresas, Storage, RPCs de miembros)
 node tests/test-10-push-tokens.js  # Fase 10: tokens de push y registro de avisos (etapa 1 de las notificaciones)
 node tests/test-11-push-events.js  # Fase 11: avisos push (pendiente de validar, hábito asignado, resultado de la validación, recordatorio diario)
+node tests/test-12-regresion-auditoria.js  # Fase 12: regresión de la auditoría del 2026-10-09 (S1-S4 y R1 rechazados)
+
+# Batería completa (todas las fases, en orden, 2 rondas con 60 s entre fases):
+node scripts/run-tests.js
+node scripts/run-tests.js 1 20   # 1 ronda, 20 s entre fases
 ```
 
 Cada script, en este orden:
@@ -377,7 +382,7 @@ lleva a la pestaña Familia.
 
 **No incluye** el test 5 originalmente previsto (`authFlags.skipNextRedirect`) — ver punto 6.
 
-### Fase 2 — `test-02-habitos.js` (19 tests)
+### Fase 2 — `test-02-habitos.js` (20 tests)
 
 Hábitos, asignación (`habit_assignments`) y validadores (`habit_validators`),
 centrado en el comportamiento real de sus políticas RLS — las mismas que se
@@ -388,7 +393,7 @@ endurecieron en la auditoría de seguridad de este mismo proyecto.
 | 1 (×3 aserciones) | El admin crea un hábito en su propia empresa; `is_active` queda `true` (no `NULL`) y `recurrence` tiene el default `'daily'` | `habits.is_active` **no tiene default de columna** — si un INSERT lo omite, queda `NULL`, y toda condición que compara `is_active = true` (incluida la del test 4b de la Fase 1) lo trata como inactivo sin ningún error visible |
 | 2 | Un miembro normal NO puede crear un hábito directamente (rechazado por RLS) | Confirma que `habits` INSERT exige `is_admin()`, tal como quedó tras el fix de la ronda 2 de RLS |
 | 3 | El admin asigna al miembro a un hábito (`habit_assignments`) | Camino "feliz" normal, el que usa `AdminScreen.js` al crear/editar un hábito |
-| 4 | Un miembro normal **SÍ** puede auto-asignarse a un hábito de su empresa | Ver hallazgo en el punto 7 — la policy real no exige ser admin para `habit_assignments` INSERT, solo que el hábito sea de tu empresa |
+| 4 (×2) | Un miembro normal **NO** puede auto-asignarse un hábito (RLS) y no queda la fila; después lo asigna el admin, que es el estado que necesitan los tests siguientes | Invertido el 2026-10-09 (auditoría S2): antes la policy dejaba a cualquier miembro asignar, y con los avisos push de "hábito asignado" eso permitía enviar avisos a otros |
 | 5 | El admin se añade como validador del hábito 2 (`habit_validators`), en el que el miembro está asignado | Camino "feliz" normal. Hasta el 2026-09-30 el validador era el mismo miembro asignado; desde ese día la base lo rechaza (test 8) |
 | 6 | Un miembro normal NO puede añadirse a sí mismo como validador (rechazado **por RLS**, se comprueba el motivo) — sobre un hábito donde no está asignado | A diferencia de `habit_assignments`, `habit_validators` INSERT sí exige `is_admin()` — asimetría real entre las dos tablas, no un descuido de este test |
 | 7 | Un admin de OTRA empresa no puede asignar a nadie a un hábito ajeno (rechazado por RLS) | Confirma el aislamiento multi-tenant (`company_id = my_company_id()`) en `habit_assignments` |
@@ -593,6 +598,22 @@ distintas por `habit_logs_one_per_day`.
 Lo único que no cubre: que el aviso **llegue a un iPhone** (APNs); eso va en
 `docs/manual-testing.md`.
 
+
+### Fase 12 — `test-12-regresion-auditoria.js` (33 tests)
+
+Regresión de la auditoría del 2026-10-09 (`sql/2026-10-09a`..`d` y
+`sql/2026-10-10_r1_limite_codigos_activacion.sql`). Reproduce con datos `zztest-` cada ataque que se
+demostró en la auditoría y comprueba que ahora se rechaza, con su control
+positivo (el camino legítimo de la app sigue funcionando).
+
+| Test | Qué verifica | Por qué importa |
+|---|---|---|
+| 1 (×9) | **S1:** el autor no puede autovalidar, retrofechar, poner una foto externa ni mover de hábito su log; un validador no puede cambiar el estado ni apropiarse del log ajeno; tampoco el admin (`permission denied`); control: el log queda igual y el validador sigue votando en `habit_validations` | Sin UPDATE en `habit_logs` para clientes |
+| 2 (×5) | **S2:** un miembro no se auto-asigna ni asigna a otro; ni el admin asigna a un usuario de otra empresa; controles: el admin asigna a un miembro y a sí mismo | Asignaciones solo del admin y de su empresa (avisos push) |
+| 3 (×6) | **S3:** nadie registra logs de un hábito no asignado, a nombre de otro ni de otra empresa; controles: un miembro completa su hábito asignado, el admin el que se asignó y un hábito de tipo "una vez" | Logs solo de hábitos asignados |
+| 4 (×5) | **S4:** una foto de 11 MB, un `text/html` y un avatar de 6 MB se rechazan; controles: una foto jpeg de 500 kB y un avatar de 200 kB se suben | Límites de los buckets (10 MB / 5 MB, solo imágenes) |
+| 5 (×4) | **R1:** con la misma cabecera `X-Forwarded-For` el 6.º intento de `check_activation_code` se bloquea, y cambiándola (203.0.113.x) o quitándola **sigue bloqueado**; ningún intento se guarda con la parte que envía el cliente | Arreglado el 2026-10-10: la IP es el último elemento de la cadena |
+| 6 (×4) | **R1:** 30 intentos fallidos en 10 minutos activan un bloqueo global de 5 minutos, con su fila en `activation_lockouts`; durante el bloqueo cualquier comprobación se rechaza; la tabla no la lee ningún cliente | Tope global aprobado el 2026-10-10 |
 ## 5. La regla del prefijo `zztest-` y la barrera de seguridad
 
 `TEST_PREFIX = 'zztest-'` (en `test-helpers.js`) marca **todo** dato que crean
@@ -768,7 +789,7 @@ segundo miembro no cambia el resultado; crear un hábito activo sí. El test 4
 de la Fase 1 se rediseñó (con acuerdo explícito) para verificar esto tal como
 es, no tal como se pensaba que era.
 
-### Fase 2 — `habit_assignments` no exige admin, `habit_validators` sí
+### Fase 2 — `habit_assignments` no exigía admin (cerrado el 2026-10-09)
 
 **Se esperaba:** que gestionar asignaciones y validadores de un hábito fuera
 una operación exclusiva del admin en ambos casos (es lo único que expone la
@@ -784,6 +805,12 @@ cambio, sí exige `is_admin()`. Es una asimetría real entre las dos tablas
 (test 4 vs. test 6 de la Fase 2), no un fallo de configuración a corregir sin
 más — pero si se decide que las asignaciones también deberían ser
 admin-only, es un cambio de RLS, no de la app.
+
+**Cerrado el 2026-10-09** (auditoría S2,
+`sql/2026-10-09b_s2_asignaciones_solo_admin.sql`): con los avisos push de
+"hábito asignado", cualquier miembro podía enviar avisos a otros asignándoles
+hábitos (e incluso asignar a usuarios de otra empresa). Ahora solo el admin, y
+solo a miembros de su empresa. El test 4 está invertido.
 
 ### Fase 2 — nada impide ser asignado y validador del mismo hábito
 
@@ -1027,16 +1054,18 @@ nueva. Índice para quien llegue a este documento por primera vez:
 |---|---|---|---|
 | 0 | `test-00-barrera-limpieza.js` | 12 | Canario de la barrera de `cleanupTestData()` (usuario sin prefijo, sin profile y miembro de una company de test; desfase de email imposible) |
 | 1 | `test-01-alta.js` | 8 | Alta de admin y de miembro, condición real de "family setup" |
-| 2 | `test-02-habitos.js` | 19 | Hábitos, asignación, validadores (RLS) |
+| 2 | `test-02-habitos.js` | 20 | Hábitos, asignación, validadores (RLS) |
 | 3 | `test-03-rachas.js` | 18 | Rachas y recompensas (`calculateStreak`/`calculateTotalCompleted`, recursividad, `featuredReward`) |
 | 4 | `test-04-permisos.js` | 14 | Permisos de `profiles` y aislamiento entre empresas |
 | 5 | `test-05-limites.js` | 11 | Límites de plan (`plan_limits`, `check_member_limit`, `check_habit_limit`, `history_days`) |
 | 6 | `test-06-borrado.js` | 25 | Borrado de cuenta (`delete_own_account`), único admin, cascada sin anonimizar, fallback de validador |
 | 7 | `test-07-recuperacion.js` | 14 | Recuperación de contraseña (`generateLink`, `verifyOtp`, `updateUser`, parser real del deep link) |
 | 8 | `test-08-registro-seguro.js` | 42 | Registro seguro (`auth.uid()`, email de `auth.users`, código ligado a email y marcado atómico, rate limiting en llamada directa) |
-| 9 | `test-09-aislamiento.js` | 72 | Aislamiento de la API pública: anon, entre empresas, Storage, RPCs de gestión de miembros |
+| 9 | `test-09-aislamiento.js` | 76 | Aislamiento de la API pública: anon, entre empresas, Storage, RPCs de gestión de miembros |
 | 10 | `test-10-push-tokens.js` | 28 | Tokens de push (RLS, RPCs de alta/baja, cambio de cuenta, cascada, tope) y deduplicación de `notification_log` |
-| **Total** | **11 ficheros** | **263** | |
+| 11 | `test-11-push-events.js` | 61 | Avisos push por evento y recordatorio diario (Edge Function desplegada, triggers, hora simulada, cambios de hora) |
+| 12 | `test-12-regresion-auditoria.js` | 33 | Regresión de la auditoría del 2026-10-09 (S1-S4 y R1 rechazados) |
+| **Total** | **13 ficheros** | **362** | Batería completa: `node scripts/run-tests.js` (2 rondas) |
 
 **Fixes críticos aplicados directamente a producción durante el proceso**
 (no solo hallazgos documentados — cambios reales de SQL en Supabase, todos

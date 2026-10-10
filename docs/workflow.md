@@ -37,6 +37,13 @@
   en `tests/README.md` si es automático, en la sección "Huecos conocidos"
   de `manual-testing.md` si es manual.
 
+- **Cuándo pasar la batería completa:** cualquier cambio de RLS, policies,
+  grants, funciones, triggers o Storage exige las fases 0-N completas, **dos
+  rondas seguidas**, con `node scripts/run-tests.js` (versionado en el repo
+  desde el 2026-10-09). Un cambio que solo toca la app (JavaScript) no afecta
+  a `tests/`, que prueba el backend: basta con decir qué fase cubriría el
+  cambio o confirmar que ninguna.
+
 ## Cerrar lo que se descubre, no solo documentarlo
 
 - El objetivo por defecto es cerrar los temas que se abren, no dejarlos a

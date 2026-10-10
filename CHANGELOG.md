@@ -141,6 +141,11 @@ previa en cada aplicación) y la Edge Function en `supabase/functions/`.
 | 2026-10-02 | Recordatorio diario a las 20:00 locales: funciones SQL, `pg_cron` y tarea horaria | `sql/2026-10-02d`, `2026-10-02e`, `2026-10-02f` | `7155309`, `2d85606`, `d3272a1` |
 | 2026-10-05 | Seguridad reforzada de push en Expo (exige token de acceso; la función ya lo enviaba). Configuración de la cuenta de Expo, sin cambio de código | — | — |
 | 2026-10-07 | El admin puede reemplazar el avatar existente de un miembro de su empresa (política de UPDATE en Storage; antes fallaba). Funciona con cualquier build | `sql/2026-10-07_avatar_admin_update.sql` | ver `git log -- sql/2026-10-07_avatar_admin_update.sql` |
+| 2026-10-09 | Nadie puede modificar un log desde la app: se quitó el permiso que dejaba al autor validar su propio hábito o cambiarle la fecha, y a un validador cambiar o quedarse con el log de otro | `sql/2026-10-09a_s1_habit_logs_sin_update.sql` | `855b895` |
+| 2026-10-09 | Solo el admin asigna hábitos, y solo a miembros de su grupo (antes cualquier miembro podía, y con ello enviar avisos "Nuevo hábito") | `sql/2026-10-09b_s2_asignaciones_solo_admin.sql` | `6b0c1de` |
+| 2026-10-09 | Solo se registran hábitos asignados a quien los completa | `sql/2026-10-09c_s3_logs_solo_habitos_asignados.sql` | `08d239f` |
+| 2026-10-09 | Límites de las fotos: 10 MB por foto de hábito, 5 MB por avatar y solo imágenes | `sql/2026-10-09d_s4_limites_buckets.sql` | `7d58e6f` |
+| 2026-10-10 | El límite de intentos al comprobar un código de invitación ya no se puede esquivar, y hay un bloqueo breve si se acumulan muchos fallos | `sql/2026-10-10_r1_limite_codigos_activacion.sql` | `c70bfc5` |
 
 **Rollback:** el build 3 sigue funcionando con el servidor actual, con la
 limitación ya descrita (intercambiar asignado y validador en dos pasos) y sin

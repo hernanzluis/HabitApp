@@ -17,6 +17,22 @@ verificado, no cuando se ha hecho.
 
 ## Revisar antes del lanzamiento (no bloqueantes por sí mismos)
 
+- [x] **Auditoría del 2026-10-09, lote de servidor** — cerrados el 2026-10-09, solo servidor (sin build), con ensayo, copia de seguridad, Fase 12 de regresión y batería completa dos rondas:
+  - **S1:** `habit_logs` sin UPDATE desde clientes (el autor podía autovalidar y retrofechar; un validador, apropiarse de logs ajenos). `sql/2026-10-09a`.
+  - **S2:** solo el admin crea asignaciones, y de miembros de su empresa (cualquier miembro podía enviar avisos "hábito asignado"). `sql/2026-10-09b`.
+  - **S3:** solo logs de hábitos asignados al propio usuario. `sql/2026-10-09c`.
+  - **S4:** límites en los buckets (10 MB fotos, 5 MB avatares, solo imágenes). `sql/2026-10-09d`.
+- [x] **R1 — límite de intentos de `check_activation_code`** — cerrado el 2026-10-10 (`sql/2026-10-10_r1_limite_codigos_activacion.sql`): la IP es el último elemento de `x-forwarded-for` (el que pone la pasarela) y hay un tope global (30 fallos en 10 minutos bloquean 5 minutos, con rastro en `activation_lockouts`). Fase 12, tests 5-6.
+- [ ] **Códigos de activación más largos** — hoy son de 6 cifras. Con R1 cerrado ya no se pueden adivinar a base de cambiar de IP falsa, pero alargarlos (o usar letras) reduciría aún más el riesgo. Pendiente, decidido no hacerlo por ahora (2026-10-10).
+- [ ] **Pendiente para la subida a la tienda (auditoría del 2026-10-09):**
+  - [ ] Política de privacidad y términos alineados con lo que hace la app (datos de push, avatares y comentarios; servicios de terceros; región de los datos; edad mínima en un producto familiar; copias de seguridad).
+  - [ ] Enlaces a la política de privacidad y a los términos dentro de la app (requiere build).
+  - [ ] Opción de denunciar contenido y contacto visible en la app (guía 1.2 de Apple; requiere build).
+  - [ ] Borrado de cuenta que elimine todas las fotos, también cuando hay muchas (requiere build), y limpieza de Storage al borrar un miembro.
+  - [ ] Mensaje de error traducido al completar un hábito si falla el registro (requiere build).
+  - [ ] Copias de seguridad de los datos (el plan gratuito no las incluye).
+  - [ ] Cuenta de prueba y notas para el revisor.
+
 - [x] **Otras funciones `SECURITY DEFINER` expuestas a `anon`** — revisadas y cerradas el 2026-09-28 (ver el ítem anterior).
 - [x] **`profiles.id` sin FK a `auth.users`** — FK `profiles_id_fkey` ON DELETE CASCADE añadida el 2026-09-28 (`sql/2026-09-28g`).
 - [ ] **`check_habit_limit` sin backstop de servidor** — decisión de producto pendiente, ver `tests/README.md`, sección 6.
