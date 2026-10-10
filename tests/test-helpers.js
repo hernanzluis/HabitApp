@@ -224,6 +224,13 @@ async function createReward({ habitId, streakTarget, description }) {
 async function resetActivationRateLimit() {
   const { error } = await supabaseAdmin.from('activation_attempts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   if (error) throw new Error(`resetActivationRateLimit: fallo borrando activation_attempts: ${error.message}`);
+  // Desde el 2026-10-10 hay además un tope global (activation_lockouts): si
+  // una fase acumulara 30 fallos en 10 minutos, bloquearía 5 minutos a las
+  // siguientes. Se da por terminado cualquier bloqueo activo (la fila queda
+  // como rastro).
+  const { error: lockErr } = await supabaseAdmin.from('activation_lockouts')
+    .update({ until: new Date().toISOString() }).gt('until', new Date().toISOString());
+  if (lockErr) throw new Error(`resetActivationRateLimit: fallo cerrando activation_lockouts: ${lockErr.message}`);
 }
 
 async function cleanupTestData() {

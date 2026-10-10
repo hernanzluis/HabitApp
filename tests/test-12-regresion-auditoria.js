@@ -5,11 +5,12 @@
 // rechazarse (S1-S4, sql/2026-10-09a..d). Cada bloqueo lleva su control
 // positivo: el camino legítimo de la app sigue funcionando.
 //
-// R1 (límite por IP de check_activation_code esquivable con X-Forwarded-For)
-// sigue ABIERTO a la espera de aprobación: el test 5 está marcado
-// [CONOCIDO] y comprueba el comportamiento actual; cuando se arregle, fallará
-// y habrá que invertirlo (es su propósito). Usa direcciones de documentación
-// (203.0.113.x) y borra en el finally solo sus propias filas de intentos.
+// R1 (límite por IP de check_activation_code esquivable con X-Forwarded-For),
+// cerrado el 2026-10-10 (sql/2026-10-10_r1_limite_codigos_activacion.sql):
+// el test 5 comprueba que variar la cabecera ya no esquiva el límite y el 6
+// el tope global. Usa direcciones de documentación (203.0.113.x); los
+// intentos los borra cleanupTestData() y el bloqueo global del test 6 se
+// borra en el finally.
 
 const {
   TEST_PREFIX,
@@ -59,6 +60,7 @@ async function run() {
   await cleanupTestData();
   console.log('OK\n');
   const uploaded = { 'habit-photos': [], avatars: [] };
+  const lockIds = [];
 
   try {
     const A = await createTestCompanyAndAdmin(`${TEST_PREFIX}CompanyAuditA-${Date.now()}`);
@@ -132,26 +134,46 @@ async function run() {
     const okAvatar = await up(author.client, 'avatars', `${author.userId}/avatar.jpg`, Buffer.alloc(200 * 1024, 1), 'image/jpeg');
     check(okAvatar.error, null, 'Test 4e: control — un avatar jpeg de 200 kB se sube');
 
-    // ---- Test 5 [CONOCIDO] (R1): el límite por IP se separa por X-Forwarded-For ----
-    console.log('\nTest 5 [CONOCIDO] (R1): el límite por IP de check_activation_code depende de X-Forwarded-For');
+    // ---- Test 5 (R1): el límite por IP ya no depende de X-Forwarded-For ----
+    console.log('\nTest 5 (R1): variar X-Forwarded-For ya no esquiva el límite por IP');
+    await resetActivationRateLimit();
     const tryCode = async (xff) => {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_activation_code`, {
         method: 'POST',
-        headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'X-Forwarded-For': xff },
+        headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json', ...(xff ? { 'X-Forwarded-For': xff } : {}) },
         body: JSON.stringify({ p_code: '987650' }),
       });
       return res.status;
     };
     const statuses = [];
     for (let i = 0; i < 6; i++) statuses.push(await tryCode(TEST_IPS[0]));
-    check(statuses, [200, 200, 200, 200, 200, 400], 'Test 5a: control — con la misma cabecera, el 6.º intento se bloquea');
-    check(await tryCode(TEST_IPS[1]), 200, 'Test 5b [CONOCIDO]: cambiando la cabecera se vuelve a intentar (pendiente de arreglo; invertir cuando se aplique)');
+    check(statuses, [200, 200, 200, 200, 200, 400], 'Test 5a: con la misma cabecera, el 6.º intento se bloquea');
+    check(await tryCode(TEST_IPS[1]), 400, 'Test 5b: cambiando la cabecera sigue bloqueado (cuenta la IP real, la última de la cadena)');
+    check(await tryCode(null), 400, 'Test 5c: sin cabecera, también bloqueado');
+    const { data: keys } = await supabaseAdmin.from('activation_attempts').select('ip_address');
+    check(keys.some((k) => k.ip_address.startsWith('203.0.113.')), false, 'Test 5d: ningún intento se registra con la parte de la cabecera que envía el cliente');
+
+    // ---- Test 6 (R1): tope global de intentos fallidos ----
+    console.log('\nTest 6 (R1): 30 intentos fallidos en 10 minutos bloquean 5 minutos, con rastro');
+    await resetActivationRateLimit();
+    const t6 = new Date().toISOString();
+    // 29 fallos simulados de otras IP (direcciones de documentación) + 1 real.
+    await must(supabaseAdmin.from('activation_attempts').insert(
+      Array.from({ length: 29 }, (_, k) => ({ ip_address: `203.0.113.${100 + k}` }))));
+    check(await tryCode(null), 200, 'Test 6a: el intento que completa los 30 fallos aún responde');
+    const { data: locks } = await supabaseAdmin.from('activation_lockouts').select('id, until, failures').gte('started_at', t6);
+    lockIds.push(...(locks ?? []).map((l) => l.id));
+    const mins = locks?.[0] ? Math.round((Date.parse(locks[0].until) - Date.now()) / 60000) : null;
+    check([locks?.length, locks?.[0]?.failures, mins], [1, 30, 5], 'Test 6b: queda una fila en activation_lockouts con 30 fallos y 5 minutos de bloqueo');
+    check(await tryCode(null), 400, 'Test 6c: durante el bloqueo, cualquier comprobación de código se rechaza');
+    const { data: priv } = await getClientForUser(B.email, B.password).then((c) => c.from('activation_lockouts').select('id'));
+    check(priv ?? [], [], 'Test 6d: activation_lockouts no es visible para un usuario autenticado');
   } finally {
     console.log('\nLimpieza final...');
     for (const [bucket, paths] of Object.entries(uploaded)) {
       if (paths.length) await supabaseAdmin.storage.from(bucket).remove(paths);
     }
-    for (const ip of TEST_IPS) await supabaseAdmin.from('activation_attempts').delete().like('ip_address', `${ip}%`);
+    if (lockIds.length) await supabaseAdmin.from('activation_lockouts').delete().in('id', lockIds);
     await cleanupTestData();
     console.log('OK');
   }
